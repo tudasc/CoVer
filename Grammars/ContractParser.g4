@@ -5,4 +5,11 @@ options {
 }
 
 start: contract EOF;
-contract: ContractPrefix + ScopePostfix;
+contract: ContractMarker ScopePrefix precondition? postcondition? ScopePostfix;
+
+precondition: PreMarker ScopePrefix expression? ScopePostfix;
+postcondition: PostMarker ScopePrefix expression? ScopePostfix;
+
+expression: primitive;
+
+primitive: OPRead OPPrefix Variable OPPostfix;

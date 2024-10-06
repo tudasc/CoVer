@@ -34,11 +34,18 @@ static std::optional<std::string> getFuncName(CallBase* FuncCall) {
     return FuncCall->getCalledFunction()->getName().data();
 }
 
-PreservedAnalyses ContractManagerPass::run(Module &M, ModuleAnalysisManager &AM) {
+AnalysisKey ContractManagerAnalysis::Key;
+
+ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
     errs() << "Running Contract Manager on Module: " << M.getName() << "\n";
 
+    ContractDatabase curDatabase;
+
     GlobalVariable* Annotations = M.getGlobalVariable("llvm.global.annotations");
-    if (Annotations == nullptr) errs() << "No annotations present, quitting." << M.getName() << "\n";
+    if (Annotations == nullptr) {
+        errs() << "No annotations present, quitting." << M.getName() << "\n";
+        return curDatabase;
+    } 
 
     Constant* ANNValues = Annotations->getInitializer();
 
@@ -55,7 +62,7 @@ PreservedAnalyses ContractManagerPass::run(Module &M, ModuleAnalysisManager &AM)
         try {
             tokens.fill();
         } catch (ContractLangSyntaxError& e) {
-            errs() << "Detected non-contract annotation, ignoring: " << ANNStr << "\n";
+            errs() << "Detected non-contract annotation (Lexing Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << ANNStr << "\n";
             continue;
         }
 
@@ -63,11 +70,25 @@ PreservedAnalyses ContractManagerPass::run(Module &M, ModuleAnalysisManager &AM)
         ContractParser parser(&tokens);
         parser.removeErrorListeners();
         parser.addErrorListener(&listener);
-        #warning TODO parser error handling
+        try {
+            parser.contract();
+        } catch (ContractLangSyntaxError& e) {
+            errs() << "Detected non-contract annotation (Parser Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << ANNStr << "\n";
+            if (getenv("LLVMCONTRACT_DEBUG") != NULL && atoi(getenv("LLVMCONTRACT_DEBUG")) == 1) {
+                for (auto x : tokens.getTokens()) {
+                    errs() << "(" << x->getText() << "," << lexer.getVocabulary().getSymbolicName(x->getType()) << ")\n";
+                }
+            }
+            continue;
+        }
         Function* F =  dyn_cast<Function>(ANN->getOperand(0));
         StringRef location = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(2))->getInitializer())->getAsCString();
         errs() << "Found contract in " << location << " with content: " << ANNStr << "\n";
+        parser.reset();
+        ContractDataVisitor::ContractData Data = dataVisitor.getContractData(parser.contract());
+        Contract newCtr{F, ANNStr, Data, UNKNOWN};
+        curDatabase.Contracts.push_back(newCtr);
     }
 
-    return PreservedAnalyses::all();
+    return curDatabase;
 }

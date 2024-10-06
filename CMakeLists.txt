@@ -36,6 +36,8 @@ antlr4_generate(ContractPars ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractParser
 add_llvm_pass_plugin(LLVMContractsPlugin
   Passes/Registrar.cpp
   Passes/ContractManager.cpp
+  Passes/ContractVerifier.cpp
+  LangCode/ContractDataVisitor.cpp
   LangCode/ContractLangErrorListener.cpp
   ${ANTLR4_SRC_FILES_ContractLex}
   ${ANTLR4_SRC_FILES_ContractPars}

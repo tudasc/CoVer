@@ -11,5 +11,5 @@ void ContractLangErrorListener::syntaxError(antlr4::Recognizer *recognizer,
                                         const std::string &msg,
                                         std::exception_ptr e) {
     // Don't perform any output here. That's for the pass to do if necessary.
-    throw ContractLangSyntaxError();
+    throw ContractLangSyntaxError(line, charPositionInLine);
 }

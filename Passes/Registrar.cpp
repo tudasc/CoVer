@@ -4,6 +4,7 @@
 #include <llvm/Passes/OptimizationLevel.h>
 
 #include "ContractManager.hpp"
+#include "ContractVerifier.hpp"
 
 using namespace llvm;
 
@@ -15,17 +16,15 @@ bool FPMHook(StringRef Name, FunctionPassManager &FPM,
 
 bool MPMHook(StringRef Name, ModulePassManager &MPM,
              ArrayRef<PassBuilder::PipelineElement>) {
-    if (Name == "contractManager") {
-        MPM.addPass(ContractManagerPass());
+    if (Name == "contractVerifier") {
+        MPM.addPass(ContractVerifierPass());
         return true;
     }
     return false;
 };
 
 void MAMHook(ModuleAnalysisManager &MAM) {
-    // MAM.registerPass([&] { return TSanRMAOptimizerAnalysis(); });
-    // MAM.registerPass([&] { return MPIUsageAnalysis(); });
-    // MAM.registerPass([&] { return TSanInstrFilter(); });
+    MAM.registerPass([&] { return ContractManagerAnalysis(); });
 };
 
 void PBHook(PassBuilder &PB) {

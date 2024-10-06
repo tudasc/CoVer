@@ -2,5 +2,15 @@ lexer grammar ContractLexer;
 
 WS: [ \t\r\n]+ -> skip;
 
-ContractPrefix: 'CONTRACT{';
+ContractMarker: 'CONTRACT';
+PreMarker: 'PRE';
+PostMarker: 'POST';
+ScopePrefix: '{';
 ScopePostfix: '}';
+
+Variable: ([A-Z] | [a-z]) ([A-Z] | [a-z] | [0-9] | '_')*;
+
+// All ops must end with '!' to differentiate from variables
+OPRead: 'read!';
+OPPrefix: '(';
+OPPostfix: ')';
