@@ -1,5 +1,6 @@
 #pragma once
 
+#include <memory>
 #include <optional>
 
 #include <antlr4-runtime.h>
@@ -11,16 +12,16 @@ class ContractDataVisitor : public ContractParserBaseVisitor {
     public:
         struct Operation {
             virtual ~Operation() = default;
-            virtual const std::string type() const;
+            virtual const std::string type() const = 0;
         };
         struct ReadOperation : Operation {
             ReadOperation(std::string _var) : Variable{_var} {};
             const std::string Variable;
-            const std::string type() const override { return "ReadOperation"; };
+            virtual const std::string type() const override { return "ReadOperation"; };
         };
 
         struct ContractExpression {
-            const Operation& OP;
+            const std::shared_ptr<const Operation> OP;
         };
 
         struct ContractData {

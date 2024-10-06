@@ -1,5 +1,6 @@
 #include "ContractDataVisitor.hpp"
 #include <any>
+#include <memory>
 #include <optional>
 
 ContractDataVisitor::ContractData ContractDataVisitor::getContractData(antlr4::tree::ParseTree* tree) {
@@ -23,7 +24,8 @@ std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx
 }
 
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {
-    return ContractExpression{ .OP = std::any_cast<ReadOperation>(this->visit(ctx->primitive())) };
+    std::shared_ptr<const ReadOperation> opPtr = std::make_shared<ReadOperation>(std::any_cast<const ReadOperation>(this->visit(ctx->primitive())));
+    return ContractExpression{ .OP = opPtr};
 }
 
 std::any ContractDataVisitor::visitPrimitive(ContractParser::PrimitiveContext *ctx) {
