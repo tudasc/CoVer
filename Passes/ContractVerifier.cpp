@@ -42,6 +42,9 @@ bool ContractVerifierPass::checkVarRW(std::string var, const Function* F, bool r
             // Check variable name fits
             if (Variable->getName() != var) continue;
 
+            // Check if scope fits
+            if (Variable->getScope() != F->getSubprogram()) continue;
+
             errs() << "Found variable!" << "\n";
         }
     }
