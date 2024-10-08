@@ -9,6 +9,7 @@
 #include <llvm/IR/IntrinsicInst.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Metadata.h>
+#include <llvm/Support/WithColor.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Transforms/Instrumentation.h>
 #include <set>
@@ -43,19 +44,21 @@ PreservedAnalyses ContractVerifierPass::run(Module &M,
                     break;
                 }
             }
+            errs() << "\n";
             if (!err.empty()) {
-                errs() << err;
+                errs() << err << "\n";
                 continue;
             }
             if (result) {
-                errs() << "## Contract Fulfilled!\n";
+                WithColor(errs(), HighlightColor::Remark) << "## Contract Fulfilled! ##\n";
                 C.Status = ContractManagerAnalysis::FULFILLED;
             } else {
-                errs() << "##Contract violation detected!\n";
+                WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
                 C.Status = ContractManagerAnalysis::BROKEN;
             }
-            errs() << "## Function: " << C.F->getName() << "\n";
-            errs() << "## Contract: " << C.ContractString << "\n";
+            errs() << "--> Function: " << C.F->getName() << "\n";
+            errs() << "--> Contract: " << C.ContractString << "\n";
+            errs() << "\n";
         }
     }
 
@@ -149,7 +152,6 @@ std::set<ContractVerifierPass::RWStatus> ContractVerifierPass::checkVarRW(std::s
                 // Check if scope fits
                 if (Variable->getScope() != F->getSubprogram()) continue;
 
-                errs() << "Found variable!" << "\n";
                 varValue = DbgDec->getVariableLocationOp(0);
                 decl = DbgDec;
                 break;
