@@ -19,7 +19,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         struct Contract {
             const Function* const F;
             const StringRef ContractString;
-            const ContractDataVisitor::ContractData Data;
+            const ContractTree::ContractData Data;
             Fulfillment Status;
         };
 

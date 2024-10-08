@@ -3,7 +3,9 @@
 #include <memory>
 #include <optional>
 
-ContractDataVisitor::ContractData ContractDataVisitor::getContractData(antlr4::tree::ParseTree* tree) {
+using namespace ContractTree;
+
+ContractData ContractDataVisitor::getContractData(antlr4::tree::ParseTree* tree) {
     return std::any_cast<ContractData>(this->visit(tree));
 }
 
@@ -24,10 +26,15 @@ std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx
 }
 
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {
-    std::shared_ptr<const ReadOperation> opPtr = std::make_shared<ReadOperation>(std::any_cast<const ReadOperation>(this->visit(ctx->primitive())));
+    std::shared_ptr<const Operation> opPtr = std::any_cast<std::shared_ptr<const Operation>>(this->visit(ctx->primitive()));
     return ContractExpression{ .OP = opPtr};
 }
 
-std::any ContractDataVisitor::visitPrimitive(ContractParser::PrimitiveContext *ctx) {
-    return ReadOperation(ctx->Variable()->getText());
+std::any ContractDataVisitor::visitReadOp(ContractParser::ReadOpContext *ctx) {
+    std::shared_ptr<const Operation> op = std::make_shared<const ReadOperation>(ReadOperation(ctx->Variable()->getText()));
+    return op;
+}
+std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) {
+    std::shared_ptr<const Operation> op = std::make_shared<const WriteOperation>(WriteOperation(ctx->Variable()->getText()));
+    return op;
 }

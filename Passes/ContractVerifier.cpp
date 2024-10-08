@@ -19,6 +19,7 @@
 #include "../LangCode/ContractDataVisitor.hpp"
 
 using namespace llvm;
+using namespace ContractTree;
 
 PreservedAnalyses ContractVerifierPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
@@ -27,26 +28,34 @@ PreservedAnalyses ContractVerifierPass::run(Module &M,
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
         if (!C.Data.Pre.has_value() && C.Data.Post.has_value()) {
             // No preconditions
-            const ContractDataVisitor::ContractExpression& Expr = C.Data.Post.value();
-            if (Expr.OP->type() == "ReadOperation") {
-                const ContractDataVisitor::ReadOperation& rOP = dynamic_cast<const ContractDataVisitor::ReadOperation&>(*Expr.OP);
-                // Loop through, check if variable is read
-                std::string err;
-                bool isRead = checkVarRW(rOP.Variable, C.F, true, err).contains(RWStatus::READ);
-                if (!err.empty()) {
-                    errs() << err;
-                    continue;
+            const ContractExpression& Expr = C.Data.Post.value();
+            std::string err;
+            bool result = false;
+            switch (C.Data.Post->OP->type()) {
+                case OperationType::READ: {
+                    const ReadOperation& rOP = dynamic_cast<const ReadOperation&>(*Expr.OP);
+                    result = checkVarRW(rOP.Variable, C.F, true, err).contains(RWStatus::READ);
+                    break;
                 }
-                if (isRead) {
-                    errs() << "## Contract Fulfilled!\n";
-                    C.Status = ContractManagerAnalysis::FULFILLED;
-                } else {
-                    errs() << "##Contract violation detected!\n";
-                    C.Status = ContractManagerAnalysis::BROKEN;
+                case OperationType::WRITE: {
+                    const WriteOperation& wOP = dynamic_cast<const WriteOperation&>(*Expr.OP);
+                    result = checkVarRW(wOP.Variable, C.F, true, err).contains(RWStatus::WRITE);
+                    break;
                 }
-                errs() << "## Function: " << C.F->getName() << "\n";
-                errs() << "## Contract: " << C.ContractString << "\n";
             }
+            if (!err.empty()) {
+                errs() << err;
+                continue;
+            }
+            if (result) {
+                errs() << "## Contract Fulfilled!\n";
+                C.Status = ContractManagerAnalysis::FULFILLED;
+            } else {
+                errs() << "##Contract violation detected!\n";
+                C.Status = ContractManagerAnalysis::BROKEN;
+            }
+            errs() << "## Function: " << C.F->getName() << "\n";
+            errs() << "## Contract: " << C.ContractString << "\n";
         }
     }
 

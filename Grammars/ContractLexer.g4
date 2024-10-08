@@ -12,5 +12,6 @@ Variable: ([A-Z] | [a-z]) ([A-Z] | [a-z] | [0-9] | '_')*;
 
 // All ops must end with '!' to differentiate from variables
 OPRead: 'read!';
+OPWrite: 'write!';
 OPPrefix: '(';
 OPPostfix: ')';

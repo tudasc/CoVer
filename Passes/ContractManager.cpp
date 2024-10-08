@@ -85,7 +85,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
         StringRef location = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(2))->getInitializer())->getAsCString();
         errs() << "Found contract in " << location << " with content: " << ANNStr << "\n";
         parser.reset();
-        ContractDataVisitor::ContractData Data = dataVisitor.getContractData(parser.contract());
+        ContractTree::ContractData Data = dataVisitor.getContractData(parser.contract());
         Contract newCtr{F, ANNStr, Data, UNKNOWN};
         curDatabase.Contracts.push_back(newCtr);
     }
