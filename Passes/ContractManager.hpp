@@ -20,7 +20,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             const Function* const F;
             const StringRef ContractString;
             const ContractTree::ContractData Data;
-            Fulfillment Status;
+            Fulfillment Status = UNKNOWN;
         };
 
         //Result Type
