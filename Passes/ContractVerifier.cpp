@@ -12,6 +12,7 @@
 #include <llvm/Support/WithColor.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Transforms/Instrumentation.h>
+#include <llvm/Demangle/Demangle.h>
 #include <set>
 #include <sstream>
 #include <utility>
@@ -56,7 +57,7 @@ PreservedAnalyses ContractVerifierPass::run(Module &M,
                 WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
                 C.Status = ContractManagerAnalysis::BROKEN;
             }
-            errs() << "--> Function: " << C.F->getName() << "\n";
+            errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
             errs() << "--> Contract: " << C.ContractString << "\n";
             errs() << "\n";
         }
