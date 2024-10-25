@@ -1,9 +1,9 @@
 #pragma once
 
-#include "llvm/Analysis/AliasAnalysis.h"
-#include "llvm/IR/PassManager.h"
+#include <llvm/Analysis/AliasAnalysis.h>
+#include <llvm/IR/PassManager.h>
 
-#include "../Include/ContractTree.hpp"
+#include "ContractTree.hpp"
 
 using namespace ContractTree;
 

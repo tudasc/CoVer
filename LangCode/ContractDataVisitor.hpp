@@ -5,7 +5,7 @@
 #include "ContractParserBaseVisitor.h"
 #include "tree/ParseTree.h"
 
-#include "../Include/ContractTree.hpp"
+#include "ContractTree.hpp"
 
 class ContractDataVisitor : public ContractParserBaseVisitor {
     public:

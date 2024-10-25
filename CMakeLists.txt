@@ -43,14 +43,27 @@ add_llvm_pass_plugin(LLVMContractsPlugin
   ${ANTLR4_SRC_FILES_ContractPars}
 )
 
-target_include_directories(LLVMContractsPlugin PUBLIC
+target_include_directories(LLVMContractsPlugin
+  PUBLIC
+    Include/
     ${ANTLR4_INCLUDE_DIR_ContractLex}
     ${ANTLR4_INCLUDE_DIR_ContractPars}
-    ${ANTLR4_INCLUDE_DIR})
+    ${ANTLR4_INCLUDE_DIR}
+)
 target_link_libraries(LLVMContractsPlugin PRIVATE antlr4-runtime)
 target_compile_options (LLVMContractsPlugin PUBLIC -fexceptions)
 
 install(TARGETS LLVMContractsPlugin LIBRARY DESTINATION lib)
+install(
+  FILES
+    Include/ContractTree.hpp
+    Passes/ContractManager.hpp
+  DESTINATION include
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE
+    GROUP_READ
+    WORLD_READ
+)
 
 ##
 ## Utility Script for convenience
