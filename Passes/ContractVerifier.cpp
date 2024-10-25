@@ -18,8 +18,6 @@
 #include <utility>
 #include <vector>
 
-#include "../LangCode/ContractDataVisitor.hpp"
-
 using namespace llvm;
 using namespace ContractTree;
 
@@ -52,10 +50,10 @@ PreservedAnalyses ContractVerifierPass::run(Module &M,
             }
             if (result) {
                 WithColor(errs(), HighlightColor::Remark) << "## Contract Fulfilled! ##\n";
-                C.Status = ContractManagerAnalysis::FULFILLED;
+                C.Status = Fulfillment::FULFILLED;
             } else {
                 WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
-                C.Status = ContractManagerAnalysis::BROKEN;
+                C.Status = Fulfillment::BROKEN;
             }
             errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
             errs() << "--> Contract: " << C.ContractString << "\n";

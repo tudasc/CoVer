@@ -22,7 +22,11 @@ std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx
         postExpr.emplace(std::any_cast<ContractExpression>(expr));
     }
 
-    return ContractData{preExpr, postExpr};
+    Fulfillment f = Fulfillment::UNKNOWN;
+    if (ctx->ContractMarkerExpFail()) f = Fulfillment::BROKEN;
+    if (ctx->ContractMarkerExpSucc()) f = Fulfillment::FULFILLED;
+
+    return ContractData{preExpr, postExpr, f};
 }
 
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {

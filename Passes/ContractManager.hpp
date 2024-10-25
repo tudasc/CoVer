@@ -2,11 +2,10 @@
 
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/IR/PassManager.h"
-#include <optional>
 
-#include "../LangCode/ContractLangErrorListener.hpp"
+#include "../Include/ContractTree.hpp"
 
-#include "../LangCode/ContractDataVisitor.hpp"
+using namespace ContractTree;
 
 namespace llvm {
 
@@ -14,13 +13,11 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
     public:
         static llvm::AnalysisKey Key;
 
-        enum Fulfillment { UNKNOWN, FULFILLED, BROKEN };
-
         struct Contract {
             const Function* const F;
             const StringRef ContractString;
-            const ContractTree::ContractData Data;
-            Fulfillment Status = UNKNOWN;
+            const ContractData Data;
+            Fulfillment Status = Fulfillment::UNKNOWN;
         };
 
         //Result Type
@@ -32,11 +29,6 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
 
         // Run Pass
         ContractDatabase run(Module &M, ModuleAnalysisManager &AM);
-
-
-    private:
-        ContractLangErrorListener listener;
-        ContractDataVisitor dataVisitor;
 };
 
 } // namespace llvm

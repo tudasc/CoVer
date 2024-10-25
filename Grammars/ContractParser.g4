@@ -5,7 +5,7 @@ options {
 }
 
 start: contract EOF;
-contract: ContractMarker ScopePrefix precondition? postcondition? ScopePostfix;
+contract: (ContractMarker | ContractMarkerExpFail | ContractMarkerExpSucc) ScopePrefix precondition? postcondition? ScopePostfix;
 
 precondition: PreMarker ScopePrefix expression? ScopePostfix;
 postcondition: PostMarker ScopePrefix expression? ScopePostfix;

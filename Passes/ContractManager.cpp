@@ -20,6 +20,8 @@
 #include <antlr4-runtime.h>
 #include "ContractLexer.h"
 #include "ContractParser.h"
+#include "../LangCode/ContractLangErrorListener.hpp"
+#include "../LangCode/ContractDataVisitor.hpp"
 
 using namespace llvm;
 
@@ -48,6 +50,9 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     } 
 
     Constant* ANNValues = Annotations->getInitializer();
+
+    ContractLangErrorListener listener;
+    ContractDataVisitor dataVisitor;
 
     for (Use& annUse : ANNValues->operands()) {
         ConstantStruct *ANN = dyn_cast<ConstantStruct>(annUse);
@@ -85,8 +90,8 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
         StringRef location = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(2))->getInitializer())->getAsCString();
         errs() << "Found contract in " << location << " with content: " << ANNStr << "\n";
         parser.reset();
-        ContractTree::ContractData Data = dataVisitor.getContractData(parser.contract());
-        Contract newCtr{F, ANNStr, Data, UNKNOWN};
+        ContractData Data = dataVisitor.getContractData(parser.contract());
+        Contract newCtr{F, ANNStr, Data, Fulfillment::UNKNOWN};
         curDatabase.Contracts.push_back(newCtr);
     }
 

@@ -3,6 +3,8 @@ lexer grammar ContractLexer;
 WS: [ \t\r\n]+ -> skip;
 
 ContractMarker: 'CONTRACT';
+ContractMarkerExpFail: 'CONTRACTXFAIL';
+ContractMarkerExpSucc: 'CONTRACTXSUCC';
 PreMarker: 'PRE';
 PostMarker: 'POST';
 ScopePrefix: '{';

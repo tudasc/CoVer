@@ -1,39 +1,11 @@
 #pragma once
 
-#include <memory>
-#include <optional>
-
 #include <antlr4-runtime.h>
 
 #include "ContractParserBaseVisitor.h"
 #include "tree/ParseTree.h"
 
-namespace ContractTree {
-    enum struct OperationType { READ, WRITE };
-    struct Operation {
-            virtual ~Operation() = default;
-            virtual const OperationType type() const = 0;
-        };
-        struct ReadOperation : Operation {
-            ReadOperation(std::string _var) : Variable{_var} {};
-            const std::string Variable;
-            virtual const OperationType type() const override { return OperationType::READ; };
-        };
-        struct WriteOperation : Operation {
-            WriteOperation(std::string _var) : Variable{_var} {};
-            const std::string Variable;
-            virtual const OperationType type() const override { return OperationType::WRITE; };
-        };
-
-        struct ContractExpression {
-            const std::shared_ptr<const Operation> OP;
-        };
-
-        struct ContractData {
-            const std::optional<ContractExpression> Pre;
-            const std::optional<ContractExpression> Post;
-        };
-}
+#include "../Include/ContractTree.hpp"
 
 class ContractDataVisitor : public ContractParserBaseVisitor {
     public:
