@@ -2,6 +2,7 @@
 
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/IR/PassManager.h>
+#include <memory>
 
 #include "ContractTree.hpp"
 
@@ -17,7 +18,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             const Function* const F;
             const StringRef ContractString;
             const ContractData Data;
-            Fulfillment Status = Fulfillment::UNKNOWN;
+            std::shared_ptr<Fulfillment> Status = std::make_shared<Fulfillment>(Fulfillment::UNKNOWN);
         };
 
         //Result Type

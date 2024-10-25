@@ -1,5 +1,6 @@
 #include "ContractVerifier.hpp"
 #include "ContractManager.hpp"
+#include "ContractTree.hpp"
 
 #include <llvm/Analysis/InlineCost.h>
 #include <llvm/IR/BasicBlock.h>
@@ -26,7 +27,7 @@ PreservedAnalyses ContractVerifierPass::run(Module &M,
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
 
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
-        if (!C.Data.Pre.has_value() && C.Data.Post.has_value()) {
+        if (*C.Status == Fulfillment::UNKNOWN && !C.Data.Pre.has_value() && C.Data.Post.has_value()) {
             // No preconditions
             const ContractExpression& Expr = C.Data.Post.value();
             std::string err;
@@ -43,21 +44,14 @@ PreservedAnalyses ContractVerifierPass::run(Module &M,
                     break;
                 }
             }
-            errs() << "\n";
             if (!err.empty()) {
                 errs() << err << "\n";
-                continue;
             }
             if (result) {
-                WithColor(errs(), HighlightColor::Remark) << "## Contract Fulfilled! ##\n";
-                C.Status = Fulfillment::FULFILLED;
+                *C.Status = Fulfillment::FULFILLED;
             } else {
-                WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
-                C.Status = Fulfillment::BROKEN;
+                *C.Status = Fulfillment::BROKEN;
             }
-            errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
-            errs() << "--> Contract: " << C.ContractString << "\n";
-            errs() << "\n";
         }
     }
 

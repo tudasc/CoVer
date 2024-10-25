@@ -14,6 +14,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -22,6 +23,7 @@
 #include "ContractParser.h"
 #include "../LangCode/ContractLangErrorListener.hpp"
 #include "../LangCode/ContractDataVisitor.hpp"
+#include "ContractTree.hpp"
 
 using namespace llvm;
 
@@ -91,7 +93,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
         errs() << "Found contract in " << location << " with content: " << ANNStr << "\n";
         parser.reset();
         ContractData Data = dataVisitor.getContractData(parser.contract());
-        Contract newCtr{F, ANNStr, Data, Fulfillment::UNKNOWN};
+        Contract newCtr{F, ANNStr, Data, std::make_shared<Fulfillment>(Fulfillment::UNKNOWN)};
         curDatabase.Contracts.push_back(newCtr);
     }
 

@@ -5,6 +5,7 @@
 
 #include "ContractManager.hpp"
 #include "ContractVerifier.hpp"
+#include "ContractPostProcess.hpp"
 
 using namespace llvm;
 
@@ -18,6 +19,10 @@ bool MPMHook(StringRef Name, ModulePassManager &MPM,
              ArrayRef<PassBuilder::PipelineElement>) {
     if (Name == "contractVerifier") {
         MPM.addPass(ContractVerifierPass());
+        return true;
+    }
+    if (Name == "contractPostProcess") {
+        MPM.addPass(ContractPostProcessingPass());
         return true;
     }
     return false;
