@@ -49,3 +49,31 @@ target_include_directories(LLVMContractsPlugin PUBLIC
     ${ANTLR4_INCLUDE_DIR})
 target_link_libraries(LLVMContractsPlugin PRIVATE antlr4-runtime)
 target_compile_options (LLVMContractsPlugin PUBLIC -fexceptions)
+
+install(TARGETS LLVMContractsPlugin LIBRARY DESTINATION lib)
+
+##
+## Utility Script for convenience
+##
+set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/LLVMContractsPlugin.so")
+
+set(COMPILER_WRAP_EXPR "\${MPICC:-mpicc}")
+set(COMPILE_SRC_FILE_ENDINGS "\\.c")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.sh.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.configured" @ONLY)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/clangContracts" INPUT "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.configured")
+
+set(COMPILER_WRAP_EXPR "\${MPICXX:-mpicxx}")
+set(COMPILE_SRC_FILE_ENDINGS "\\.cpp|\\.cc|\\.cxx")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.sh.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.configured" @ONLY)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++" INPUT "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.configured")
+
+install(
+  FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts"
+    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++"
+  DESTINATION bin
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE  
+    GROUP_READ GROUP_EXECUTE  
+    WORLD_READ WORLD_EXECUTE
+)
