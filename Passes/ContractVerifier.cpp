@@ -139,7 +139,6 @@ std::map<const Instruction*, std::set<ContractVerifierPass::RWStatus>> ContractV
 }
 
 std::set<ContractVerifierPass::RWStatus> ContractVerifierPass::checkVarRW(std::string var, const Function* F, bool must, std::string& error) {
-    const BasicBlock& Entry = F->getEntryBlock();
     Value* varValue = nullptr;
     const DbgDeclareInst* decl = nullptr;
     for (const BasicBlock& B : *F) {
