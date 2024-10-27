@@ -42,3 +42,7 @@ std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) 
     std::shared_ptr<const Operation> op = std::make_shared<const WriteOperation>(WriteOperation(ctx->Variable()->getText()));
     return op;
 }
+std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {
+    std::shared_ptr<const Operation> op = std::make_shared<const CallOperation>(CallOperation(ctx->Variable()->getText()));
+    return op;
+}

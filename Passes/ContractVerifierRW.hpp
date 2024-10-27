@@ -6,7 +6,7 @@
 
 namespace llvm {
 
-class ContractVerifierPass : public PassInfoMixin<ContractVerifierPass> {
+class ContractVerifierRWPass : public PassInfoMixin<ContractVerifierRWPass> {
     public:
         enum struct RWStatus { READ, WRITE };
 
@@ -14,8 +14,6 @@ class ContractVerifierPass : public PassInfoMixin<ContractVerifierPass> {
 
     private:
         std::set<RWStatus> checkVarRW(std::string var, const Function* F, bool must, std::string& error);
-
-        std::map<const Instruction*, std::set<RWStatus>> WorklistRW(Value* val, const Instruction* Start, const Function* F, bool must);
 };
 
 } // namespace llvm

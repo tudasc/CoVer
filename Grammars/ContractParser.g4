@@ -12,6 +12,7 @@ postcondition: PostMarker ScopePrefix expression? ScopePostfix;
 
 expression: primitive;
 
-primitive: readOp | writeOp;
+primitive: readOp | writeOp | callOp;
 readOp: OPRead OPPrefix Variable OPPostfix;
 writeOp: OPWrite OPPrefix Variable OPPostfix;
+callOp: OPCall OPPrefix Variable OPPostfix;

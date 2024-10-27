@@ -11,7 +11,7 @@
 #include <optional>
 
 namespace ContractTree {
-    enum struct OperationType { READ, WRITE };
+    enum struct OperationType { READ, WRITE, CALL };
     struct Operation {
         virtual ~Operation() = default;
         virtual const OperationType type() const = 0;
@@ -25,6 +25,11 @@ namespace ContractTree {
         WriteOperation(std::string _var) : Variable{_var} {};
         const std::string Variable;
         virtual const OperationType type() const override { return OperationType::WRITE; };
+    };
+    struct CallOperation : Operation {
+        CallOperation(std::string _func) : Function{_func} {};
+        const std::string Function;
+        virtual const OperationType type() const override { return OperationType::CALL; };
     };
 
     struct ContractExpression {

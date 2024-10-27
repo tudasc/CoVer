@@ -4,7 +4,8 @@
 #include <llvm/Passes/OptimizationLevel.h>
 
 #include "ContractManager.hpp"
-#include "ContractVerifier.hpp"
+#include "ContractVerifierRW.hpp"
+#include "ContractVerifierPreCall.hpp"
 #include "ContractPostProcess.hpp"
 
 using namespace llvm;
@@ -17,8 +18,12 @@ bool FPMHook(StringRef Name, FunctionPassManager &FPM,
 
 bool MPMHook(StringRef Name, ModulePassManager &MPM,
              ArrayRef<PassBuilder::PipelineElement>) {
-    if (Name == "contractVerifier") {
-        MPM.addPass(ContractVerifierPass());
+    if (Name == "contractVerifierRW") {
+        MPM.addPass(ContractVerifierRWPass());
+        return true;
+    }
+    if (Name == "contractVerifierPreCall") {
+        MPM.addPass(ContractVerifierPreCallPass());
         return true;
     }
     if (Name == "contractPostProcess") {

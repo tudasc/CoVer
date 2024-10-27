@@ -36,10 +36,12 @@ antlr4_generate(ContractPars ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractParser
 add_llvm_pass_plugin(LLVMContractsPlugin
   Passes/Registrar.cpp
   Passes/ContractManager.cpp
-  Passes/ContractVerifier.cpp
+  Passes/ContractVerifierRW.cpp
+  Passes/ContractVerifierPreCall.cpp
   Passes/ContractPostProcess.cpp
   LangCode/ContractDataVisitor.cpp
   LangCode/ContractLangErrorListener.cpp
+  Include/ContractPassUtility.hpp
   ${ANTLR4_SRC_FILES_ContractLex}
   ${ANTLR4_SRC_FILES_ContractPars}
 )
@@ -58,6 +60,8 @@ install(TARGETS LLVMContractsPlugin LIBRARY DESTINATION lib)
 install(
   FILES
     Include/ContractTree.hpp
+    Include/Contracts.h
+    Include/mpi_contracts.h
     Passes/ContractManager.hpp
   DESTINATION include
   PERMISSIONS
