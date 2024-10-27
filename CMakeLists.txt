@@ -74,6 +74,7 @@ install(
 ## Utility Script for convenience
 ##
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/LLVMContractsPlugin.so")
+set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include/")
 
 set(COMPILER_WRAP_EXPR "\${MPICC:-mpicc}")
 set(COMPILE_SRC_FILE_ENDINGS "\\.c")

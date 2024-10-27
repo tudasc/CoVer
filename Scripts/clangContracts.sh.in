@@ -145,7 +145,7 @@ if [[ ${#SRC_FILE_PATHS[@]} -gt 0 ]]; then
   fi
 
   # Generate IR for source files
-  ifdryrun "${compiler_bin} -g -S -emit-llvm -Xclang -disable-O0-optnone $tmp_rem_args $append_str $filenames"
+  ifdryrun "${compiler_bin} -g -S -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\" $tmp_rem_args $append_str $filenames"
 
 
   if [[ $dest_path_spec == "" ]] && [[ $skip_linker -eq 1 ]]; then
@@ -192,4 +192,4 @@ tmpfile=$(mktemp --suffix=.ll)
 ifdryrun "llvm-link -S ${OBJ_FILES[*]} -o ${tmpfile}"
 ifdryrun "opt ${opt_params} -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierRW,contractPostProcess' ${tmpfile} -o ${tmpfile}.opt"
 ifdryrun "llc ${opt_level_string} ${tmpfile}.opt -o ${tmpfile}.opt.o -filetype=obj --relocation-model=pic"
-ifdryrun "${compiler_bin} -g $rem_args -lm -ldl -lpthread ${tmpfile}.opt.o"
+ifdryrun "${compiler_bin} -g -I\"@CONTR_INCLUDE_PATH@\" $rem_args -lm -ldl -lpthread ${tmpfile}.opt.o"

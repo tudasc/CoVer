@@ -44,7 +44,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     }
     errs() << "\nTotal number of correctness contracts: " << xfail + xsucc << "\n";
     errs() << "Total number of xfail contracts: " << xfail << "\n";
-    errs() << "Total number of xsucc contracts: " << xfail << "\n";
+    errs() << "Total number of xsucc contracts: " << xsucc << "\n";
     errs() << "Total number of FN: " << FN << "\n";
     errs() << "Total number of FP: " << FP << "\n\n";
     errs() << "Total number of UN: " << UN << "\n\n";
