@@ -1,9 +1,13 @@
 #pragma once
 
 #include <functional>
+#include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/Support/Casting.h>
 #include <map>
+#include <stack>
+#include <vector>
 
 using namespace llvm;
 
@@ -15,10 +19,11 @@ using namespace llvm;
 template <typename T>
 std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<T(T,T,const Instruction*,void*)> merge, void* data, T init) {
     std::map<const Instruction*, T> postAccess;
-    std::vector<std::pair<const Instruction*, T>> todoList = { {Start->getNextNonDebugInstruction(), init } };
+    std::vector<std::tuple<const Instruction*, T, std::stack<const CallBase*>>> todoList = { {Start->getNextNonDebugInstruction(), init, {}} };
     while (!todoList.empty()) {
-        const Instruction* next = todoList.begin()->first;
-        T prevInfo = todoList.begin()->second;
+        const Instruction* next = std::get<0>(*todoList.begin());
+        T prevInfo = std::get<1>(*todoList.begin());
+        std::stack<const CallBase*>& stack = std::get<2>(*todoList.begin());
 
         while (next != nullptr) {
             // Add previous info depending on following conditions:
@@ -29,7 +34,8 @@ std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::f
                 postAccess[next] = prevInfo;
             } else {
                 // Encountered already. Call merge function
-                postAccess[next] = merge(prevInfo, postAccess[next], next, data);
+                T newInfo = merge(prevInfo, postAccess[next], next, data);
+                postAccess[next] = newInfo;
             }
 
             // Call transfer function
@@ -41,7 +47,7 @@ std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::f
             #warning TODO SwitchInst
             if (const BranchInst* BR = dyn_cast<BranchInst>(next)) {
                 for (const BasicBlock* alt : BR->successors())
-                    todoList.push_back( {&alt->front(), postAccess[next]} );
+                    todoList.push_back( {&alt->front(), postAccess[next], stack} );
             }
             if (isa<ReturnInst>(next) || isa<UnreachableInst>(next)) {
                 break;
@@ -49,7 +55,24 @@ std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::f
 
             // Update for next iteration
             prevInfo = postAccess[next];
-            next = next->getNextNonDebugInstruction();
+
+            // Check if function call: If it is, jump to function body
+            // If not, continue with normal next instruction
+            if (const CallBase* CB = dyn_cast<CallBase>(next)) {
+                if (CB->getCalledFunction()) {
+                    stack.push(CB);
+                    next = &CB->getCalledFunction()->getEntryBlock().front();
+                }
+            } else {
+                next = next->getNextNonDebugInstruction();
+            }
+
+            // Check if returning from function
+            if (!stack.empty() && !next) {
+                // Forward to next from stack
+                next = stack.top()->getNextNonDebugInstruction();
+                stack.pop();
+            }
         }
         todoList.erase(todoList.begin());
     }
