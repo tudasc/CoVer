@@ -29,7 +29,7 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
             const ContractExpression& Expr = C.Data.Pre.value();
             std::string err;
             bool result = false;
-            switch (C.Data.Pre->OP->type()) {
+            switch (Expr.OP->type()) {
                 case OperationType::CALL: {
                     const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr.OP);
                     result = checkPreCall(cOP.Function, C.F, M, err) == CallStatus::CALLED;
@@ -51,7 +51,7 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-ContractVerifierPreCallPass::CallStatus transferRW(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
+ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
     if (cur == ContractVerifierPreCallPass::CallStatus::ERROR) return cur;
 
     using IterType = struct { std::string Target; const Function* F; };
@@ -71,7 +71,7 @@ ContractVerifierPreCallPass::CallStatus transferRW(ContractVerifierPreCallPass::
     return cur;
 }
 
-ContractVerifierPreCallPass::CallStatus mergeRW(ContractVerifierPreCallPass::CallStatus prev, ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
+ContractVerifierPreCallPass::CallStatus mergeCallStat(ContractVerifierPreCallPass::CallStatus prev, ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
     return std::max(prev, cur);
 }
 
@@ -85,7 +85,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::checkPreCal
 
     using IterType = struct { std::string Target; const Function* F; };
     IterType data = { reqFunc, F};
-    std::map<const Instruction *, CallStatus> AnalysisInfo = GenericWorklist<CallStatus>(Entry, transferRW, mergeRW, &data, CallStatus::NOTCALLED);
+    std::map<const Instruction *, CallStatus> AnalysisInfo = GenericWorklist<CallStatus>(Entry, transferCallStat, mergeCallStat, &data, CallStatus::NOTCALLED);
 
     // Take intersection of all returning instructions
     CallStatus res = CallStatus::CALLED;

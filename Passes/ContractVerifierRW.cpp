@@ -28,7 +28,7 @@ PreservedAnalyses ContractVerifierRWPass::run(Module &M,
             const ContractExpression& Expr = C.Data.Post.value();
             std::string err;
             bool result = false;
-            switch (C.Data.Post->OP->type()) {
+            switch (Expr.OP->type()) {
                 case OperationType::READ: {
                     const ReadOperation& rOP = dynamic_cast<const ReadOperation&>(*Expr.OP);
                     result = checkVarRW(rOP.Variable, C.F, true, err).contains(RWStatus::READ);
