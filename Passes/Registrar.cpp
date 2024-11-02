@@ -6,6 +6,7 @@
 #include "ContractManager.hpp"
 #include "ContractVerifierRW.hpp"
 #include "ContractVerifierPreCall.hpp"
+#include "ContractVerifierRelease.hpp"
 #include "ContractPostProcess.hpp"
 
 using namespace llvm;
@@ -24,6 +25,10 @@ bool MPMHook(StringRef Name, ModulePassManager &MPM,
     }
     if (Name == "contractVerifierPreCall") {
         MPM.addPass(ContractVerifierPreCallPass());
+        return true;
+    }
+    if (Name == "contractVerifierRelease") {
+        MPM.addPass(ContractVerifierReleasePass());
         return true;
     }
     if (Name == "contractPostProcess") {

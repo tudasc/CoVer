@@ -38,6 +38,7 @@ add_llvm_pass_plugin(LLVMContractsPlugin
   Passes/ContractManager.cpp
   Passes/ContractVerifierRW.cpp
   Passes/ContractVerifierPreCall.cpp
+  Passes/ContractVerifierRelease.cpp
   Passes/ContractPostProcess.cpp
   LangCode/ContractDataVisitor.cpp
   LangCode/ContractLangErrorListener.cpp

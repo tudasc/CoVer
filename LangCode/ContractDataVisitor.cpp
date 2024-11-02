@@ -1,4 +1,5 @@
 #include "ContractDataVisitor.hpp"
+#include "ContractTree.hpp"
 #include <any>
 #include <memory>
 #include <optional>
@@ -30,7 +31,8 @@ std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx
 }
 
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {
-    std::shared_ptr<const Operation> opPtr = std::any_cast<std::shared_ptr<const Operation>>(this->visit(ctx->primitive()));
+    std::shared_ptr<const Operation> opPtr;
+    opPtr = std::any_cast<std::shared_ptr<const Operation>>(this->visitChildren(ctx));
     return ContractExpression{ .OP = opPtr};
 }
 
@@ -44,5 +46,12 @@ std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) 
 }
 std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {
     std::shared_ptr<const Operation> op = std::make_shared<const CallOperation>(CallOperation(ctx->Variable()->getText()));
+    return op;
+}
+std::any ContractDataVisitor::visitReleaseOp(ContractParser::ReleaseOpContext *ctx) {
+    std::shared_ptr<const Operation> opForbidden = std::any_cast<std::shared_ptr<const Operation>>(this->visit(ctx->forbidden));
+    std::shared_ptr<const Operation> opUntil = std::any_cast<std::shared_ptr<const Operation>>(this->visit(ctx->until));
+
+    std::shared_ptr<const Operation> op = std::make_shared<const ReleaseOperation>(ReleaseOperation(opForbidden, opUntil));
     return op;
 }

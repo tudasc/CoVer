@@ -190,6 +190,6 @@ tmpfile=$(mktemp --suffix=.ll)
 
 # link together object files
 ifdryrun "llvm-link -S ${OBJ_FILES[*]} -o ${tmpfile}"
-ifdryrun "opt ${opt_params} -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierRW,contractPostProcess' ${tmpfile} -o ${tmpfile}.opt"
+ifdryrun "opt ${opt_params} -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierRW,contractVerifierRelease,contractPostProcess' ${tmpfile} -o ${tmpfile}.opt"
 ifdryrun "llc ${opt_level_string} ${tmpfile}.opt -o ${tmpfile}.opt.o -filetype=obj --relocation-model=pic"
 ifdryrun "${compiler_bin} -g -I\"@CONTR_INCLUDE_PATH@\" $rem_args -lm -ldl -lpthread ${tmpfile}.opt.o"

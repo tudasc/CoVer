@@ -16,5 +16,7 @@ Variable: ([A-Z] | [a-z]) ([A-Z] | [a-z] | [0-9] | '_')*;
 OPRead: 'read!';
 OPWrite: 'write!';
 OPCall: 'called!';
+OPRelease1: 'no!';
+OPRelease2: 'until!';
 OPPrefix: '(';
 OPPostfix: ')';

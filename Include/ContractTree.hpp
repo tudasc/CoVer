@@ -11,7 +11,7 @@
 #include <optional>
 
 namespace ContractTree {
-    enum struct OperationType { READ, WRITE, CALL };
+    enum struct OperationType { READ, WRITE, CALL, RELEASE };
     struct Operation {
         virtual ~Operation() = default;
         virtual const OperationType type() const = 0;
@@ -30,6 +30,12 @@ namespace ContractTree {
         CallOperation(std::string _func) : Function{_func} {};
         const std::string Function;
         virtual const OperationType type() const override { return OperationType::CALL; };
+    };
+    struct ReleaseOperation : Operation {
+        ReleaseOperation(std::shared_ptr<const Operation> opNo, std::shared_ptr<const Operation> opUntil) : Forbidden{opNo}, Until{opUntil} {};
+        const std::shared_ptr<const Operation> Forbidden;
+        const std::shared_ptr<const Operation> Until;
+        virtual const OperationType type() const override { return OperationType::RELEASE; };
     };
 
     struct ContractExpression {
