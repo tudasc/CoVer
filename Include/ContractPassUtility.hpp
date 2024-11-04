@@ -1,15 +1,22 @@
 #pragma once
 
 #include <functional>
+#include <llvm/IR/DebugInfoMetadata.h>
+#include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Support/Casting.h>
 #include <map>
+#include <optional>
 #include <stack>
+#include <sys/types.h>
 #include <vector>
 
 using namespace llvm;
+
+#define DEBUG_ENV "LLVMCONTRACTS_DEBUG"
+#define IS_DEBUG (getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1)
 
 /*
  * Apply worklist algorithm
@@ -77,4 +84,11 @@ std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::f
         todoList.erase(todoList.begin());
     }
     return postAccess;
+}
+
+inline std::optional<uint> getLineNumber(const Instruction* I){
+    if (const DebugLoc& N = I->getDebugLoc()) { // this if is never executed
+        return N.getLine();
+    }
+    return std::nullopt;
 }

@@ -17,6 +17,8 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Transforms/Instrumentation.h>
+#include <sstream>
+#include <string>
 #include <vector>
 
 using namespace llvm;
@@ -26,7 +28,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
 
-    for (ContractManagerAnalysis::Contract C : DB.Contracts) {
+    for (ContractManagerAnalysis::Contract& C : DB.Contracts) {
         if (*C.Status == Fulfillment::UNKNOWN && C.Data.Post.has_value()) {
             // Contract has a postcondition
             const ContractExpression& Expr = C.Data.Post.value();
@@ -35,7 +37,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
             switch (Expr.OP->type()) {
                 case OperationType::RELEASE: {
                     const ReleaseOperation& relOP = dynamic_cast<const ReleaseOperation&>(*Expr.OP);
-                    result = checkRelease(relOP, C.F, M, err) == ReleaseStatus::FULFILLED;
+                    result = checkRelease(relOP, C, M, err) == ReleaseStatus::FULFILLED;
                     break;
                 }
                 default: continue;
@@ -55,11 +57,21 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
 }
 
 struct IterType {
+    std::vector<std::string> dbg;
     OperationType forbiddenType;
     std::vector<std::any> param;
     std::string releaseFunc;
     const CallBase* callsite;
 };
+
+std::string createDebugStr(const Instruction* Forbidden) {
+    std::stringstream str;
+    str << "[ContractVerifierRelease] Found forbidden call at function "
+        << Forbidden->getParent()->getParent()->getName().str() << ":"
+        << (getLineNumber(Forbidden).has_value() ? std::to_string(getLineNumber(Forbidden).value()) : "UNKNOWN")
+        << " before release";
+    return str.str();
+}
 
 ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierReleasePass::ReleaseStatus cur, const Instruction* I, void* data) {
     if (cur == ContractVerifierReleasePass::ReleaseStatus::ERROR) return cur;
@@ -84,7 +96,8 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
                     bool foundParam = false;
                     for (int forbidParam : forbidParams) {
                         for (const Value* x : CB->operand_values()) {
-                            if (x == Data->callsite->getArgOperand(forbidParam)) {
+                            if (x == Data->callsite->getArgOperand(forbidParam)) {                                    
+                                Data->dbg.push_back(createDebugStr(CB));
                                 return ContractVerifierReleasePass::ReleaseStatus::ERROR;
                             }
                         }
@@ -109,7 +122,7 @@ ContractVerifierReleasePass::ReleaseStatus mergeRelease(ContractVerifierReleaseP
     return std::max(prev, cur);
 }
 
-ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(const ContractTree::ReleaseOperation relOp, const Function* F, const Module& M, std::string& error) {
+ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(const ContractTree::ReleaseOperation relOp, const ContractManagerAnalysis::Contract& C, const Module& M, std::string& error) {
     // Figure out release parameters
     OperationType forbiddenType = relOp.Forbidden->type();
     std::vector<std::any> param;
@@ -130,15 +143,16 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     }
     std::string releaseFunc = dynamic_cast<const CallOperation&>(*relOp.Until).Function;
 
-    IterType data = { forbiddenType, param, releaseFunc };
+    IterType data = { {}, forbiddenType, param, releaseFunc };
 
     // Get all call sites of function, and run analysis
     ReleaseStatus result = ReleaseStatus::FORBIDDEN;
-    for (const User* U : F->users()) {
+    for (const User* U : C.F->users()) {
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-            if (CB->getCalledFunction() == F) {
+            if (CB->getCalledFunction() == C.F) {
                 data.callsite = CB;
                 std::map<const Instruction *, ReleaseStatus> AnalysisInfo = GenericWorklist<ReleaseStatus>(CB, transferRelease, mergeRelease, &data, ReleaseStatus::FORBIDDEN);
+                C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 for (std::pair<const Instruction *, ReleaseStatus> x : AnalysisInfo) {
                     if (x.second == ReleaseStatus::ERROR) return ReleaseStatus::ERROR;
                 }

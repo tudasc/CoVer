@@ -3,6 +3,7 @@
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/IR/PassManager.h>
 #include <memory>
+#include <vector>
 
 #include "ContractTree.hpp"
 
@@ -19,6 +20,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             const StringRef ContractString;
             const ContractData Data;
             std::shared_ptr<Fulfillment> Status = std::make_shared<Fulfillment>(Fulfillment::UNKNOWN);
+            std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
         };
 
         //Result Type

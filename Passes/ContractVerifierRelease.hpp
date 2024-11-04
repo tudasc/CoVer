@@ -2,8 +2,7 @@
 
 #include "llvm/IR/PassManager.h"
 #include "ContractTree.hpp"
-#include <map>
-#include <set>
+#include "ContractManager.hpp"
 
 namespace llvm {
 
@@ -14,7 +13,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
     private:
-        ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, const Function* F, const Module& M, std::string& error);
+        ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, const ContractManagerAnalysis::Contract& C, const Module& M, std::string& error);
 };
 
 } // namespace llvm

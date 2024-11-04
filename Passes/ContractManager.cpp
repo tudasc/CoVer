@@ -25,6 +25,8 @@
 #include "../LangCode/ContractDataVisitor.hpp"
 #include "ContractTree.hpp"
 
+#include "ContractPassUtility.hpp"
+
 using namespace llvm;
 
 static std::optional<std::string> getFuncName(CallBase* FuncCall) {
@@ -81,7 +83,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
             parser.contract();
         } catch (ContractLangSyntaxError& e) {
             errs() << "Detected non-contract annotation (Parser Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << ANNStr << "\n";
-            if (getenv("LLVMCONTRACT_DEBUG") != NULL && atoi(getenv("LLVMCONTRACT_DEBUG")) == 1) {
+            if (IS_DEBUG) {
                 for (auto x : tokens.getTokens()) {
                     errs() << "(" << x->getText() << "," << lexer.getVocabulary().getSymbolicName(x->getType()) << ")\n";
                 }

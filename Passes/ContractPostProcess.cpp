@@ -1,5 +1,6 @@
 #include "ContractPostProcess.hpp"
 #include "ContractManager.hpp"
+#include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/Support/WithColor.h>
@@ -57,11 +58,16 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
             if (*C.Status == Fulfillment::BROKEN) WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
             errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
             errs() << "--> Contract: " << C.ContractString << "\n";
+            if (IS_DEBUG) {
+                WithColor(errs(), HighlightColor::Note) << "--> Debug Begin\n";
+                for (std::string dbg: *C.DebugInfo) {
+                    WithColor(errs(), HighlightColor::Note) << dbg << "\n";
+                }
+                WithColor(errs(), HighlightColor::Note) << "<-- Debug End\n";
+            }
             errs() << "\n";
         }
     }
-
-
 
     return PreservedAnalyses::all();
 }
