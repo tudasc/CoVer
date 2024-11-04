@@ -11,6 +11,9 @@ ScopePrefix: '{';
 ScopePostfix: '}';
 
 Variable: ([A-Z] | [a-z]) ([A-Z] | [a-z] | [0-9] | '_')*;
+NatNum: ('0' | [1-9] [0-9]*);
+
+ListSep: ',';
 
 // All ops must end with '!' to differentiate from variables
 OPRead: 'read!';

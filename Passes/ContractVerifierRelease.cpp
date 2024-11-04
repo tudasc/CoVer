@@ -4,6 +4,7 @@
 #include "ContractPassUtility.hpp"
 
 #include <algorithm>
+#include <any>
 #include <llvm/Analysis/InlineCost.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -53,10 +54,17 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
+struct IterType {
+    OperationType forbiddenType;
+    std::vector<std::any> param;
+    std::string releaseFunc;
+    const CallBase* callsite;
+};
+
 ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierReleasePass::ReleaseStatus cur, const Instruction* I, void* data) {
     if (cur == ContractVerifierReleasePass::ReleaseStatus::ERROR) return cur;
+    if (cur == ContractVerifierReleasePass::ReleaseStatus::FULFILLED) return cur;
 
-    using IterType = struct { OperationType forbiddenType; std::string param; std::string releaseFunc; };
     IterType* Data = static_cast<IterType*>(data);
 
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
@@ -69,10 +77,20 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
     switch (Data->forbiddenType) {
         case ContractTree::OperationType::CALL:
             if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-                if (CB->getCalledFunction()->getName() == Data->param) {
-                    // Found forbidden. If released, ok. Otherwise, RIP
-                    if (cur == ContractVerifierReleasePass::ReleaseStatus::FULFILLED) return cur;
-                    return ContractVerifierReleasePass::ReleaseStatus::ERROR;
+                if (CB->getCalledFunction()->getName() == std::any_cast<std::string>(Data->param[0])) {
+                    // Found forbidden function. Current status is unknown, if we find forbidden parameter (and one is specified) this is an error
+                    const std::vector<int> forbidParams = std::any_cast<const std::vector<int>>(Data->param[1]);
+                    if (forbidParams.empty()) return ContractVerifierReleasePass::ReleaseStatus::ERROR;
+                    bool foundParam = false;
+                    for (int forbidParam : forbidParams) {
+                        for (const Value* x : CB->operand_values()) {
+                            if (x == Data->callsite->getArgOperand(forbidParam)) {
+                                return ContractVerifierReleasePass::ReleaseStatus::ERROR;
+                            }
+                        }
+                    }
+                    // Did not find relevant parameter
+                    return cur;
                 }
             }
             break;
@@ -94,16 +112,17 @@ ContractVerifierReleasePass::ReleaseStatus mergeRelease(ContractVerifierReleaseP
 ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(const ContractTree::ReleaseOperation relOp, const Function* F, const Module& M, std::string& error) {
     // Figure out release parameters
     OperationType forbiddenType = relOp.Forbidden->type();
-    std::string param;
+    std::vector<std::any> param;
     switch (forbiddenType) {
         case ContractTree::OperationType::CALL:
-            param = dynamic_cast<const CallOperation&>(*relOp.Forbidden).Function;
+            param.push_back(dynamic_cast<const CallOperation&>(*relOp.Forbidden).Function);
+            param.push_back(dynamic_cast<const CallOperation&>(*relOp.Forbidden).Params);
             break;
         case ContractTree::OperationType::READ:
-            param = dynamic_cast<const ReadOperation&>(*relOp.Forbidden).Variable;
+            param.push_back(dynamic_cast<const ReadOperation&>(*relOp.Forbidden).Variable);
             break;
         case ContractTree::OperationType::WRITE:
-            param = dynamic_cast<const WriteOperation&>(*relOp.Forbidden).Variable;
+            param.push_back(dynamic_cast<const WriteOperation&>(*relOp.Forbidden).Variable);
             break;
         default:
             error = "Unknown release parameter for forbidden!";
@@ -111,7 +130,6 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     }
     std::string releaseFunc = dynamic_cast<const CallOperation&>(*relOp.Until).Function;
 
-    using IterType = struct { OperationType forbiddenType; std::string param; std::string releaseFunc; };
     IterType data = { forbiddenType, param, releaseFunc };
 
     // Get all call sites of function, and run analysis
@@ -119,6 +137,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     for (const User* U : F->users()) {
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledFunction() == F) {
+                data.callsite = CB;
                 std::map<const Instruction *, ReleaseStatus> AnalysisInfo = GenericWorklist<ReleaseStatus>(CB, transferRelease, mergeRelease, &data, ReleaseStatus::FORBIDDEN);
                 for (std::pair<const Instruction *, ReleaseStatus> x : AnalysisInfo) {
                     if (x.second == ReleaseStatus::ERROR) return ReleaseStatus::ERROR;

@@ -9,6 +9,7 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <vector>
 
 namespace ContractTree {
     enum struct OperationType { READ, WRITE, CALL, RELEASE };
@@ -27,8 +28,9 @@ namespace ContractTree {
         virtual const OperationType type() const override { return OperationType::WRITE; };
     };
     struct CallOperation : Operation {
-        CallOperation(std::string _func) : Function{_func} {};
+        CallOperation(std::string _func, std::vector<int> _params) : Function{_func}, Params{_params} {};
         const std::string Function;
+        const std::vector<int> Params;
         virtual const OperationType type() const override { return OperationType::CALL; };
     };
     struct ReleaseOperation : Operation {

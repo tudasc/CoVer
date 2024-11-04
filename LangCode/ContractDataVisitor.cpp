@@ -3,6 +3,7 @@
 #include <any>
 #include <memory>
 #include <optional>
+#include <string>
 
 using namespace ContractTree;
 
@@ -45,7 +46,11 @@ std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) 
     return op;
 }
 std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {
-    std::shared_ptr<const Operation> op = std::make_shared<const CallOperation>(CallOperation(ctx->Variable()->getText()));
+    std::vector<int> params;
+    for (antlr4::tree::TerminalNode* param : ctx->NatNum()) {
+        params.push_back(std::stoi(param->toString()));
+    }
+    std::shared_ptr<const Operation> op = std::make_shared<const CallOperation>(CallOperation(ctx->Variable()->getText(), params));
     return op;
 }
 std::any ContractDataVisitor::visitReleaseOp(ContractParser::ReleaseOpContext *ctx) {
