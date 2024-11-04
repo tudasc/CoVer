@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <any>
 #include <llvm/Analysis/InlineCost.h>
+#include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/InstrTypes.h>
@@ -67,7 +68,7 @@ struct IterType {
 std::string createDebugStr(const Instruction* Forbidden) {
     std::stringstream str;
     str << "[ContractVerifierRelease] Found forbidden call at function "
-        << Forbidden->getParent()->getParent()->getName().str() << ":"
+        << demangle(Forbidden->getParent()->getParent()->getName()) << ":"
         << (getLineNumber(Forbidden).has_value() ? std::to_string(getLineNumber(Forbidden).value()) : "UNKNOWN")
         << " before release";
     return str.str();
