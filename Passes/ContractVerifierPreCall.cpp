@@ -4,6 +4,7 @@
 #include "ContractPassUtility.hpp"
 
 #include <algorithm>
+#include <vector>
 #include <llvm/Analysis/InlineCost.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -32,7 +33,7 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
             switch (Expr.OP->type()) {
                 case OperationType::CALL: {
                     const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr.OP);
-                    result = checkPreCall(cOP.Function, C.F, M, err) == CallStatus::CALLED;
+                    result = checkPreCall(cOP, C.F, M, err) == CallStatusVal::CALLED;
                     break;
                 }
                 default: continue;
@@ -51,20 +52,49 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
-    if (cur == ContractVerifierPreCallPass::CallStatus::ERROR) return cur;
+struct IterTypePreCall {
+    const std::string Target;
+    const Function* F;
+    const std::vector<int> reqParams;
+};
 
-    using IterType = struct { std::string Target; const Function* F; };
-    IterType* Data = static_cast<IterType*>(data);
+ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
+    if (cur.CurVal == ContractVerifierPreCallPass::CallStatusVal::ERROR) return cur;
+    if (cur.CurVal == ContractVerifierPreCallPass::CallStatusVal::CALLED) return cur;
+
+    IterTypePreCall* Data = static_cast<IterTypePreCall*>(data);
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
         if (CB->getCalledFunction()->getName() == Data->Target) {
-            // Found target, and cur is not error. Success for now
-            return ContractVerifierPreCallPass::CallStatus::CALLED;
+            if (Data->reqParams.empty()) {
+                cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::CALLED;
+                return cur;
+            }
+            // Target function was called, need to check the parameters
+            cur.CurVal = llvm::ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK;
+            cur.candidate.insert(CB);
+            // Paramcheck is resolved once target found
+            return cur;
         }
         if (CB->getCalledFunction() == Data->F) {
-            // Found contract supplier. If previously called, safe. If not, RIP
-            if (cur == ContractVerifierPreCallPass::CallStatus::CALLED) return cur;
-            return ContractVerifierPreCallPass::CallStatus::ERROR;
+            // Found contract supplier. Either paramcheck or error
+            if (cur.CurVal != ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK) {
+                cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::ERROR;
+                return cur;
+            }
+            for (int x : Data->reqParams) {
+                for (const CallBase* Candidate : cur.candidate) {
+                    for (const Value* candidateParam : Candidate->operand_values()) {
+                        if (candidateParam == CB->getArgOperand(x)) {
+                            // Success!
+                            cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::CALLED;
+                            return cur;
+                        }
+                    }
+                }
+            }
+            // Any required parameter not used by any candidate
+            cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::ERROR;
+            return cur;
         }
     }
     // Not a call. Just forward info
@@ -72,27 +102,34 @@ ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCall
 }
 
 ContractVerifierPreCallPass::CallStatus mergeCallStat(ContractVerifierPreCallPass::CallStatus prev, ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
-    return std::max(prev, cur);
+    // Intersection of candidates
+    std::set<const CallBase*> intersect;
+    std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
+                 std::inserter(intersect, intersect.begin()));
+    ContractVerifierPreCallPass::CallStatus cs;
+    cs.candidate = intersect;
+    cs.CurVal = std::max(prev.CurVal, cur.CurVal);
+    return cs;
 }
 
-ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::checkPreCall(std::string reqFunc, const Function* F, const Module& M, std::string& error) {
+ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const Function* F, const Module& M, std::string& error) {
     const Function* mainF = M.getFunction("main");
     if (!mainF) {
         error = "Cannot find main function, cannot construct path to check precall!";
-        return CallStatus::NOTCALLED;
+        return CallStatusVal::ERROR;
     }
     const Instruction* Entry = mainF->getEntryBlock().getFirstNonPHI();
 
-    using IterType = struct { std::string Target; const Function* F; };
-    IterType data = { reqFunc, F};
-    std::map<const Instruction *, CallStatus> AnalysisInfo = GenericWorklist<CallStatus>(Entry, transferCallStat, mergeCallStat, &data, CallStatus::NOTCALLED);
+    IterTypePreCall data = { cOP.Function, F, cOP.Params };
+    CallStatus init = { CallStatusVal::NOTCALLED, {}};
+    std::map<const Instruction *, CallStatus> AnalysisInfo = GenericWorklist<CallStatus>(Entry, transferCallStat, mergeCallStat, &data, init);
 
     // Take intersection of all returning instructions
-    CallStatus res = CallStatus::CALLED;
+    CallStatusVal res = CallStatusVal::CALLED;
     for (const User* U : F->users()) {
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledFunction() == F) {
-                res = std::max(AnalysisInfo[CB], res);
+                res = std::max(AnalysisInfo[CB].CurVal, res);
             }
         }
     }

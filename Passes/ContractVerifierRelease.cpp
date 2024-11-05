@@ -57,7 +57,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-struct IterType {
+struct IterTypeRelease {
     std::vector<std::string> dbg;
     OperationType forbiddenType;
     std::vector<std::any> param;
@@ -78,7 +78,7 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
     if (cur == ContractVerifierReleasePass::ReleaseStatus::ERROR) return cur;
     if (cur == ContractVerifierReleasePass::ReleaseStatus::FULFILLED) return cur;
 
-    IterType* Data = static_cast<IterType*>(data);
+    IterTypeRelease* Data = static_cast<IterTypeRelease*>(data);
 
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
         if (CB->getCalledFunction()->getName() == Data->releaseFunc) {
@@ -144,7 +144,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     }
     std::string releaseFunc = dynamic_cast<const CallOperation&>(*relOp.Until).Function;
 
-    IterType data = { {}, forbiddenType, param, releaseFunc };
+    IterTypeRelease data = { {}, forbiddenType, param, releaseFunc };
 
     // Get all call sites of function, and run analysis
     ReleaseStatus result = ReleaseStatus::FORBIDDEN;

@@ -1,19 +1,24 @@
 #pragma once
 
+#include "ContractTree.hpp"
 #include "llvm/IR/PassManager.h"
-#include <map>
+#include <llvm/IR/InstrTypes.h>
 #include <set>
 
 namespace llvm {
 
 class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCallPass> {
     public:
-        enum struct CallStatus { CALLED, NOTCALLED, ERROR };
+        enum struct CallStatusVal { CALLED, NOTCALLED, PARAMCHECK, ERROR };
+        struct CallStatus {
+            CallStatusVal CurVal;
+            std::set<const CallBase*> candidate;
+        };
 
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
     private:
-        CallStatus checkPreCall(std::string reqFunc, const Function* F, const Module& M, std::string& error);
+        CallStatusVal checkPreCall(const ContractTree::CallOperation& cOP, const Function* F, const Module& M, std::string& error);
 };
 
 } // namespace llvm
