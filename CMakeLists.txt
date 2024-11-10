@@ -62,7 +62,6 @@ install(
   FILES
     Include/ContractTree.hpp
     Include/Contracts.h
-    Include/mpi_contracts.h
     Passes/ContractManager.hpp
   DESTINATION include
   PERMISSIONS
@@ -74,6 +73,7 @@ install(
 ##
 ## Utility Script for convenience
 ##
+
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/LLVMContractsPlugin.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include/")
 
@@ -93,7 +93,26 @@ install(
     "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++"
   DESTINATION bin
   PERMISSIONS
-    OWNER_READ OWNER_WRITE OWNER_EXECUTE  
-    GROUP_READ GROUP_EXECUTE  
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
     WORLD_READ WORLD_EXECUTE
+)
+
+##
+## Premade MPI header for convenience and quick testing
+##
+
+
+find_package(MPI REQUIRED)
+
+add_custom_target(
+  genMPIContracts ALL
+  SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
+  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/mpi.h"
+)
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h" DESTINATION include
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE
+    GROUP_READ
+    WORLD_READ
 )
