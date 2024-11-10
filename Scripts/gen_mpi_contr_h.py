@@ -134,5 +134,5 @@ for func, contrs in function_contracts.items():
         header_output += f"    {c}\n"
     header_output += ");\n\n"
 
-with open("mpi_contracts.h", "w") as mpi_contr_file:
+with open(f"{output_path}/mpi_contracts.h", "w") as mpi_contr_file:
     mpi_contr_file.write(header_output)
