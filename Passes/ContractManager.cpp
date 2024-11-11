@@ -51,7 +51,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     if (Annotations == nullptr) {
         errs() << "No annotations present, quitting." << M.getName() << "\n";
         return curDatabase;
-    } 
+    }
 
     Constant* ANNValues = Annotations->getInitializer();
 
@@ -95,8 +95,9 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
         errs() << "Found contract in " << location << " with content: " << ANNStr << "\n";
         parser.reset();
         ContractData Data = dataVisitor.getContractData(parser.contract());
-        Contract newCtr{F, ANNStr, Data, std::make_shared<Fulfillment>(Fulfillment::UNKNOWN)};
+        Contract newCtr{F, ANNStr, Data};
         curDatabase.Contracts.push_back(newCtr);
+        curDatabase.Tags[newCtr.F].insert(curDatabase.Tags[newCtr.F].end(), newCtr.Data.Tags.begin(), newCtr.Data.Tags.end());
     }
 
     return curDatabase;

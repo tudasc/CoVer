@@ -8,10 +8,11 @@ namespace llvm {
 class ContractPostProcessingPass : public PassInfoMixin<ContractPostProcessingPass> {
     public:
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
-    
+
     private:
         int xsucc, xfail, FP, FN, UN;
         void checkExpErr(ContractManagerAnalysis::Contract C);
+        Fulfillment checkExpressions(ContractManagerAnalysis::Contract const& C, bool output);
 };
 
 } // namespace llvm

@@ -23,7 +23,7 @@ PreservedAnalyses ContractVerifierRWPass::run(Module &M,
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
 
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
-        if (*C.Status == Fulfillment::UNKNOWN && !C.Data.Pre.has_value() && C.Data.Post.has_value()) {
+        if (C.Data.Post.has_value() && *C.Data.Post->Status == Fulfillment::UNKNOWN) {
             // No preconditions
             const ContractExpression& Expr = C.Data.Post.value();
             std::string err;
@@ -45,9 +45,9 @@ PreservedAnalyses ContractVerifierRWPass::run(Module &M,
                 errs() << err << "\n";
             }
             if (result) {
-                *C.Status = Fulfillment::FULFILLED;
+                *Expr.Status = Fulfillment::FULFILLED;
             } else {
-                *C.Status = Fulfillment::BROKEN;
+                *Expr.Status = Fulfillment::BROKEN;
             }
         }
     }
@@ -113,7 +113,7 @@ std::set<ContractVerifierRWPass::RWStatus> ContractVerifierRWPass::checkVarRW(st
     // For easier debugging
     varValue->setName(F->getName() + "." + var);
 
-    std::map<const Instruction*, std::set<RWStatus>> AnalysisInfo = GenericWorklist<std::set<RWStatus>>(decl, transferRW, mergeRW, varValue, std::set<RWStatus>());
+    std::map<const Instruction*, std::set<RWStatus>> AnalysisInfo = GenericWorklist<std::set<RWStatus>>(decl->getNextNode(), transferRW, mergeRW, varValue, std::set<RWStatus>());
 
     // Take intersection of all returning instructions
     std::set<RWStatus> final = { RWStatus::READ, RWStatus::WRITE };

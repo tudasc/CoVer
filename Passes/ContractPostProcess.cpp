@@ -2,28 +2,61 @@
 #include "ContractManager.hpp"
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
+#include <algorithm>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/Support/WithColor.h>
 
 using namespace llvm;
 using namespace ContractTree;
 
+Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
+    Fulfillment s = Fulfillment::FULFILLED;
+    std::string reason;
+    if (C.Data.Pre.has_value()) {
+        s = std::max(s, *C.Data.Pre->Status);
+    }
+    if (C.Data.Post.has_value()) {
+        s = std::max(s, *C.Data.Post->Status);
+    }
+    if (!output) return s;
+
+    if (s == Fulfillment::FULFILLED) WithColor(errs(), HighlightColor::Remark) << "## Contract Fulfilled! ##\n";
+    if (s == Fulfillment::UNKNOWN) WithColor(errs(), HighlightColor::Warning) << "## Contract Status Unknown ##\n";
+    if (s == Fulfillment::BROKEN) WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
+    errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
+    errs() << "--> Contract: " << C.ContractString << "\n";
+    if (s > Fulfillment::FULFILLED) {
+        errs() << "--> Precondition Status: " << FulfillmentStr(*C.Data.Pre->Status) << "\n";
+        errs() << "--> Postcondition Status: " << FulfillmentStr(*C.Data.Post->Status) << "\n";
+    }
+    if (IS_DEBUG) {
+        WithColor(errs(), HighlightColor::Note) << "--> Debug Begin\n";
+        for (std::string dbg: *C.DebugInfo) {
+            WithColor(errs(), HighlightColor::Note) << dbg << "\n";
+        }
+        WithColor(errs(), HighlightColor::Note) << "<-- Debug End\n";
+    }
+    errs() << "\n";
+    return s;
+}
+
 void ContractPostProcessingPass::checkExpErr(ContractManagerAnalysis::Contract C) {
     HighlightColor col;
     std::string err;
-    if (*C.Status == Fulfillment::UNKNOWN) {
+    Fulfillment s = checkExpressions(C, false);
+    if (s == Fulfillment::UNKNOWN) {
         col = HighlightColor::Warning;
         err = "UN";
     } else {
         col = HighlightColor::Error;
         if (C.Data.xres == Fulfillment::FULFILLED) {
             xsucc++;
-            if (C.Data.xres == *C.Status) return; // No error
+            if (C.Data.xres == s) return; // No error
             FP++;
             err = "FP";
         } else {
             xfail++;
-            if (C.Data.xres == *C.Status) return; // No error
+            if (C.Data.xres == s) return; // No error
             FN++;
             err = "FN";
         }
@@ -53,19 +86,9 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     errs() << "Checking verification contract results:\n";
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
         if (C.Data.xres == Fulfillment::UNKNOWN) {
-            if (*C.Status == Fulfillment::FULFILLED) WithColor(errs(), HighlightColor::Remark) << "## Contract Fulfilled! ##\n";
-            if (*C.Status == Fulfillment::UNKNOWN) WithColor(errs(), HighlightColor::Warning) << "## Contract Status Unknown ##\n";
-            if (*C.Status == Fulfillment::BROKEN) WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
-            errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
-            errs() << "--> Contract: " << C.ContractString << "\n";
-            if (IS_DEBUG) {
-                WithColor(errs(), HighlightColor::Note) << "--> Debug Begin\n";
-                for (std::string dbg: *C.DebugInfo) {
-                    WithColor(errs(), HighlightColor::Note) << dbg << "\n";
-                }
-                WithColor(errs(), HighlightColor::Note) << "<-- Debug End\n";
-            }
-            errs() << "\n";
+            // Ignore contracts that only supply tags / Do nothing
+            if (!C.Data.Pre.has_value() && !C.Data.Post.has_value()) continue;
+            checkExpressions(C, true);
         }
     }
 

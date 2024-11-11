@@ -3,6 +3,7 @@
 #include "ContractTree.hpp"
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
+#include <map>
 #include <set>
 
 namespace llvm {
@@ -18,7 +19,8 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
     private:
-        CallStatusVal checkPreCall(const ContractTree::CallOperation& cOP, const Function* F, const Module& M, std::string& error);
+        CallStatusVal checkPreCall(const ContractTree::CallOperation& cOP, const Function* F, const bool isTag, const Module& M, std::string& error);
+        std::map<const Function*, std::vector<std::string>> Tags;
 };
 
 } // namespace llvm

@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 using namespace ContractTree;
 
@@ -24,11 +25,18 @@ std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx
         postExpr.emplace(std::any_cast<ContractExpression>(expr));
     }
 
+    std::vector<std::string> tags;
+    if (ctx->functags()) {
+        for (antlr4::tree::TerminalNode* tag : ctx->functags()->Variable()) {
+            tags.push_back(tag->toString());
+        }
+    }
+
     Fulfillment f = Fulfillment::UNKNOWN;
     if (ctx->ContractMarkerExpFail()) f = Fulfillment::BROKEN;
     if (ctx->ContractMarkerExpSucc()) f = Fulfillment::FULFILLED;
 
-    return ContractData{preExpr, postExpr, f};
+    return ContractData{preExpr, postExpr, tags, f};
 }
 
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {
@@ -50,7 +58,11 @@ std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {
     for (antlr4::tree::TerminalNode* param : ctx->NatNum()) {
         params.push_back(std::stoi(param->toString()));
     }
-    std::shared_ptr<const Operation> op = std::make_shared<const CallOperation>(CallOperation(ctx->Variable()->getText(), params));
+    std::shared_ptr<const Operation> op;
+    if (ctx->OPCall())
+        op = std::make_shared<const CallOperation>(CallOperation(ctx->Variable()->getText(), params));
+    else
+        op = std::make_shared<const CallTagOperation>(CallTagOperation(ctx->Variable()->getText(), params));
     return op;
 }
 std::any ContractDataVisitor::visitReleaseOp(ContractParser::ReleaseOpContext *ctx) {

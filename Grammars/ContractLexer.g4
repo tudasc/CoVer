@@ -7,6 +7,7 @@ ContractMarkerExpFail: 'CONTRACTXFAIL';
 ContractMarkerExpSucc: 'CONTRACTXSUCC';
 PreMarker: 'PRE';
 PostMarker: 'POST';
+TagMarker: 'TAGS';
 ScopePrefix: '{';
 ScopePostfix: '}';
 
@@ -19,6 +20,7 @@ ListSep: ',';
 OPRead: 'read!';
 OPWrite: 'write!';
 OPCall: 'called!';
+OPCallTag: 'called_tag!';
 OPRelease1: 'no!';
 OPRelease2: 'until!';
 OPPrefix: '(';

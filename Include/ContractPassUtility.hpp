@@ -5,9 +5,11 @@
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
+#include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Support/Casting.h>
 #include <map>
+#include <string>
 #include <optional>
 #include <stack>
 #include <sys/types.h>
@@ -20,13 +22,12 @@ using namespace llvm;
 
 /*
  * Apply worklist algorithm
- * Need Start param to make sure that the initialization of parameters does not count as write operation
- * Start param should be the corresponding DbgDeclareInst. It is therefore also not counted.
+ * Need Start param to make sure that the initialization of parameters does not count as operation
  */
 template <typename T>
 std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<T(T,T,const Instruction*,void*)> merge, void* data, T init) {
     std::map<const Instruction*, T> postAccess;
-    std::vector<std::tuple<const Instruction*, T, std::stack<const CallBase*>>> todoList = { {Start->getNextNonDebugInstruction(), init, {}} };
+    std::vector<std::tuple<const Instruction*, T, std::stack<const CallBase*>>> todoList = { {Start, init, {}} };
     while (!todoList.empty()) {
         const Instruction* next = std::get<0>(*todoList.begin());
         T prevInfo = std::get<1>(*todoList.begin());
@@ -86,9 +87,23 @@ std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::f
     return postAccess;
 }
 
-inline std::optional<uint> getLineNumber(const Instruction* I){
-    if (const DebugLoc& N = I->getDebugLoc()) { // this if is never executed
+inline std::optional<uint> getLineNumber(const Instruction* I) {
+    if (const DebugLoc& N = I->getDebugLoc()) {
         return N.getLine();
     }
     return std::nullopt;
+}
+
+inline bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<std::string>> Tags) {
+    if (!isTag) {
+        return CB->getCalledFunction()->getName() == Target;
+    } else {
+        if (!Tags.contains(CB->getCalledFunction())) return false;
+        for (const std::string tag : Tags[CB->getCalledFunction()]) {
+            if (tag == Target) {
+                return true;
+            }
+        }
+        return false;
+    }
 }

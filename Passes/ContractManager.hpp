@@ -1,7 +1,8 @@
 #pragma once
 
-#include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/IR/Function.h>
+#include <map>
 #include <memory>
 #include <vector>
 
@@ -19,13 +20,13 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             const Function* const F;
             const StringRef ContractString;
             const ContractData Data;
-            std::shared_ptr<Fulfillment> Status = std::make_shared<Fulfillment>(Fulfillment::UNKNOWN);
             std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
         };
 
         //Result Type
         struct Result {
             std::vector<Contract> Contracts;
+            std::map<const Function*, std::vector<std::string>> Tags;
             #warning HACK: Never invalidate result
             bool invalidate(Module &M, const PreservedAnalyses &PA, ModuleAnalysisManager::Invalidator &) { return false; }
         } typedef ContractDatabase;

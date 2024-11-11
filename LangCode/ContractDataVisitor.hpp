@@ -20,5 +20,5 @@ class ContractDataVisitor : public ContractParserBaseVisitor {
 
     private:
         std::any aggregateResult(std::any res1, std::any res2) override { return !res1.has_value() ? res2 : res1; };
-        
+
 };

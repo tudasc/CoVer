@@ -24,16 +24,23 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
 
+    Tags = DB.Tags;
+
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
-        if (*C.Status == Fulfillment::UNKNOWN && C.Data.Pre.has_value()) {
+        if (C.Data.Pre.has_value() && *C.Data.Pre->Status == Fulfillment::UNKNOWN) {
             // Contract has a precondition
             const ContractExpression& Expr = C.Data.Pre.value();
             std::string err;
-            bool result = false;
+            CallStatusVal result;
             switch (Expr.OP->type()) {
                 case OperationType::CALL: {
                     const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr.OP);
-                    result = checkPreCall(cOP, C.F, M, err) == CallStatusVal::CALLED;
+                    result = checkPreCall(cOP, C.F, false, M, err);
+                    break;
+                }
+                case OperationType::CALLTAG: {
+                    const CallTagOperation& ctOP = dynamic_cast<const CallTagOperation&>(*Expr.OP);
+                    result = checkPreCall(ctOP, C.F, true, M, err);
                     break;
                 }
                 default: continue;
@@ -41,10 +48,10 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
             if (!err.empty()) {
                 errs() << err << "\n";
             }
-            if (result) {
-                *C.Status = Fulfillment::FULFILLED;
+            if (result < CallStatusVal::ERROR) {
+                *Expr.Status = Fulfillment::FULFILLED;
             } else {
-                *C.Status = Fulfillment::BROKEN;
+                *Expr.Status = Fulfillment::BROKEN;
             }
         }
     }
@@ -56,6 +63,8 @@ struct IterTypePreCall {
     const std::string Target;
     const Function* F;
     const std::vector<int> reqParams;
+    const bool isTag;
+    std::map<const Function*, std::vector<std::string>> Tags;
 };
 
 ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
@@ -64,7 +73,7 @@ ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCall
 
     IterTypePreCall* Data = static_cast<IterTypePreCall*>(data);
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-        if (CB->getCalledFunction()->getName() == Data->Target) {
+        if (checkCalledApplies(CB, Data->Target, Data->isTag, Data->Tags)) {
             if (Data->reqParams.empty()) {
                 cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::CALLED;
                 return cur;
@@ -112,7 +121,7 @@ ContractVerifierPreCallPass::CallStatus mergeCallStat(ContractVerifierPreCallPas
     return cs;
 }
 
-ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const Function* F, const Module& M, std::string& error) {
+ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const Function* F, const bool isTag, const Module& M, std::string& error) {
     const Function* mainF = M.getFunction("main");
     if (!mainF) {
         error = "Cannot find main function, cannot construct path to check precall!";
@@ -120,18 +129,15 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     }
     const Instruction* Entry = mainF->getEntryBlock().getFirstNonPHI();
 
-    IterTypePreCall data = { cOP.Function, F, cOP.Params };
+    IterTypePreCall data = { cOP.Function, F, cOP.Params, isTag, Tags };
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
     std::map<const Instruction *, CallStatus> AnalysisInfo = GenericWorklist<CallStatus>(Entry, transferCallStat, mergeCallStat, &data, init);
 
-    // Take intersection of all returning instructions
+    // Take max over all analysis info
+    // Correct usage will not contain error
     CallStatusVal res = CallStatusVal::CALLED;
-    for (const User* U : F->users()) {
-        if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-            if (CB->getCalledFunction() == F) {
-                res = std::max(AnalysisInfo[CB].CurVal, res);
-            }
-        }
+    for (std::pair<const Instruction*, CallStatus> AI : AnalysisInfo) {
+        res = std::max(AI.second.CurVal, res);
     }
     return res;
 }
