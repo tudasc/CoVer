@@ -20,7 +20,7 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     }
     if (!output) return s;
 
-    if (s == Fulfillment::FULFILLED) WithColor(errs(), HighlightColor::Remark) << "## Contract Fulfilled! ##\n";
+    if (s == Fulfillment::FULFILLED) WithColor(errs(), HighlightColor::String) << "## Contract Fulfilled! ##\n";
     if (s == Fulfillment::UNKNOWN) WithColor(errs(), HighlightColor::Warning) << "## Contract Status Unknown ##\n";
     if (s == Fulfillment::BROKEN) WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
     errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
@@ -30,11 +30,11 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
         errs() << "--> Postcondition Status: " << FulfillmentStr(*C.Data.Post->Status) << "\n";
     }
     if (IS_DEBUG) {
-        WithColor(errs(), HighlightColor::Note) << "--> Debug Begin\n";
+        WithColor(errs(), HighlightColor::Remark) << "--> Debug Begin\n";
         for (std::string dbg: *C.DebugInfo) {
-            WithColor(errs(), HighlightColor::Note) << dbg << "\n";
+            WithColor(errs(), HighlightColor::Remark) << dbg << "\n";
         }
-        WithColor(errs(), HighlightColor::Note) << "<-- Debug End\n";
+        WithColor(errs(), HighlightColor::Remark) << "<-- Debug End\n";
     }
     errs() << "\n";
     return s;
