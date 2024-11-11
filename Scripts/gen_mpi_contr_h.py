@@ -106,9 +106,9 @@ for func in function_decls.keys():
 #     function_contracts[func]["POST"].append("called!(MPI_Finalize)")
 
 # No request reuse until MPI_Wait for persistent comms
-tag_gen = ["MPI_Iallgather", "MPI_Iallreduce", "MPI_Ialltoall", "MPI_Ibarrier", "MPI_Ibcast", "MPI_Igather", "MPI_Ibsend", "MPI_Irecv", "MPI_Isend", "MPI_Isendrecv"]
-for func in tag_gen:
-    function_contracts[func]["POST"].append("no! (called_tag!(request_gen,0)) until! (called!(MPI_Wait,0))")
+tag_gen = [("MPI_Iallgather", 7), ("MPI_Iallreduce", 6), ("MPI_Ialltoall", 7), ("MPI_Ibarrier", 1), ("MPI_Ibcast", 5), ("MPI_Igather", 8), ("MPI_Ibsend", 6), ("MPI_Irecv", 6), ("MPI_Isend", 6), ("MPI_Isendrecv", 11)]
+for func, req_idx in tag_gen:
+    function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,{req_idx})) until! (called!(MPI_Wait,{req_idx}))")
     function_contracts[func]["TAGS"].append("request_gen")
 
 
