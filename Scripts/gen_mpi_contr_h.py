@@ -14,7 +14,7 @@ mpih_location = sys.argv[2]
 
 ver_identifier = "Not given"
 if len(sys.argv) > 3:
-    ver_identifier = sys.argv[2]
+    ver_identifier = sys.argv[3]
 
 # Deprecated functions
 # From: https://www.mpi-forum.org/docs/mpi-3.1/mpi31-report/node34.htm#Node34
@@ -89,7 +89,7 @@ with open(mpih_location) as f:
 
             # Add to dicts
             function_decls[funcname] = funcdec
-            function_contracts[funcname] = []
+            function_contracts[funcname] = { "PRE": [], "POST": [], "TAGS": []}
 
 # Finally, add contracts
 
@@ -97,19 +97,19 @@ with open(mpih_location) as f:
 for func in function_decls.keys():
     if func in ["MPI_Init", "MPI_Init_thread"]:
         continue
-    function_contracts[func].append("PRE { called!(MPI_Init) }")
+    function_contracts[func]["PRE"].append("called!(MPI_Init)")
 
 # Call MPI_Finalize
-for func in function_decls.keys():
-    if func in ["MPI_Finalize", "MPI_Abort"]:
-        continue
-    function_contracts[func].append("POST { called!(MPI_Finalize) }")
+# for func in function_decls.keys():
+#     if func in ["MPI_Finalize", "MPI_Abort"]:
+#         continue
+#     function_contracts[func]["POST"].append("called!(MPI_Finalize)")
 
 # No request reuse until MPI_Wait for persistent comms
 tag_gen = ["MPI_Iallgather", "MPI_Iallreduce", "MPI_Ialltoall", "MPI_Ibarrier", "MPI_Ibcast", "MPI_Igather", "MPI_Ibsend", "MPI_Irecv", "MPI_Isend", "MPI_Isendrecv"]
 for func in tag_gen:
-    function_contracts[func].append("POST { no! (called_tag!(request_gen,0)) until! (called!(MPI_Wait,0)) }")
-    function_contracts[func].append("TAG request_gen")
+    function_contracts[func]["POST"].append("no! (called_tag!(request_gen,0)) until! (called!(MPI_Wait,0))")
+    function_contracts[func]["TAGS"].append("request_gen")
 
 
 # Output file
@@ -126,12 +126,22 @@ boilerplate_header = f"""
 
 header_output = boilerplate_header
 
+def create_contract_output_for_func(types, contrs):
+    out = ""
+    for c_type in types:
+        if not contrs[c_type]: continue
+        out += f"    {c_type} {{\n"
+        for c in contrs[c_type][:-1]:
+            out += f"        {c},\n"
+        out += f"        {contrs[c_type][-1]}\n"
+        out += "    }\n"
+    return out
+
 for func, contrs in function_contracts.items():
-    if not contrs:
+    if not contrs["PRE"] and not contrs["POST"] and not contrs["TAGS"]:
         continue # No contracts, no need to output
     header_output += function_decls[func][:-1] + " CONTRACT(\n"
-    for c in contrs:
-        header_output += f"    {c}\n"
+    header_output += create_contract_output_for_func(contrs.keys(), contrs)
     header_output += ");\n\n"
 
 with open(f"{output_path}/mpi_contracts.h", "w") as mpi_contr_file:
