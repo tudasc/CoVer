@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/InstrTypes.h>
@@ -92,6 +93,9 @@ inline std::optional<uint> getLineNumber(const Instruction* I) {
         return N.getLine();
     }
     return std::nullopt;
+}
+inline std::string getInstrLocStr(const Instruction* I) {
+    return demangle(I->getParent()->getParent()->getName()) + ":" + (getLineNumber(I).has_value() ? std::to_string(getLineNumber(I).value()) : "UNKNOWN");
 }
 
 inline bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<std::string>> Tags) {

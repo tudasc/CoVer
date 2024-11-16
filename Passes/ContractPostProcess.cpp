@@ -26,8 +26,10 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
     errs() << "--> Contract: " << C.ContractString << "\n";
     if (s > Fulfillment::FULFILLED) {
-        errs() << "--> Precondition Status: " << FulfillmentStr(*C.Data.Pre->Status) << "\n";
-        errs() << "--> Postcondition Status: " << FulfillmentStr(*C.Data.Post->Status) << "\n";
+        if (C.Data.Pre)
+            errs() << "--> Precondition Status: " << FulfillmentStr(*C.Data.Pre->Status) << "\n";
+        if (C.Data.Post)
+            errs() << "--> Postcondition Status: " << FulfillmentStr(*C.Data.Post->Status) << "\n";
     }
     if (IS_DEBUG) {
         WithColor(errs(), HighlightColor::Remark) << "--> Debug Begin\n";

@@ -4,7 +4,9 @@
 #include "ContractPassUtility.hpp"
 
 #include <algorithm>
+#include <llvm/Demangle/Demangle.h>
 #include <vector>
+#include <sstream>
 #include <llvm/Analysis/InlineCost.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -35,12 +37,12 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
             switch (Expr.OP->type()) {
                 case OperationType::CALL: {
                     const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr.OP);
-                    result = checkPreCall(cOP, C.F, false, M, err);
+                    result = checkPreCall(cOP, C, false, M, err);
                     break;
                 }
                 case OperationType::CALLTAG: {
                     const CallTagOperation& ctOP = dynamic_cast<const CallTagOperation&>(*Expr.OP);
-                    result = checkPreCall(ctOP, C.F, true, M, err);
+                    result = checkPreCall(ctOP, C, true, M, err);
                     break;
                 }
                 default: continue;
@@ -59,7 +61,20 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
+std::string ContractVerifierPreCallPass::createDebugStr(const CallBase* Provider, const std::set<const CallBase *> candidates) {
+    std::stringstream str;
+    str << "[ContractVerifierPreCall] Did not find precall function with required parameters before "
+        << demangle(Provider->getCalledFunction()->getName()) << " at "
+        << getInstrLocStr(Provider)
+        << "\nUnfitting candidates:";
+    for (const CallBase* CB : candidates) {
+        str << CB->getCalledFunction()->getName().str() << " at " << getInstrLocStr(CB) << "\n";
+    }
+    return str.str();
+}
+
 struct IterTypePreCall {
+    std::vector<std::string> dbg;
     const std::string Target;
     const Function* F;
     const std::vector<int> reqParams;
@@ -87,6 +102,7 @@ ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCall
         if (CB->getCalledFunction() == Data->F) {
             // Found contract supplier. Either paramcheck or error
             if (cur.CurVal != ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK) {
+                Data->dbg.push_back(ContractVerifierPreCallPass::createDebugStr(CB, cur.candidate));
                 cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::ERROR;
                 return cur;
             }
@@ -102,6 +118,7 @@ ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCall
                 }
             }
             // Any required parameter not used by any candidate
+            Data->dbg.push_back(ContractVerifierPreCallPass::createDebugStr(CB, cur.candidate));
             cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::ERROR;
             return cur;
         }
@@ -121,7 +138,7 @@ ContractVerifierPreCallPass::CallStatus mergeCallStat(ContractVerifierPreCallPas
     return cs;
 }
 
-ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const Function* F, const bool isTag, const Module& M, std::string& error) {
+ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const ContractManagerAnalysis::Contract& C, const bool isTag, const Module& M, std::string& error) {
     const Function* mainF = M.getFunction("main");
     if (!mainF) {
         error = "Cannot find main function, cannot construct path to check precall!";
@@ -129,9 +146,11 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     }
     const Instruction* Entry = mainF->getEntryBlock().getFirstNonPHI();
 
-    IterTypePreCall data = { cOP.Function, F, cOP.Params, isTag, Tags };
+    IterTypePreCall data = { {}, cOP.Function, C.F, cOP.Params, isTag, Tags };
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
     std::map<const Instruction *, CallStatus> AnalysisInfo = GenericWorklist<CallStatus>(Entry, transferCallStat, mergeCallStat, &data, init);
+
+    C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
 
     // Take max over all analysis info
     // Correct usage will not contain error
