@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ContractTree.hpp"
 #include <functional>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -98,16 +99,36 @@ inline std::string getInstrLocStr(const Instruction* I) {
     return demangle(I->getParent()->getParent()->getName()) + ":" + (getLineNumber(I).has_value() ? std::to_string(getLineNumber(I).value()) : "UNKNOWN");
 }
 
-inline bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<std::string>> Tags) {
+inline bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
     if (!isTag) {
         return CB->getCalledFunction()->getName() == Target;
     } else {
         if (!Tags.contains(CB->getCalledFunction())) return false;
-        for (const std::string tag : Tags[CB->getCalledFunction()]) {
-            if (tag == Target) {
+        for (const ContractTree::TagUnit tag : Tags[CB->getCalledFunction()]) {
+            if (tag.tag == Target) {
                 return true;
             }
         }
         return false;
     }
+}
+
+inline bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
+    const Value* candidateParam;
+    if (!P.callPisTagVar) {
+        candidateParam = Target->getArgOperand(P.callP);
+        if (candidateParam == Source->getArgOperand(P.contrP)) {
+            return true;
+        }
+    } else {
+        for (ContractTree::TagUnit TagU : Tags[Target->getCalledFunction()]) {
+            if (TagU.tag != TargetStr) continue;
+            if (!TagU.param.has_value()) continue;
+            candidateParam = Target->getArgOperand(*TagU.param);
+            if (candidateParam == Source->getArgOperand(P.contrP)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }

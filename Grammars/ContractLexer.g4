@@ -16,6 +16,10 @@ NatNum: ('0' | [1-9] [0-9]*);
 
 ListSep: ',';
 
+MapSep: ':';
+
+TagParam: '$';
+
 // All ops must end with '!' to differentiate from variables
 OPRead: 'read!';
 OPWrite: 'write!';

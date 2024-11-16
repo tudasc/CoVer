@@ -64,8 +64,9 @@ struct IterTypeRelease {
     OperationType forbiddenType;
     std::vector<std::any> param;
     std::string releaseFunc;
+    std::vector<CallParam> releaseParam;
     const CallBase* callsite;
-    std::map<const Function*, std::vector<std::string>> Tags;
+    std::map<const Function*, std::vector<TagUnit>> Tags;
     const bool isTagRel;
 };
 
@@ -85,9 +86,13 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
 
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
         if (checkCalledApplies(CB, Data->releaseFunc, Data->isTagRel, Data->Tags)) {
-            // Found target, and cur is not error. If parameters fit, fulfilled
-            #warning TODO check params in release op relfunc
-            return ContractVerifierReleasePass::ReleaseStatus::FULFILLED;
+            if (Data->releaseParam.empty()) return ContractVerifierReleasePass::ReleaseStatus::FULFILLED;
+            for (CallParam P : Data->releaseParam) {
+                if (checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags))
+                    return ContractVerifierReleasePass::ReleaseStatus::FULFILLED;
+            }
+            // Wrong parameters, continue
+            return cur;
         }
     }
 
@@ -97,15 +102,12 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
             if (const CallBase* CB = dyn_cast<CallBase>(I)) {
                 if (checkCalledApplies(CB, std::any_cast<std::string>(Data->param[0]), Data->forbiddenType == ContractTree::OperationType::CALLTAG, Data->Tags)) {
                     // Found forbidden function. Current status is unknown, if we find forbidden parameter (and one is specified) this is an error
-                    const std::vector<int> forbidParams = std::any_cast<const std::vector<int>>(Data->param[1]);
+                    const std::vector<CallParam> forbidParams = std::any_cast<const std::vector<CallParam>>(Data->param[1]);
                     if (forbidParams.empty()) return ContractVerifierReleasePass::ReleaseStatus::ERROR;
-                    bool foundParam = false;
-                    for (int forbidParam : forbidParams) {
-                        for (const Value* x : CB->operand_values()) {
-                            if (x == Data->callsite->getArgOperand(forbidParam)) {
-                                Data->dbg.push_back(ContractVerifierReleasePass::createDebugStr(CB));
-                                return ContractVerifierReleasePass::ReleaseStatus::ERROR;
-                            }
+                    for (CallParam forbidParam : forbidParams) {
+                        if (checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags)) {
+                            Data->dbg.push_back(ContractVerifierReleasePass::createDebugStr(CB));
+                            return ContractVerifierReleasePass::ReleaseStatus::ERROR;
                         }
                     }
                     // Did not find relevant parameter
@@ -154,8 +156,9 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
         isTagRel = true;
     }
     std::string releaseFunc = dynamic_cast<const CallOperation&>(*relOp.Until).Function;
+    std::vector<CallParam> releaseParam = dynamic_cast<const CallOperation&>(*relOp.Until).Params;
 
-    IterTypeRelease data = { {}, forbiddenType, param, releaseFunc, nullptr, Tags, isTagRel};
+    IterTypeRelease data = { {}, forbiddenType, param, releaseFunc, releaseParam, nullptr, Tags, isTagRel};
 
     // Get all call sites of function, and run analysis
     ReleaseStatus result = ReleaseStatus::FORBIDDEN;

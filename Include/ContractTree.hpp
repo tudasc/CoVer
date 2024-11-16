@@ -9,6 +9,7 @@
 #include <string>
 #include <memory>
 #include <optional>
+#include <utility>
 #include <vector>
 
 namespace ContractTree {
@@ -27,14 +28,19 @@ namespace ContractTree {
         const std::string Variable;
         virtual const OperationType type() const override { return OperationType::WRITE; };
     };
+    struct CallParam {
+        int callP;
+        bool callPisTagVar;
+        int contrP;
+    };
     struct CallOperation : Operation {
-        CallOperation(std::string _func, std::vector<int> _params) : Function{_func}, Params{_params} {};
+        CallOperation(std::string _func, std::vector<CallParam> _params) : Function{_func}, Params{_params} {};
         const std::string Function;
-        const std::vector<int> Params;
+        const std::vector<CallParam> Params;
         virtual const OperationType type() const override { return OperationType::CALL; };
     };
     struct CallTagOperation : CallOperation {
-        CallTagOperation(std::string _func, std::vector<int> _params) : CallOperation(_func, _params) {};
+        CallTagOperation(std::string _func, std::vector<CallParam> _params) : CallOperation(_func, _params) {};
         virtual const OperationType type() const override { return OperationType::CALLTAG; };
     };
     struct ReleaseOperation : Operation {
@@ -51,10 +57,14 @@ namespace ContractTree {
         std::shared_ptr<Fulfillment> Status = std::make_shared<Fulfillment>(Fulfillment::UNKNOWN);
     };
 
+    struct TagUnit {
+        std::string tag;
+        std::optional<int> param;
+    };
     struct ContractData {
         const std::optional<ContractExpression> Pre;
         const std::optional<ContractExpression> Post;
-        const std::vector<std::string> Tags;
+        const std::vector<TagUnit> Tags;
         Fulfillment xres = Fulfillment::UNKNOWN;
     };
 }

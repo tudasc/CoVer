@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <llvm/Demangle/Demangle.h>
+#include <utility>
 #include <vector>
 #include <sstream>
 #include <llvm/Analysis/InlineCost.h>
@@ -77,9 +78,9 @@ struct IterTypePreCall {
     std::vector<std::string> dbg;
     const std::string Target;
     const Function* F;
-    const std::vector<int> reqParams;
+    const std::vector<CallParam> reqParams;
     const bool isTag;
-    std::map<const Function*, std::vector<std::string>> Tags;
+    std::map<const Function*, std::vector<TagUnit>> Tags;
 };
 
 ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
@@ -106,14 +107,12 @@ ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCall
                 cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::ERROR;
                 return cur;
             }
-            for (int x : Data->reqParams) {
+            for (CallParam param : Data->reqParams) {
                 for (const CallBase* Candidate : cur.candidate) {
-                    for (const Value* candidateParam : Candidate->operand_values()) {
-                        if (candidateParam == CB->getArgOperand(x)) {
-                            // Success!
-                            cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::CALLED;
-                            return cur;
-                        }
+                    if (checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags)) {
+                        // Success!
+                        cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::CALLED;
+                        return cur;
                     }
                 }
             }

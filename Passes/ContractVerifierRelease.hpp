@@ -15,7 +15,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
         static std::string createDebugStr(const Instruction* Forbidden);
     private:
         ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, const ContractManagerAnalysis::Contract& C, const Module& M, std::string& error);
-        std::map<const Function*, std::vector<std::string>> Tags;
+        std::map<const Function*, std::vector<TagUnit>> Tags;
 };
 
 } // namespace llvm

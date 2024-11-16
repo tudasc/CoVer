@@ -1,4 +1,6 @@
 #include "ContractDataVisitor.hpp"
+#include "ContractLangErrorListener.hpp"
+#include "ContractParser.h"
 #include "ContractTree.hpp"
 #include <any>
 #include <memory>
@@ -25,10 +27,13 @@ std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx
         postExpr.emplace(std::any_cast<ContractExpression>(expr));
     }
 
-    std::vector<std::string> tags;
+    std::vector<TagUnit> tags;
     if (ctx->functags()) {
-        for (antlr4::tree::TerminalNode* tag : ctx->functags()->Variable()) {
-            tags.push_back(tag->toString());
+        for (ContractParser::TagUnitContext* tagUnitCtx : ctx->functags()->tagUnit()) {
+            TagUnit t;
+            t.tag = tagUnitCtx->Variable()->getText();
+            if (tagUnitCtx->NatNum()) t.param = std::stoi(tagUnitCtx->NatNum()->getText());
+            tags.push_back(t);
         }
     }
 
@@ -54,9 +59,14 @@ std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) 
     return op;
 }
 std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {
-    std::vector<int> params;
-    for (antlr4::tree::TerminalNode* param : ctx->NatNum()) {
-        params.push_back(std::stoi(param->toString()));
+    std::vector<CallParam> params;
+    for (ContractParser::VarMapContext* param : ctx->varMap()) {
+        bool isTagVar = param->TagParam() ? true : false;
+        if (ctx->OPCall() && isTagVar) {
+            // This is an error! Call is not a tag call, but parameter access requested
+            throw ContractLangSyntaxError(param->TagParam()->getSymbol()->getLine(), param->TagParam()->getSymbol()->getCharPositionInLine(), "Attempted to use tag param in normal call!");
+        }
+        params.push_back({std::stoi(param->callP ? param->callP->getText() : "-1"), isTagVar, std::stoi(param->contrP->getText())});
     }
     std::shared_ptr<const Operation> op;
     if (ctx->OPCall())
