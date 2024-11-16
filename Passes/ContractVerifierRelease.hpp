@@ -12,6 +12,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
 
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
+        static std::string createDebugStr(const Instruction* Forbidden);
     private:
         ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, const ContractManagerAnalysis::Contract& C, const Module& M, std::string& error);
         std::map<const Function*, std::vector<std::string>> Tags;
