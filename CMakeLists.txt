@@ -105,10 +105,11 @@ install(
 
 find_package(MPI REQUIRED)
 
+execute_process(COMMAND git log --pretty=format:%h -n 1 OUTPUT_VARIABLE GIT_REV)
 add_custom_target(
   genMPIContracts ALL
   SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
-  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/mpi.h"
+  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/mpi.h" "LLVMContractsPlugin ${GIT_REV}"
 )
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h" DESTINATION include
   PERMISSIONS
