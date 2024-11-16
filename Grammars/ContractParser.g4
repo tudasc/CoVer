@@ -18,7 +18,7 @@ expression: primitive | composite;
 primitive: readOp | writeOp | callOp;
 readOp: OPRead OPPrefix Variable OPPostfix;
 writeOp: OPWrite OPPrefix Variable OPPostfix;
-varMap: (callP=NatNum | TagParam) MapSep contrP=NatNum;
+varMap: (callP=NatNum | TagParam) MapSep (Deref | AddrOf)? contrP=NatNum;
 callOp: (OPCall | OPCallTag) OPPrefix Variable (ListSep varMap)* OPPostfix;
 
 composite: releaseOp;

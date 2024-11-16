@@ -66,7 +66,12 @@ std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {
             // This is an error! Call is not a tag call, but parameter access requested
             throw ContractLangSyntaxError(param->TagParam()->getSymbol()->getLine(), param->TagParam()->getSymbol()->getCharPositionInLine(), "Attempted to use tag param in normal call!");
         }
-        params.push_back({std::stoi(param->callP ? param->callP->getText() : "-1"), isTagVar, std::stoi(param->contrP->getText())});
+        ParamAccess acc = ParamAccess::NORMAL;
+        if (param->Deref())
+            acc = ParamAccess::DEREF;
+        if (param->AddrOf())
+            acc = ParamAccess::ADDROF;
+        params.push_back({std::stoi(param->callP ? param->callP->getText() : "-1"), isTagVar, std::stoi(param->contrP->getText()), acc});
     }
     std::shared_ptr<const Operation> op;
     if (ctx->OPCall())

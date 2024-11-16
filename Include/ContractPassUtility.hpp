@@ -10,6 +10,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Support/Casting.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <map>
 #include <string>
 #include <optional>
@@ -113,21 +114,40 @@ inline bool checkCalledApplies(const CallBase* CB, const std::string Target, boo
     }
 }
 
+inline bool downwardCheckEquality(const Value* source, const Value* target) {
+    #warning TODO make downward check more expressive
+    for (const User* U : source->users()) {
+        if (U == target) return true;
+    }
+    return false;
+}
+
 inline bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
-    const Value* candidateParam;
+    std::vector<const Value*> candidateParams;
+    const Value* sourceParam = Source->getArgOperand(P.contrP);
+
     if (!P.callPisTagVar) {
-        candidateParam = Target->getArgOperand(P.callP);
-        if (candidateParam == Source->getArgOperand(P.contrP)) {
-            return true;
-        }
+        candidateParams.push_back(Target->getArgOperand(P.callP));
     } else {
         for (ContractTree::TagUnit TagU : Tags[Target->getCalledFunction()]) {
             if (TagU.tag != TargetStr) continue;
             if (!TagU.param.has_value()) continue;
-            candidateParam = Target->getArgOperand(*TagU.param);
-            if (candidateParam == Source->getArgOperand(P.contrP)) {
-                return true;
-            }
+            candidateParams.push_back(Target->getArgOperand(*TagU.param));
+        }
+        if (candidateParams.empty())
+            throw "Could not find candidate parameter with matching tag! Invalid contract definition";
+    }
+
+    for (const Value* candidateParam : candidateParams) {
+        switch (P.contrParamAccess) {
+            case ContractTree::ParamAccess::NORMAL:
+                if (candidateParam == sourceParam) return true;
+            case ContractTree::ParamAccess::DEREF:
+                // Contr has a pointer, target has value. Go down from contr param
+                if (downwardCheckEquality(sourceParam, candidateParam)) return true;
+            case ContractTree::ParamAccess::ADDROF:
+                // Contr has value, target has pointer. Go down from target param
+                if (downwardCheckEquality(candidateParam, sourceParam)) return true;
         }
     }
     return false;

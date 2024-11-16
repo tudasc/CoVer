@@ -20,6 +20,9 @@ MapSep: ':';
 
 TagParam: '$';
 
+Deref: '*';
+AddrOf: '&';
+
 // All ops must end with '!' to differentiate from variables
 OPRead: 'read!';
 OPWrite: 'write!';

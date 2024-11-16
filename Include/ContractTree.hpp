@@ -28,10 +28,12 @@ namespace ContractTree {
         const std::string Variable;
         virtual const OperationType type() const override { return OperationType::WRITE; };
     };
+    enum struct ParamAccess { NORMAL, DEREF, ADDROF };
     struct CallParam {
         int callP;
         bool callPisTagVar;
         int contrP;
+        ParamAccess contrParamAccess;
     };
     struct CallOperation : Operation {
         CallOperation(std::string _func, std::vector<CallParam> _params) : Function{_func}, Params{_params} {};

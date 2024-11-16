@@ -106,11 +106,19 @@ for func in function_decls.keys():
 #     function_contracts[func]["POST"].append("called!(MPI_Finalize)")
 
 # No request reuse until MPI_Wait for persistent comms
-tag_gen = [("MPI_Iallgather", 7), ("MPI_Iallreduce", 6), ("MPI_Ialltoall", 7), ("MPI_Ibarrier", 1), ("MPI_Ibcast", 5), ("MPI_Igather", 8), ("MPI_Ibsend", 6), ("MPI_Irecv", 6), ("MPI_Isend", 6), ("MPI_Isendrecv", 11)]
-for func, req_idx in tag_gen:
-    function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{req_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
-    function_contracts[func]["TAGS"].append(f"request_gen({req_idx})")
+tag_reqgen = [("MPI_Iallgather", 7), ("MPI_Iallreduce", 6), ("MPI_Ialltoall", 7), ("MPI_Ibarrier", 1), ("MPI_Ibcast", 5), ("MPI_Igather", 8), ("MPI_Ibsend", 6), ("MPI_Irecv", 6), ("MPI_Isend", 6), ("MPI_Isendrecv", 11)]
+for func, tag_idx in tag_reqgen:
+    function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called!(MPI_Wait,0:{tag_idx}))")
+    function_contracts[func]["TAGS"].append(f"request_gen({tag_idx})")
 
+tag_typegen = [("MPI_Type_contiguous", 2)]
+for func, tag_idx in tag_typegen:
+    function_contracts[func]["POST"].append(f"no! (called_tag!(type_use,$:*{tag_idx})) until! (called!(MPI_Type_commit,0:{tag_idx}))")
+    function_contracts[func]["TAGS"].append(f"type_gen({tag_idx})")
+
+tag_typeuse = [("MPI_Send", 2)]
+for func, tag_idx in tag_typeuse:
+    function_contracts[func]["TAGS"].append(f"type_use({tag_idx})")
 
 # Output file
 boilerplate_header = f"""
