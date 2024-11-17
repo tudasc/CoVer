@@ -111,6 +111,21 @@ for func, tag_idx in tag_reqgen:
     function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called!(MPI_Wait,0:{tag_idx}))")
     function_contracts[func]["TAGS"].append(f"request_gen({tag_idx})")
 
+# Local data races - P2P
+tag_buffers = [("MPI_Isend", 0, 6, ["W"], ["R"]), ("MPI_Irecv", 0, 6, ["R", "W"], ["W"])]
+for func, buf_idx, req_idx, forbid, action in tag_buffers:
+    if "R" in forbid:
+        function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
+        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_read,$:{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
+    if "W" in forbid:
+        function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
+        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_write,$:{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
+    if "R" in action:
+        function_contracts[func]["TAGS"].append(f"buf_read({buf_idx})")
+    if "W" in action:
+        function_contracts[func]["TAGS"].append(f"buf_write({buf_idx})")
+
+# Make sure types are committed
 tag_typegen = [("MPI_Type_contiguous", 2)]
 for func, tag_idx in tag_typegen:
     function_contracts[func]["POST"].append(f"no! (called_tag!(type_use,$:*{tag_idx})) until! (called!(MPI_Type_commit,0:{tag_idx}))")
