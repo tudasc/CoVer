@@ -126,7 +126,7 @@ ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCall
     return cur;
 }
 
-ContractVerifierPreCallPass::CallStatus mergeCallStat(ContractVerifierPreCallPass::CallStatus prev, ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
+std::pair<ContractVerifierPreCallPass::CallStatus,bool> mergeCallStat(ContractVerifierPreCallPass::CallStatus prev, ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
     // Intersection of candidates
     std::set<const CallBase*> intersect;
     std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
@@ -134,7 +134,7 @@ ContractVerifierPreCallPass::CallStatus mergeCallStat(ContractVerifierPreCallPas
     ContractVerifierPreCallPass::CallStatus cs;
     cs.candidate = intersect;
     cs.CurVal = std::max(prev.CurVal, cur.CurVal);
-    return cs;
+    return { cs, cs.CurVal > prev.CurVal };
 }
 
 ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const ContractManagerAnalysis::Contract& C, const bool isTag, const Module& M, std::string& error) {

@@ -30,12 +30,12 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
         for (size_t i = 0; i < C.Data.Pre.size(); i++) {
             errs() << "--> Precondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Pre[i].Status) << "\n";
             if (*C.Data.Pre[i].Status > Fulfillment::FULFILLED)
-                errs() << "--> Expression String: " << C.Data.Pre[i].ExprStr << "\n";
+                errs() << "    --> Expression String: " << C.Data.Pre[i].ExprStr << "\n";
         }
         for (size_t i = 0; i < C.Data.Post.size(); i++) {
             errs() << "--> Postcondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Post[i].Status) << "\n";
             if (*C.Data.Post[i].Status > Fulfillment::FULFILLED)
-                errs() << "--> Expression String: " << C.Data.Post[i].ExprStr << "\n";
+                errs() << "    --> Expression String: " << C.Data.Post[i].ExprStr << "\n";
         }
     }
     if (IS_DEBUG) {

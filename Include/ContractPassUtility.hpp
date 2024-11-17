@@ -28,7 +28,7 @@ using namespace llvm;
  * Need Start param to make sure that the initialization of parameters does not count as operation
  */
 template <typename T>
-std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<T(T,T,const Instruction*,void*)> merge, void* data, T init) {
+std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, void* data, T init) {
     std::map<const Instruction*, T> postAccess;
     std::vector<std::tuple<const Instruction*, T, std::stack<const CallBase*>>> todoList = { {Start, init, {}} };
     while (!todoList.empty()) {
@@ -45,8 +45,12 @@ std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::f
                 postAccess[next] = prevInfo;
             } else {
                 // Encountered already. Call merge function
-                T newInfo = merge(prevInfo, postAccess[next], next, data);
-                postAccess[next] = newInfo;
+                std::pair<T,bool> mergeRes = merge(prevInfo, postAccess[next], next, data);
+                if (!mergeRes.second) {
+                    // Already visited and analysis does not wish to pursue further. Remove from worklist
+                    break;
+                }
+                postAccess[next] = mergeRes.first;
             }
 
             // Call transfer function

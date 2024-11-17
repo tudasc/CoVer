@@ -141,8 +141,10 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
     return cur;
 }
 
-ContractVerifierReleasePass::ReleaseStatus mergeRelease(ContractVerifierReleasePass::ReleaseStatus prev, ContractVerifierReleasePass::ReleaseStatus cur, const Instruction* I, void* data) {
-    return std::max(prev, cur);
+std::pair<ContractVerifierReleasePass::ReleaseStatus,bool> mergeRelease(ContractVerifierReleasePass::ReleaseStatus prev, ContractVerifierReleasePass::ReleaseStatus cur, const Instruction* I, void* data) {
+    ContractVerifierReleasePass::ReleaseStatus newStat = std::max(prev, cur);
+    // Should continue if newStat is worse than prev
+    return { newStat, newStat > prev};
 }
 
 ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(const ContractTree::ReleaseOperation relOp, const ContractManagerAnalysis::Contract& C, const Module& M, std::string& error) {
