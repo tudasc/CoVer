@@ -15,16 +15,14 @@ ContractData ContractDataVisitor::getContractData(antlr4::tree::ParseTree* tree)
 }
 
 std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx) {
-    std::optional<ContractExpression> preExpr;
+    std::vector<ContractExpression> preExprs;
     if (ctx->precondition()) {
-        std::any expr = this->visit(ctx->precondition());
-        preExpr.emplace(std::any_cast<ContractExpression>(expr));
+        preExprs = std::any_cast<std::vector<ContractExpression>>(this->visit(ctx->precondition()->exprList()));
     }
 
-    std::optional<ContractExpression> postExpr;
+    std::vector<ContractExpression> postExprs;
     if (ctx->postcondition()) {
-        std::any expr = this->visit(ctx->postcondition());
-        postExpr.emplace(std::any_cast<ContractExpression>(expr));
+        postExprs = std::any_cast<std::vector<ContractExpression>>(this->visit(ctx->postcondition()->exprList()));
     }
 
     std::vector<TagUnit> tags;
@@ -41,13 +39,20 @@ std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx
     if (ctx->ContractMarkerExpFail()) f = Fulfillment::BROKEN;
     if (ctx->ContractMarkerExpSucc()) f = Fulfillment::FULFILLED;
 
-    return ContractData{preExpr, postExpr, tags, f};
+    return ContractData{preExprs, postExprs, tags, f};
 }
 
+std::any ContractDataVisitor::visitExprList(ContractParser::ExprListContext *ctx) {
+    std::vector<ContractExpression> exprs;
+    for (ContractParser::ExpressionContext* exprctx : ctx->expression()) {
+        exprs.push_back(std::any_cast<ContractExpression>(this->visit(exprctx)));
+    }
+    return exprs;
+}
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {
     std::shared_ptr<const Operation> opPtr;
     opPtr = std::any_cast<std::shared_ptr<const Operation>>(this->visitChildren(ctx));
-    return ContractExpression{ .OP = opPtr};
+    return ContractExpression{ opPtr, ctx->getText()};
 }
 
 std::any ContractDataVisitor::visitReadOp(ContractParser::ReadOpContext *ctx) {

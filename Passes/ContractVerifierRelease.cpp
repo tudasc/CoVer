@@ -32,9 +32,9 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
     Tags = DB.Tags;
 
     for (ContractManagerAnalysis::Contract& C : DB.Contracts) {
-        if (C.Data.Post.has_value() && *C.Data.Post->Status == Fulfillment::UNKNOWN) {
+        for (const ContractExpression Expr : C.Data.Post) {
+            if (*Expr.Status != Fulfillment::UNKNOWN) continue;
             // Contract has a postcondition
-            const ContractExpression& Expr = C.Data.Post.value();
             std::string err;
             bool result = false;
             switch (Expr.OP->type()) {

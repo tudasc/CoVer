@@ -30,9 +30,9 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     Tags = DB.Tags;
 
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
-        if (C.Data.Pre.has_value() && *C.Data.Pre->Status == Fulfillment::UNKNOWN) {
+        for (const ContractExpression Expr : C.Data.Pre) {
+            if (*Expr.Status != Fulfillment::UNKNOWN) continue;
             // Contract has a precondition
-            const ContractExpression& Expr = C.Data.Pre.value();
             std::string err;
             CallStatusVal result;
             switch (Expr.OP->type()) {

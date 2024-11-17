@@ -60,6 +60,7 @@ namespace ContractTree {
     inline const std::string FulfillmentStr(Fulfillment f) { return std::vector<std::string>{ "Fulfilled", "Unknown", "Broken"}[(int)f]; };
     struct ContractExpression {
         const std::shared_ptr<const Operation> OP;
+        const std::string ExprStr;
         std::shared_ptr<Fulfillment> Status = std::make_shared<Fulfillment>(Fulfillment::UNKNOWN);
     };
 
@@ -68,8 +69,8 @@ namespace ContractTree {
         std::optional<int> param;
     };
     struct ContractData {
-        const std::optional<ContractExpression> Pre;
-        const std::optional<ContractExpression> Post;
+        const std::vector<ContractExpression> Pre;
+        const std::vector<ContractExpression> Post;
         const std::vector<TagUnit> Tags;
         Fulfillment xres = Fulfillment::UNKNOWN;
     };

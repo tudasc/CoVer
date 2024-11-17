@@ -7,8 +7,9 @@ options {
 start: contract EOF;
 contract: (ContractMarker | ContractMarkerExpFail | ContractMarkerExpSucc) ScopePrefix precondition? postcondition? functags? ScopePostfix;
 
-precondition: PreMarker ScopePrefix expression? ScopePostfix;
-postcondition: PostMarker ScopePrefix expression? ScopePostfix;
+precondition: PreMarker ScopePrefix exprList ScopePostfix;
+postcondition: PostMarker ScopePrefix exprList ScopePostfix;
+exprList: expression (ListSep expression)*;
 functags: TagMarker ScopePrefix tagUnit (ListSep tagUnit)* ScopePostfix;
 
 tagUnit: Variable (OPPrefix NatNum OPPostfix)?;

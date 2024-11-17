@@ -3,6 +3,7 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include <algorithm>
+#include <cstddef>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/Support/WithColor.h>
 
@@ -12,11 +13,11 @@ using namespace ContractTree;
 Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
     Fulfillment s = Fulfillment::FULFILLED;
     std::string reason;
-    if (C.Data.Pre.has_value()) {
-        s = std::max(s, *C.Data.Pre->Status);
+    for (const ContractExpression Expr : C.Data.Pre) {
+        s = std::max(s, *Expr.Status);
     }
-    if (C.Data.Post.has_value()) {
-        s = std::max(s, *C.Data.Post->Status);
+    for (const ContractExpression Expr : C.Data.Post) {
+        s = std::max(s, *Expr.Status);
     }
     if (!output) return s;
 
@@ -26,10 +27,16 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
     errs() << "--> Contract: " << C.ContractString << "\n";
     if (s > Fulfillment::FULFILLED) {
-        if (C.Data.Pre)
-            errs() << "--> Precondition Status: " << FulfillmentStr(*C.Data.Pre->Status) << "\n";
-        if (C.Data.Post)
-            errs() << "--> Postcondition Status: " << FulfillmentStr(*C.Data.Post->Status) << "\n";
+        for (size_t i = 0; i < C.Data.Pre.size(); i++) {
+            errs() << "--> Precondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Pre[i].Status) << "\n";
+            if (*C.Data.Pre[i].Status > Fulfillment::FULFILLED)
+                errs() << "--> Expression String: " << C.Data.Pre[i].ExprStr << "\n";
+        }
+        for (size_t i = 0; i < C.Data.Post.size(); i++) {
+            errs() << "--> Postcondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Post[i].Status) << "\n";
+            if (*C.Data.Post[i].Status > Fulfillment::FULFILLED)
+                errs() << "--> Expression String: " << C.Data.Post[i].ExprStr << "\n";
+        }
     }
     if (IS_DEBUG) {
         WithColor(errs(), HighlightColor::Remark) << "--> Debug Begin\n";
@@ -88,8 +95,6 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     errs() << "Checking verification contract results:\n";
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
         if (C.Data.xres == Fulfillment::UNKNOWN) {
-            // Ignore contracts that only supply tags / Do nothing
-            if (!C.Data.Pre.has_value() && !C.Data.Post.has_value()) continue;
             checkExpressions(C, true);
         }
     }
