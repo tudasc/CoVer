@@ -128,7 +128,7 @@ inline bool downwardCheckEquality(const Value* contrP, const Value* callP, Contr
     const Value* target;
     switch (acc) {
         case ContractTree::ParamAccess::NORMAL:
-            if (contrP == callP) return true;
+            return contrP == callP;
         case ContractTree::ParamAccess::DEREF:
             // Contr has a pointer, call has value. Go down from contr param
             source = contrP;

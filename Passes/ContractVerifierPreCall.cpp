@@ -83,7 +83,7 @@ struct IterTypePreCall {
     std::map<const Function*, std::vector<TagUnit>> Tags;
 };
 
-ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
+ContractVerifierPreCallPass::CallStatus transferPreCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
     if (cur.CurVal == ContractVerifierPreCallPass::CallStatusVal::ERROR) return cur;
     if (cur.CurVal == ContractVerifierPreCallPass::CallStatusVal::CALLED) return cur;
 
@@ -126,7 +126,7 @@ ContractVerifierPreCallPass::CallStatus transferCallStat(ContractVerifierPreCall
     return cur;
 }
 
-std::pair<ContractVerifierPreCallPass::CallStatus,bool> mergeCallStat(ContractVerifierPreCallPass::CallStatus prev, ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
+std::pair<ContractVerifierPreCallPass::CallStatus,bool> mergePreCallStat(ContractVerifierPreCallPass::CallStatus prev, ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
     // Intersection of candidates
     std::set<const CallBase*> intersect;
     std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
@@ -147,7 +147,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
 
     IterTypePreCall data = { {}, cOP.Function, C.F, cOP.Params, isTag, Tags };
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
-    std::map<const Instruction *, CallStatus> AnalysisInfo = GenericWorklist<CallStatus>(Entry, transferCallStat, mergeCallStat, &data, init);
+    std::map<const Instruction *, CallStatus> AnalysisInfo = GenericWorklist<CallStatus>(Entry, transferPreCallStat, mergePreCallStat, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
 
