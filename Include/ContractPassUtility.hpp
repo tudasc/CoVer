@@ -69,21 +69,26 @@ std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::f
 
             // Check if function call: If it is, jump to function body
             // If not, continue with normal next instruction
+            const Instruction* iter = nullptr;
             if (const CallBase* CB = dyn_cast<CallBase>(next)) {
-                if (CB->getCalledFunction()) {
+                if (CB->getCalledFunction() && !CB->getCalledFunction()->isDeclaration()) {
                     stack.push(CB);
-                    next = &CB->getCalledFunction()->getEntryBlock().front();
+                    iter = &CB->getCalledFunction()->getEntryBlock().front();
                 }
-            } else {
-                next = next->getNextNonDebugInstruction();
+            }
+            if (!iter) {
+                iter = next->getNextNonDebugInstruction();
             }
 
             // Check if returning from function
             if (!stack.empty() && !next) {
                 // Forward to next from stack
-                next = stack.top()->getNextNonDebugInstruction();
+                iter = stack.top()->getNextNonDebugInstruction();
                 stack.pop();
             }
+
+            // Know next instruction, continue loop or iter is null and we are done
+            next = iter;
         }
         todoList.erase(todoList.begin());
     }
