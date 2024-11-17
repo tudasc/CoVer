@@ -51,11 +51,21 @@ std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext 
 }
 
 std::any ContractDataVisitor::visitReadOp(ContractParser::ReadOpContext *ctx) {
-    std::shared_ptr<const Operation> op = std::make_shared<const ReadOperation>(ReadOperation(ctx->Variable()->getText()));
+    ParamAccess acc = ParamAccess::NORMAL;
+        if (ctx->Deref())
+            acc = ParamAccess::DEREF;
+        if (ctx->AddrOf())
+            acc = ParamAccess::ADDROF;
+    std::shared_ptr<const Operation> op = std::make_shared<const ReadOperation>(ReadOperation(std::stoi(ctx->NatNum()->getText()), acc));
     return op;
 }
 std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) {
-    std::shared_ptr<const Operation> op = std::make_shared<const WriteOperation>(WriteOperation(ctx->Variable()->getText()));
+    ParamAccess acc = ParamAccess::NORMAL;
+        if (ctx->Deref())
+            acc = ParamAccess::DEREF;
+        if (ctx->AddrOf())
+            acc = ParamAccess::ADDROF;
+    std::shared_ptr<const Operation> op = std::make_shared<const WriteOperation>(WriteOperation(std::stoi(ctx->NatNum()->getText()), acc));
     return op;
 }
 std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {

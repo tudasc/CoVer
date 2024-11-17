@@ -16,8 +16,8 @@ tagUnit: Variable (OPPrefix NatNum OPPostfix)?;
 expression: primitive | composite;
 
 primitive: readOp | writeOp | callOp;
-readOp: OPRead OPPrefix Variable OPPostfix;
-writeOp: OPWrite OPPrefix Variable OPPostfix;
+readOp: OPRead OPPrefix (Deref | AddrOf)? NatNum OPPostfix;
+writeOp: OPWrite OPPrefix (Deref | AddrOf)? NatNum OPPostfix;
 varMap: (callP=NatNum | TagParam) MapSep (Deref | AddrOf)? contrP=NatNum;
 callOp: (OPCall | OPCallTag) OPPrefix Variable (ListSep varMap)* OPPostfix;
 

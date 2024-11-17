@@ -116,7 +116,7 @@ for func, tag_idx in tag_typegen:
     function_contracts[func]["POST"].append(f"no! (called_tag!(type_use,$:*{tag_idx})) until! (called!(MPI_Type_commit,0:{tag_idx}))")
     function_contracts[func]["TAGS"].append(f"type_gen({tag_idx})")
 
-tag_typeuse = [("MPI_Send", 2)]
+tag_typeuse = [("MPI_Send", 2), ("MPI_Isend", 2)]
 for func, tag_idx in tag_typeuse:
     function_contracts[func]["TAGS"].append(f"type_use({tag_idx})")
 

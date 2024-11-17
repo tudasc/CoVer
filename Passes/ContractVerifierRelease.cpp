@@ -72,11 +72,21 @@ struct IterTypeRelease {
 
 std::string ContractVerifierReleasePass::createDebugStr(const Instruction* Forbidden) {
     std::stringstream str;
-    str << "[ContractVerifierRelease] Found forbidden call at function "
+    str << "[ContractVerifierRelease] Found forbidden operation at "
         << getInstrLocStr(Forbidden)
         << " before release";
     return str.str();
 }
+
+#define RWHelper(instr) \
+    const int forbidParam = std::any_cast<const int>(Data->param[0]); \
+    const ParamAccess accType = std::any_cast<const ParamAccess>(Data->param[1]); \
+    const Value* contrP = Data->callsite->getArgOperand(forbidParam); \
+    if (downwardCheckEquality(contrP, instr, accType)) { \
+        Data->dbg.push_back(ContractVerifierReleasePass::createDebugStr(instr)); \
+        return ContractVerifierReleasePass::ReleaseStatus::ERROR; \
+    } \
+    return cur;
 
 ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierReleasePass::ReleaseStatus cur, const Instruction* I, void* data) {
     if (cur == ContractVerifierReleasePass::ReleaseStatus::ERROR) return cur;
@@ -116,8 +126,13 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
             }
             break;
         case ContractTree::OperationType::READ:
+            if (const LoadInst* LI = dyn_cast<LoadInst>(I)) {
+                RWHelper(LI);
+            }
         case ContractTree::OperationType::WRITE:
-            #warning TODO RW forbidden for release
+            if (const StoreInst* SI = dyn_cast<StoreInst>(I)) {
+                RWHelper(SI);
+            }
             break;
         default:
             llvm_unreachable("transferRelease encountered previously-checked error state!");
@@ -141,10 +156,9 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
             param.push_back(dynamic_cast<const CallOperation&>(*relOp.Forbidden).Params);
             break;
         case ContractTree::OperationType::READ:
-            param.push_back(dynamic_cast<const ReadOperation&>(*relOp.Forbidden).Variable);
-            break;
         case ContractTree::OperationType::WRITE:
-            param.push_back(dynamic_cast<const WriteOperation&>(*relOp.Forbidden).Variable);
+            param.push_back(dynamic_cast<const RWOperation&>(*relOp.Forbidden).contrP);
+            param.push_back(dynamic_cast<const RWOperation&>(*relOp.Forbidden).contrParamAccess);
             break;
         default:
             error = "Unknown release parameter for forbidden!";

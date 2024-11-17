@@ -114,7 +114,23 @@ inline bool checkCalledApplies(const CallBase* CB, const std::string Target, boo
     }
 }
 
-inline bool downwardCheckEquality(const Value* source, const Value* target) {
+inline bool downwardCheckEquality(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc) {
+    const Value* source;
+    const Value* target;
+    switch (acc) {
+        case ContractTree::ParamAccess::NORMAL:
+            if (contrP == callP) return true;
+        case ContractTree::ParamAccess::DEREF:
+            // Contr has a pointer, call has value. Go down from contr param
+            source = contrP;
+            target = callP;
+            break;
+        case ContractTree::ParamAccess::ADDROF:
+            // Contr has value, call has pointer. Go down from target param
+            source = callP;
+            target = contrP;
+            break;
+        }
     #warning TODO make downward check more expressive
     for (const User* U : source->users()) {
         if (U == target) return true;
@@ -139,16 +155,7 @@ inline bool checkCallParamApplies(const CallBase* Source, const CallBase* Target
     }
 
     for (const Value* candidateParam : candidateParams) {
-        switch (P.contrParamAccess) {
-            case ContractTree::ParamAccess::NORMAL:
-                if (candidateParam == sourceParam) return true;
-            case ContractTree::ParamAccess::DEREF:
-                // Contr has a pointer, target has value. Go down from contr param
-                if (downwardCheckEquality(sourceParam, candidateParam)) return true;
-            case ContractTree::ParamAccess::ADDROF:
-                // Contr has value, target has pointer. Go down from target param
-                if (downwardCheckEquality(candidateParam, sourceParam)) return true;
-        }
+        return downwardCheckEquality(sourceParam, candidateParam, P.contrParamAccess);
     }
     return false;
 }

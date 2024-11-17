@@ -14,21 +14,25 @@
 
 namespace ContractTree {
     enum struct OperationType { READ, WRITE, CALL, CALLTAG, RELEASE };
+    enum struct ParamAccess { NORMAL, DEREF, ADDROF };
     struct Operation {
         virtual ~Operation() = default;
         virtual const OperationType type() const = 0;
     };
-    struct ReadOperation : Operation {
-        ReadOperation(std::string _var) : Variable{_var} {};
-        const std::string Variable;
+    struct RWOperation : Operation {
+        const int contrP;
+        const ParamAccess contrParamAccess;
+        protected:
+            RWOperation(int _contrP, ParamAccess _acc) : contrP(_contrP), contrParamAccess(_acc) {};
+    };
+    struct ReadOperation : RWOperation {
+        ReadOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
         virtual const OperationType type() const override { return OperationType::READ; };
     };
-    struct WriteOperation : Operation {
-        WriteOperation(std::string _var) : Variable{_var} {};
-        const std::string Variable;
+    struct WriteOperation : RWOperation {
+        WriteOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
         virtual const OperationType type() const override { return OperationType::WRITE; };
     };
-    enum struct ParamAccess { NORMAL, DEREF, ADDROF };
     struct CallParam {
         int callP;
         bool callPisTagVar;
