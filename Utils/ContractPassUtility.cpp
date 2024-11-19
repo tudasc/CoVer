@@ -49,7 +49,9 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     const Value* target;
     switch (acc) {
         case ContractTree::ParamAccess::NORMAL:
-            return contrP == callP;
+            source = contrP;
+            target = callP;
+            break;
         case ContractTree::ParamAccess::DEREF:
             // Contr has a pointer, call has value.
             source = contrP;
@@ -65,7 +67,14 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     while (true) {
         // If equal, success
         if (source == target) return true;
-        // If not, get their ptr operands if they exist and check again
+        // If one is a GEP, resolve "for free"
+        if (isa<GetElementPtrInst>(source))
+            source = getPointerOperand(source);
+        if (isa<GetElementPtrInst>(target))
+            target = getPointerOperand(target);
+        // Check again, may be equal if synchronized already (i.e. stack array)
+        if (source == target) return true;
+        // Get their ptr operands if they exist and check again
         source = getPointerOperand(source);
         target = getPointerOperand(target);
         // If one does not have a pointer operand, then they can not match

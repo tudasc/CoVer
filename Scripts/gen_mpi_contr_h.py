@@ -112,7 +112,11 @@ for func, tag_idx in tag_reqgen:
     function_contracts[func]["TAGS"].append(f"request_gen({tag_idx})")
 
 # Local data races - P2P
-tag_buffers = [("MPI_Isend", 0, 6, ["W"], ["R"]), ("MPI_Irecv", 0, 6, ["R", "W"], ["W"])]
+tag_buffers = [("MPI_Isend", 0, 6, "W", "R"),
+               ("MPI_Irecv", 0, 6, "RW", "W"),
+               ("MPI_Iallreduce", 0, 6, "W", "R"), # Send buffer - No writing
+               ("MPI_Iallreduce", 1, 6, "RW", "W"), # Recv buffer - No RW
+               ]
 for func, buf_idx, req_idx, forbid, action in tag_buffers:
     if "R" in forbid:
         function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
