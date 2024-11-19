@@ -27,8 +27,6 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         struct Result {
             std::vector<Contract> Contracts;
             std::map<const Function*, std::vector<TagUnit>> Tags;
-            #warning HACK: Never invalidate result
-            bool invalidate(Module &M, const PreservedAnalyses &PA, ModuleAnalysisManager::Invalidator &) { return false; }
         } typedef ContractDatabase;
 
         // Run Pass

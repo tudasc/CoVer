@@ -12,9 +12,9 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
+#include <stack>
 #include <string>
 #include <optional>
-#include <stack>
 #include <sys/types.h>
 #include <vector>
 
@@ -23,12 +23,43 @@ using namespace llvm;
 #define DEBUG_ENV "LLVMCONTRACTS_DEBUG"
 #define IS_DEBUG (getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1)
 
+namespace ContractPassUtility {
+    /*
+    * Apply worklist algorithm
+    * Need Start param to make sure that the initialization of parameters does not count as operation
+    */
+    template <typename T>
+    std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, void* data, T init);
+
+    /*
+    * Get line number, or get a string representation of the location
+    * Format: <module>:<line> or UNKNOWN depending on output of getLineNumber
+    */
+    std::optional<uint> getLineNumber(const Instruction* I);
+    std::string getInstrLocStr(const Instruction* I);
+
+    /*
+    * Check if call applies to target (which may be a tag or function name)
+    */
+    bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+
+    /*
+    * Check if contract and call parameter fit
+    */
+    bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc);
+
+    /*
+    * Check if two calls match by contract definition
+    */
+    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+};
+
 /*
  * Apply worklist algorithm
  * Need Start param to make sure that the initialization of parameters does not count as operation
  */
 template <typename T>
-std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, void* data, T init) {
+std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, void* data, T init) {
     std::map<const Instruction*, T> postAccess;
     std::vector<std::tuple<const Instruction*, T, std::stack<const CallBase*>>> todoList = { {Start, init, {}} };
     while (!todoList.empty()) {
@@ -97,74 +128,4 @@ std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::f
         todoList.erase(todoList.begin());
     }
     return postAccess;
-}
-
-inline std::optional<uint> getLineNumber(const Instruction* I) {
-    if (const DebugLoc& N = I->getDebugLoc()) {
-        return N.getLine();
-    }
-    return std::nullopt;
-}
-inline std::string getInstrLocStr(const Instruction* I) {
-    return demangle(I->getParent()->getParent()->getName()) + ":" + (getLineNumber(I).has_value() ? std::to_string(getLineNumber(I).value()) : "UNKNOWN");
-}
-
-inline bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
-    if (!isTag) {
-        return CB->getCalledFunction()->getName() == Target;
-    } else {
-        if (!Tags.contains(CB->getCalledFunction())) return false;
-        for (const ContractTree::TagUnit tag : Tags[CB->getCalledFunction()]) {
-            if (tag.tag == Target) {
-                return true;
-            }
-        }
-        return false;
-    }
-}
-
-inline bool downwardCheckEquality(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc) {
-    const Value* source;
-    const Value* target;
-    switch (acc) {
-        case ContractTree::ParamAccess::NORMAL:
-            return contrP == callP;
-        case ContractTree::ParamAccess::DEREF:
-            // Contr has a pointer, call has value. Go down from contr param
-            source = contrP;
-            target = callP;
-            break;
-        case ContractTree::ParamAccess::ADDROF:
-            // Contr has value, call has pointer. Go down from target param
-            source = callP;
-            target = contrP;
-            break;
-        }
-    #warning TODO make downward check more expressive
-    for (const User* U : source->users()) {
-        if (U == target) return true;
-    }
-    return false;
-}
-
-inline bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
-    std::vector<const Value*> candidateParams;
-    const Value* sourceParam = Source->getArgOperand(P.contrP);
-
-    if (!P.callPisTagVar) {
-        candidateParams.push_back(Target->getArgOperand(P.callP));
-    } else {
-        for (ContractTree::TagUnit TagU : Tags[Target->getCalledFunction()]) {
-            if (TagU.tag != TargetStr) continue;
-            if (!TagU.param.has_value()) continue;
-            candidateParams.push_back(Target->getArgOperand(*TagU.param));
-        }
-        if (candidateParams.empty())
-            throw "Could not find candidate parameter with matching tag! Invalid contract definition";
-    }
-
-    for (const Value* candidateParam : candidateParams) {
-        return downwardCheckEquality(sourceParam, candidateParam, P.contrParamAccess);
-    }
-    return false;
 }

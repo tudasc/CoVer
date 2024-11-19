@@ -28,7 +28,6 @@ using namespace ContractTree;
 PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
-
     Tags = DB.Tags;
 
     for (ContractManagerAnalysis::Contract& C : DB.Contracts) {
@@ -73,7 +72,7 @@ struct IterTypeRelease {
 std::string ContractVerifierReleasePass::createDebugStr(const Instruction* Forbidden) {
     std::stringstream str;
     str << "[ContractVerifierRelease] Found forbidden operation at "
-        << getInstrLocStr(Forbidden)
+        << ContractPassUtility::getInstrLocStr(Forbidden)
         << " before release";
     return str.str();
 }
@@ -82,7 +81,7 @@ std::string ContractVerifierReleasePass::createDebugStr(const Instruction* Forbi
     const int forbidParam = std::any_cast<const int>(Data->param[0]); \
     const ParamAccess accType = std::any_cast<const ParamAccess>(Data->param[1]); \
     const Value* contrP = Data->callsite->getArgOperand(forbidParam); \
-    if (downwardCheckEquality(contrP, instr, accType)) { \
+    if (ContractPassUtility::checkParamMatch(contrP, instr, accType)) { \
         Data->dbg.push_back(ContractVerifierReleasePass::createDebugStr(instr)); \
         return ContractVerifierReleasePass::ReleaseStatus::ERROR; \
     } \
@@ -95,10 +94,10 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
     IterTypeRelease* Data = static_cast<IterTypeRelease*>(data);
 
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-        if (checkCalledApplies(CB, Data->releaseFunc, Data->isTagRel, Data->Tags)) {
+        if (ContractPassUtility::checkCalledApplies(CB, Data->releaseFunc, Data->isTagRel, Data->Tags)) {
             if (Data->releaseParam.empty()) return ContractVerifierReleasePass::ReleaseStatus::FULFILLED;
             for (CallParam P : Data->releaseParam) {
-                if (checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags))
+                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags))
                     return ContractVerifierReleasePass::ReleaseStatus::FULFILLED;
             }
             // Wrong parameters, continue
@@ -110,12 +109,12 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
         case ContractTree::OperationType::CALL:
         case ContractTree::OperationType::CALLTAG:
             if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-                if (checkCalledApplies(CB, std::any_cast<std::string>(Data->param[0]), Data->forbiddenType == ContractTree::OperationType::CALLTAG, Data->Tags)) {
+                if (ContractPassUtility::checkCalledApplies(CB, std::any_cast<std::string>(Data->param[0]), Data->forbiddenType == ContractTree::OperationType::CALLTAG, Data->Tags)) {
                     // Found forbidden function. Current status is unknown, if we find forbidden parameter (and one is specified) this is an error
                     const std::vector<CallParam> forbidParams = std::any_cast<const std::vector<CallParam>>(Data->param[1]);
                     if (forbidParams.empty()) return ContractVerifierReleasePass::ReleaseStatus::ERROR;
                     for (CallParam forbidParam : forbidParams) {
-                        if (checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags)) {
+                        if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags)) {
                             Data->dbg.push_back(ContractVerifierReleasePass::createDebugStr(CB));
                             return ContractVerifierReleasePass::ReleaseStatus::ERROR;
                         }
@@ -182,7 +181,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledFunction() == C.F) {
                 data.callsite = CB;
-                std::map<const Instruction *, ReleaseStatus> AnalysisInfo = GenericWorklist<ReleaseStatus>(CB->getNextNode(), transferRelease, mergeRelease, &data, ReleaseStatus::FORBIDDEN);
+                std::map<const Instruction *, ReleaseStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB->getNextNode(), transferRelease, mergeRelease, &data, ReleaseStatus::FORBIDDEN);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 for (std::pair<const Instruction *, ReleaseStatus> x : AnalysisInfo) {
                     if (x.second == ReleaseStatus::ERROR) return ReleaseStatus::ERROR;

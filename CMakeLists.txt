@@ -39,6 +39,7 @@ add_llvm_pass_plugin(LLVMContractsPlugin
   Passes/ContractVerifierPreCall.cpp
   Passes/ContractVerifierRelease.cpp
   Passes/ContractPostProcess.cpp
+  Utils/ContractPassUtility.cpp
   LangCode/ContractDataVisitor.cpp
   LangCode/ContractLangErrorListener.cpp
   Include/ContractPassUtility.hpp
@@ -100,7 +101,6 @@ install(
 ##
 ## Premade MPI header for convenience and quick testing
 ##
-
 
 find_package(MPI REQUIRED)
 
