@@ -128,6 +128,7 @@ ContractVerifierReleasePass::ReleaseStatus transferRelease(ContractVerifierRelea
             if (const LoadInst* LI = dyn_cast<LoadInst>(I)) {
                 RWHelper(LI);
             }
+            break;
         case ContractTree::OperationType::WRITE:
             if (const StoreInst* SI = dyn_cast<StoreInst>(I)) {
                 RWHelper(SI);
