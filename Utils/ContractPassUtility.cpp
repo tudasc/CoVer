@@ -65,6 +65,8 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         }
     // Now, need to check if they are equal / aliases
     while (true) {
+        // If either is null, paramerror or if one does not have a pointer operand, then they can not match
+        if (!source || !target) return false;
         // If equal, success
         if (source == target) return true;
         // If one is a GEP, resolve "for free"
@@ -77,8 +79,6 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         // Get their ptr operands if they exist and check again
         source = getPointerOperand(source);
         target = getPointerOperand(target);
-        // If one does not have a pointer operand, then they can not match
-        if (!source || !target) return false;
     }
 }
 

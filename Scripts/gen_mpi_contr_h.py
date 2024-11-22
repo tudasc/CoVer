@@ -153,12 +153,17 @@ for func, win_idx in tag_creatermaepoch:
 
 # RMA Window needs to be created
 tag_rmawin = [("MPI_Put", 7),
-                ("MPI_Get", 7)]
+              ("MPI_Get", 7),
+              ("MPI_Accumulate", 8),]
 for func, win_idx in tag_rmawin:
     function_contracts[func]["PRE"].append(f"called_tag!(rma_createwin,$:&{win_idx})")
 tag_createwin = [("MPI_Win_create", 5), ("MPI_Win_allocate", 5)]
 for func, win_idx in tag_createwin:
     function_contracts[func]["TAGS"].append(f"rma_createwin({win_idx})")
+
+# No inflight calls when freeing
+for func, win_idx in tag_rmawin:
+    function_contracts[func]["POST"].append(f"no! (called!(MPI_Win_free,0:&{win_idx})) until! (called_tag!(rma_complete,$:{win_idx}))")
 
 # Make sure types are committed
 tag_typegen = [("MPI_Type_contiguous", 2)]
