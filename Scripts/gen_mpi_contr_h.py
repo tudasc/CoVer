@@ -111,23 +111,54 @@ for func, tag_idx in tag_reqgen:
     function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called!(MPI_Wait,0:{tag_idx}))")
     function_contracts[func]["TAGS"].append(f"request_gen({tag_idx})")
 
-# Local data races - P2P
-tag_buffers = [("MPI_Isend", 0, 6, "W", "R"),
-               ("MPI_Irecv", 0, 6, "RW", "W"),
-               ("MPI_Iallreduce", 0, 6, "W", "R"), # Send buffer - No writing
-               ("MPI_Iallreduce", 1, 6, "RW", "W"), # Recv buffer - No RW
-               ]
-for func, buf_idx, req_idx, forbid, action in tag_buffers:
+# Local data races
+tag_buf = [("RMAWIN", "MPI_Put", 0, 7, "W", "R"),
+           ("RMAWIN", "MPI_Rput", 0, 7, "W", "R"),
+           ("RMAWIN", "MPI_Get", 0, 7, "RW", "W"),
+           ("RMAWIN", "MPI_Rget", 0, 7, "RW", "W"),
+           ("RMAWIN", "MPI_Accumulate", 0, 8, "W", "R"),
+           ("REQ", "MPI_Isend", 0, 6, "W", "R"),
+           ("REQ", "MPI_Irecv", 0, 6, "RW", "W"),
+           ("REQ", "MPI_Iallreduce", 0, 6, "W", "R"), # Send buffer - No writing
+           ("REQ", "MPI_Iallreduce", 1, 6, "RW", "W")] # Recv buffer - No RW
+for calltype, func, buf_idx, mark_idx, forbid, action in tag_buf:
+    if calltype == "RMAWIN": completiontag = "rma_complete"
+    if calltype == "REQ": completiontag = "req_complete"
     if "R" in forbid:
-        function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
-        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_read,$:{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
+        function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx}))")
+        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_read,$:{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx}))")
     if "W" in forbid:
-        function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
-        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_write,$:{buf_idx})) until! (called!(MPI_Wait,0:{req_idx}))")
+        function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx}))")
+        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_write,$:{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx}))")
     if "R" in action:
         function_contracts[func]["TAGS"].append(f"buf_read({buf_idx})")
     if "W" in action:
         function_contracts[func]["TAGS"].append(f"buf_write({buf_idx})")
+
+tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0)]
+for func, win_idx in tag_rmacomplete:
+    function_contracts[func]["TAGS"].append(f"rma_complete({win_idx})")
+tag_p2pcomplete = [("MPI_Wait", 0)]
+for func, req_idx in tag_p2pcomplete:
+    function_contracts[func]["TAGS"].append(f"req_complete({req_idx})")
+
+# RMA Epoch needs to be open
+tag_needrmaepoch = [("MPI_Put", 7),
+                ("MPI_Get", 7)]
+for func, win_idx in tag_needrmaepoch:
+    function_contracts[func]["PRE"].append(f"called_tag!(epoch_create,$:{win_idx})")
+tag_creatermaepoch = [("MPI_Win_lock", 3), ("MPI_Win_fence", 1), ("MPI_Win_lock_all", 1)]
+for func, win_idx in tag_creatermaepoch:
+    function_contracts[func]["TAGS"].append(f"epoch_create({win_idx})")
+
+# RMA Window needs to be created
+tag_rmawin = [("MPI_Put", 7),
+                ("MPI_Get", 7)]
+for func, win_idx in tag_rmawin:
+    function_contracts[func]["PRE"].append(f"called_tag!(rma_createwin,$:&{win_idx})")
+tag_createwin = [("MPI_Win_create", 5), ("MPI_Win_allocate", 5)]
+for func, win_idx in tag_createwin:
+    function_contracts[func]["TAGS"].append(f"rma_createwin({win_idx})")
 
 # Make sure types are committed
 tag_typegen = [("MPI_Type_contiguous", 2)]
