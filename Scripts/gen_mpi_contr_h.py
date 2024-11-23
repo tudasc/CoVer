@@ -105,10 +105,10 @@ for func in function_decls.keys():
         continue
     function_contracts[func]["POST"].append("called!(MPI_Finalize)")
 
-# No request reuse until MPI_Wait for persistent comms
+# No request reuse until p2pcomplete for persistent comms, request must be completed
 tag_reqgen = [("MPI_Iallgather", 7), ("MPI_Iallreduce", 6), ("MPI_Ialltoall", 7), ("MPI_Ibarrier", 1), ("MPI_Ibcast", 5), ("MPI_Igather", 8), ("MPI_Ibsend", 6), ("MPI_Irecv", 6), ("MPI_Isend", 6), ("MPI_Isendrecv", 11), ("MPI_Start", 0)]
 for func, tag_idx in tag_reqgen:
-    function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called!(MPI_Wait,0:{tag_idx}))")
+    function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called_tag!(req_complete,$:{tag_idx}))")
     function_contracts[func]["TAGS"].append(f"request_gen({tag_idx})")
 
 # Local data races
@@ -155,7 +155,7 @@ function_contracts["MPI_Rget"]["POST"].append(f"( no! (called_tag!(buf_read,$:0)
 tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0)]
 for func, win_idx in tag_rmacomplete:
     function_contracts[func]["TAGS"].append(f"rma_complete({win_idx})")
-tag_p2pcomplete = [("MPI_Wait", 0)]
+tag_p2pcomplete = [("MPI_Wait", 0), ("MPI_Test", 0)]
 for func, req_idx in tag_p2pcomplete:
     function_contracts[func]["TAGS"].append(f"req_complete({req_idx})")
 
