@@ -9,7 +9,8 @@ contract: (ContractMarker | ContractMarkerExpFail | ContractMarkerExpSucc) Scope
 
 precondition: PreMarker ScopePrefix exprList ScopePostfix;
 postcondition: PostMarker ScopePrefix exprList ScopePostfix;
-exprList: expression (ListSep expression)*;
+exprList: exprFormula (ListSep exprFormula)*;
+exprFormula: expression | (OPPrefix exprFormula XORSep exprFormula OPPostfix) | (OPPrefix exprFormula ORSep exprFormula OPPostfix);
 functags: TagMarker ScopePrefix tagUnit (ListSep tagUnit)* ScopePostfix;
 
 tagUnit: Variable (OPPrefix NatNum OPPostfix)?;

@@ -18,6 +18,7 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Transforms/Instrumentation.h>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -30,15 +31,15 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
 
-    for (ContractManagerAnalysis::Contract& C : DB.Contracts) {
-        for (const ContractExpression Expr : C.Data.Post) {
-            if (*Expr.Status != Fulfillment::UNKNOWN) continue;
+    for (ContractManagerAnalysis::LinearizedContract& C : DB.LinearizedContracts) {
+        for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
+            if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a postcondition
             std::string err;
             bool result = false;
-            switch (Expr.OP->type()) {
+            switch (Expr->OP->type()) {
                 case OperationType::RELEASE: {
-                    const ReleaseOperation& relOP = dynamic_cast<const ReleaseOperation&>(*Expr.OP);
+                    const ReleaseOperation& relOP = dynamic_cast<const ReleaseOperation&>(*Expr->OP);
                     result = checkRelease(relOP, C, M, err) == ReleaseStatus::FULFILLED;
                     break;
                 }
@@ -48,9 +49,9 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                 errs() << err << "\n";
             }
             if (result) {
-                *Expr.Status = Fulfillment::FULFILLED;
+                *Expr->Status = Fulfillment::FULFILLED;
             } else {
-                *Expr.Status = Fulfillment::BROKEN;
+                *Expr->Status = Fulfillment::BROKEN;
             }
         }
     }
@@ -147,7 +148,7 @@ std::pair<ContractVerifierReleasePass::ReleaseStatus,bool> mergeRelease(Contract
     return { newStat, newStat > prev};
 }
 
-ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(const ContractTree::ReleaseOperation relOp, const ContractManagerAnalysis::Contract& C, const Module& M, std::string& error) {
+ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(const ContractTree::ReleaseOperation relOp, const ContractManagerAnalysis::LinearizedContract& C, const Module& M, std::string& error) {
     // Figure out release parameters
     OperationType forbiddenType = relOp.Forbidden->type();
     std::vector<std::any> param;

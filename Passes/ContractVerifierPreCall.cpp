@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <llvm/Demangle/Demangle.h>
+#include <memory>
 #include <utility>
 #include <vector>
 #include <sstream>
@@ -28,20 +29,20 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
 
-    for (ContractManagerAnalysis::Contract C : DB.Contracts) {
-        for (const ContractExpression Expr : C.Data.Pre) {
-            if (*Expr.Status != Fulfillment::UNKNOWN) continue;
+    for (ContractManagerAnalysis::LinearizedContract C : DB.LinearizedContracts) {
+        for (const std::shared_ptr<ContractExpression> Expr : C.Pre) {
+            if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a precondition
             std::string err;
             CallStatusVal result;
-            switch (Expr.OP->type()) {
+            switch (Expr->OP->type()) {
                 case OperationType::CALL: {
-                    const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr.OP);
+                    const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr->OP);
                     result = checkPreCall(cOP, C, false, M, err);
                     break;
                 }
                 case OperationType::CALLTAG: {
-                    const CallTagOperation& ctOP = dynamic_cast<const CallTagOperation&>(*Expr.OP);
+                    const CallTagOperation& ctOP = dynamic_cast<const CallTagOperation&>(*Expr->OP);
                     result = checkPreCall(ctOP, C, true, M, err);
                     break;
                 }
@@ -51,9 +52,9 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                 errs() << err << "\n";
             }
             if (result < CallStatusVal::ERROR) {
-                *Expr.Status = Fulfillment::FULFILLED;
+                *Expr->Status = Fulfillment::FULFILLED;
             } else {
-                *Expr.Status = Fulfillment::BROKEN;
+                *Expr->Status = Fulfillment::BROKEN;
             }
         }
     }
@@ -135,7 +136,7 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> mergePreCallStat(Contrac
     return { cs, cs.CurVal > prev.CurVal };
 }
 
-ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const ContractManagerAnalysis::Contract& C, const bool isTag, const Module& M, std::string& error) {
+ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const ContractManagerAnalysis::LinearizedContract& C, const bool isTag, const Module& M, std::string& error) {
     const Function* mainF = M.getFunction("main");
     if (!mainF) {
         error = "Cannot find main function, cannot construct path to check precall!";

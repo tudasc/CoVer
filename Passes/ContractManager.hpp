@@ -22,15 +22,26 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             const ContractData Data;
             std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
         };
+        struct LinearizedContract {
+            const Function* const F;
+            const StringRef ContractString;
+            const std::vector<std::shared_ptr<ContractExpression>> Pre;
+            const std::vector<std::shared_ptr<ContractExpression>> Post;
+            std::shared_ptr<std::vector<std::string>> DebugInfo;
+        };
 
         //Result Type
         struct Result {
-            std::vector<Contract> Contracts;
+            std::vector<Contract> Contracts; // For postprocessing only
+            std::vector<LinearizedContract> LinearizedContracts; // For verification passes
             std::map<const Function*, std::vector<TagUnit>> Tags;
         } typedef ContractDatabase;
 
         // Run Pass
         ContractDatabase run(Module &M, ModuleAnalysisManager &AM);
+    
+    private:
+        const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF);
 };
 
 } // namespace llvm

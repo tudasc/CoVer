@@ -58,10 +58,19 @@ namespace ContractTree {
 
     enum struct Fulfillment { FULFILLED, UNKNOWN, BROKEN };
     inline const std::string FulfillmentStr(Fulfillment f) { return std::vector<std::string>{ "Fulfilled", "Unknown", "Broken"}[(int)f]; };
-    struct ContractExpression {
-        const std::shared_ptr<const Operation> OP;
+    enum struct FormulaType { XOR, OR };
+    struct ContractFormula {
+        ContractFormula(std::vector<std::shared_ptr<ContractFormula>> _cF, std::string _str, FormulaType _type) : Children(_cF), ExprStr(_str), type(_type) {}
+        ContractFormula(std::string _str) : ExprStr(_str) {}
+        const std::vector<std::shared_ptr<ContractFormula>> Children;
         const std::string ExprStr;
+        const FormulaType type = FormulaType::OR;
         std::shared_ptr<Fulfillment> Status = std::make_shared<Fulfillment>(Fulfillment::UNKNOWN);
+        virtual ~ContractFormula() = default;
+    };
+    struct ContractExpression : ContractFormula {
+        ContractExpression(std::string _str, std::shared_ptr<const Operation> _op) : ContractFormula(_str), OP{_op} {}
+        const std::shared_ptr<const Operation> OP;
     };
 
     struct TagUnit {
@@ -69,8 +78,8 @@ namespace ContractTree {
         std::optional<int> param;
     };
     struct ContractData {
-        const std::vector<ContractExpression> Pre;
-        const std::vector<ContractExpression> Post;
+        const std::vector<std::shared_ptr<ContractFormula>> Pre;
+        const std::vector<std::shared_ptr<ContractFormula>> Post;
         const std::vector<TagUnit> Tags;
         Fulfillment xres = Fulfillment::UNKNOWN;
     };

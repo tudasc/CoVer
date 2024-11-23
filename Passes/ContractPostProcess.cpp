@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/Support/WithColor.h>
+#include <memory>
+#include <vector>
 
 using namespace llvm;
 using namespace ContractTree;
@@ -13,11 +15,11 @@ using namespace ContractTree;
 Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
     Fulfillment s = Fulfillment::FULFILLED;
     std::string reason;
-    for (const ContractExpression Expr : C.Data.Pre) {
-        s = std::max(s, *Expr.Status);
+    for (const std::shared_ptr<ContractFormula> Expr : C.Data.Pre) {
+        s = std::max(s, resolveFormula(Expr));
     }
-    for (const ContractExpression Expr : C.Data.Post) {
-        s = std::max(s, *Expr.Status);
+    for (const std::shared_ptr<ContractFormula> Expr : C.Data.Post) {
+        s = std::max(s, resolveFormula(Expr));
     }
     if (!output) return s;
 
@@ -28,14 +30,14 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     errs() << "--> Contract: " << C.ContractString << "\n";
     if (s > Fulfillment::FULFILLED) {
         for (size_t i = 0; i < C.Data.Pre.size(); i++) {
-            errs() << "--> Precondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Pre[i].Status) << "\n";
-            if (*C.Data.Pre[i].Status > Fulfillment::FULFILLED)
-                errs() << "    --> Expression String: " << C.Data.Pre[i].ExprStr << "\n";
+            errs() << "--> Precondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Pre[i]->Status) << "\n";
+            if (*C.Data.Pre[i]->Status > Fulfillment::FULFILLED)
+                errs() << "    --> Expression String: " << C.Data.Pre[i]->ExprStr << "\n";
         }
         for (size_t i = 0; i < C.Data.Post.size(); i++) {
-            errs() << "--> Postcondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Post[i].Status) << "\n";
-            if (*C.Data.Post[i].Status > Fulfillment::FULFILLED)
-                errs() << "    --> Expression String: " << C.Data.Post[i].ExprStr << "\n";
+            errs() << "--> Postcondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Post[i]->Status) << "\n";
+            if (*C.Data.Post[i]->Status > Fulfillment::FULFILLED)
+                errs() << "    --> Expression String: " << C.Data.Post[i]->ExprStr << "\n";
         }
     }
     if (IS_DEBUG) {
@@ -100,4 +102,27 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     }
 
     return PreservedAnalyses::all();
+}
+
+Fulfillment ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF) {
+    if (contrF->Children.empty()) {
+        return *contrF->Status;
+    }
+    std::vector<Fulfillment> f;
+    for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
+        f.push_back(resolveFormula(Form));
+    }
+    switch (contrF->type) {
+        case FormulaType::OR:
+            *contrF->Status = *std::min_element(f.begin(), f.end());
+            break;
+        case FormulaType::XOR:
+            if (f[0] == f[1] && f[0] != Fulfillment::UNKNOWN)
+                *contrF->Status = Fulfillment::BROKEN;
+            else if (f[0] == Fulfillment::FULFILLED || f[1] == Fulfillment::FULFILLED)
+                *contrF->Status = Fulfillment::FULFILLED;
+            else
+                *contrF->Status = Fulfillment::UNKNOWN;
+    }
+    return *contrF->Status;
 }

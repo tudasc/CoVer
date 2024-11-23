@@ -19,6 +19,7 @@
 #include <string>
 
 #include <antlr4-runtime.h>
+#include <vector>
 #include "ContractLexer.h"
 #include "ContractParser.h"
 #include "../LangCode/ContractLangErrorListener.hpp"
@@ -94,11 +95,45 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
         StringRef location = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(2))->getInitializer())->getAsCString();
         errs() << "Found contract in " << location << " with content: " << ANNStr << "\n";
         parser.reset();
+
+        // Finally have contract data
         ContractData Data = dataVisitor.getContractData(parser.contract());
         Contract newCtr{F, ANNStr, Data};
+
+        // Add normal contract
         curDatabase.Contracts.push_back(newCtr);
+
+        // Create and add Linearized Contract
+        std::vector<std::shared_ptr<ContractExpression>> PreLin;
+        for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Pre) {
+            std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
+            PreLin.insert( PreLin.end(), contrFLin.begin(), contrFLin.end() );
+        }
+        std::vector<std::shared_ptr<ContractExpression>> PostLin;
+        for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Post) {
+            std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
+            PostLin.insert( PostLin.end(), contrFLin.begin(), contrFLin.end() );
+        }
+
+        LinearizedContract lContract = { F, ANNStr, PreLin, PostLin, newCtr.DebugInfo};
+        curDatabase.LinearizedContracts.push_back(lContract);
+
+        // Append tag database
         curDatabase.Tags[newCtr.F].insert(curDatabase.Tags[newCtr.F].end(), newCtr.Data.Tags.begin(), newCtr.Data.Tags.end());
     }
 
     return curDatabase;
+}
+
+const std::vector<std::shared_ptr<ContractExpression>> ContractManagerAnalysis::linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF) {
+    if (contrF->Children.empty()) {
+        assert(std::dynamic_pointer_cast<ContractExpression>(contrF) != nullptr);
+        return { std::dynamic_pointer_cast<ContractExpression>(contrF) };
+    }
+    std::vector<std::shared_ptr<ContractExpression>> exprs;
+    for (std::shared_ptr<ContractFormula> form : contrF->Children ) {
+        std::vector<std::shared_ptr<ContractExpression>> linChild = linearizeContractFormula(form);
+        exprs.insert( exprs.end(), linChild.begin(), linChild.end() );
+    }
+    return exprs;
 }
