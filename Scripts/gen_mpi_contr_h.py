@@ -116,7 +116,14 @@ tag_buf = [("RMAWIN", "MPI_Put", 0, 7, "W", "R"),
            ("EITHER", "MPI_Rput", 0, 7, "W", "R"),
            ("RMAWIN", "MPI_Get", 0, 7, "RW", "W"),
            ("EITHER", "MPI_Rget", 0, 7, "RW", "W"),
+           ("RMAWIN", "MPI_Get_accumulate", 0, 11, "W", "R"),
+           ("RMAWIN", "MPI_Get_accumulate", 3, 11, "RW", "W"),
            ("RMAWIN", "MPI_Accumulate", 0, 8, "W", "R"),
+           ("RMAWIN", "MPI_Fetch_and_op", 0, 6, "W", "R"),
+           ("RMAWIN", "MPI_Fetch_and_op", 1, 6, "RW", "W"),
+           ("RMAWIN", "MPI_Compare_and_swap", 0, 6, "W", "R"),
+           ("RMAWIN", "MPI_Compare_and_swap", 1, 6, "W", "R"),
+           ("RMAWIN", "MPI_Compare_and_swap", 2, 6, "RW", "W"),
            ("REQ", "MPI_Isend", 0, 6, "W", "R"),
            ("REQ", "MPI_Irecv", 0, 6, "RW", "W"),
            ("REQ", "MPI_Iallreduce", 0, 6, "W", "R"), # Send buffer - No writing
@@ -152,7 +159,7 @@ function_contracts["MPI_Rget"]["POST"].append(f"( no! (read!(*0)) until! (called
 function_contracts["MPI_Rget"]["POST"].append(f"( no! (called_tag!(buf_read,$:0)) until! (called_tag!(rma_complete,$:7)) | \
                                                   no! (called_tag!(buf_read,$:0)) until! (called_tag!(req_complete,$:8)) )")
 
-tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0)]
+tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0), ("MPI_Win_flush_local_all", 0)]
 for func, win_idx in tag_rmacomplete:
     function_contracts[func]["TAGS"].append(f"rma_complete({win_idx})")
 tag_p2pcomplete = [("MPI_Wait", 0), ("MPI_Test", 0)]
@@ -161,7 +168,10 @@ for func, req_idx in tag_p2pcomplete:
 
 # RMA Epoch needs to be open
 tag_needrmaepoch = [("MPI_Put", 7),
-                    ("MPI_Get", 7)]
+                    ("MPI_Get", 7),
+                    ("MPI_Get_accumulate", 11),
+                    ("MPI_Fetch_and_op", 6),
+                    ("MPI_Compare_and_swap", 6)]
 for func, win_idx in tag_needrmaepoch:
     function_contracts[func]["PRE"].append(f"( called_tag!(epoch_fence_create,$:{win_idx}) ^ \
                                                called_tag!(epoch_lock_create,$:{win_idx}) )")
@@ -175,7 +185,10 @@ for func, win_idx in tag_createlockrmaepoch:
 # RMA Window needs to be created
 tag_rmawin = [("MPI_Put", 7),
               ("MPI_Get", 7),
-              ("MPI_Accumulate", 8),]
+              ("MPI_Accumulate", 8),
+              ("MPI_Get_accumulate", 11),
+              ("MPI_Fetch_and_op", 6),
+              ("MPI_Compare_and_swap", 6)]
 for func, win_idx in tag_rmawin:
     function_contracts[func]["PRE"].append(f"called_tag!(rma_createwin,$:&{win_idx})")
 tag_createwin = [("MPI_Win_create", 5), ("MPI_Win_allocate", 5)]
