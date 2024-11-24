@@ -36,14 +36,10 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
             std::string err;
             CallStatusVal result;
             switch (Expr->OP->type()) {
-                case OperationType::CALL: {
-                    const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr->OP);
-                    result = checkPreCall(cOP, C, false, M, err);
-                    break;
-                }
+                case OperationType::CALL:
                 case OperationType::CALLTAG: {
-                    const CallTagOperation& ctOP = dynamic_cast<const CallTagOperation&>(*Expr->OP);
-                    result = checkPreCall(ctOP, C, true, M, err);
+                    const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr->OP);
+                    result = checkPreCall(cOP, C, Expr->OP->type() == OperationType::CALLTAG, M, err);
                     break;
                 }
                 default: continue;
