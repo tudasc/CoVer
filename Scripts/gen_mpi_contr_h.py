@@ -110,6 +110,7 @@ for func in function_decls.keys():
 tag_reqgen = [("MPI_Iallgather", 7), ("MPI_Iallreduce", 6), ("MPI_Ialltoall", 7), ("MPI_Ibarrier", 1), ("MPI_Ibcast", 5), ("MPI_Igather", 8), ("MPI_Ibsend", 6), ("MPI_Irecv", 6), ("MPI_Isend", 6), ("MPI_Isendrecv", 11), ("MPI_Start", 0)]
 for func, tag_idx in tag_reqgen:
     function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called_tag!(req_complete,$:{tag_idx}))")
+    function_contracts[func]["POST"].append(f"called_tag!(req_complete,$:{tag_idx})")
     function_contracts[func]["TAGS"].append(f"request_gen({tag_idx})")
 
 # Local data races
