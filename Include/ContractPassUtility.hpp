@@ -2,7 +2,9 @@
 
 #include "ContractTree.hpp"
 #include <functional>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/InstrTypes.h>
@@ -54,6 +56,13 @@ namespace ContractPassUtility {
     bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
 };
 
+template<typename T>
+struct WorklistEntry {
+    const Instruction* start;
+    T initial;
+    std::stack<const CallBase*> stack;
+};
+
 /*
  * Apply worklist algorithm
  * Need Start param to make sure that the initialization of parameters does not count as operation
@@ -61,11 +70,12 @@ namespace ContractPassUtility {
 template <typename T>
 std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, void* data, T init) {
     std::map<const Instruction*, T> postAccess;
-    std::vector<std::tuple<const Instruction*, T, std::stack<const CallBase*>>> todoList = { {Start, init, {}} };
+    std::vector<WorklistEntry<T>> todoList = { {Start, init, {}} };
+    std::map<StringRef,int> OMPNames = {{"__kmpc_omp_task_alloc", 5}, {"__kmpc_fork_call", 2}};
     while (!todoList.empty()) {
-        const Instruction* next = std::get<0>(*todoList.begin());
-        T prevInfo = std::get<1>(*todoList.begin());
-        std::stack<const CallBase*>& stack = std::get<2>(*todoList.begin());
+        const Instruction* next = todoList[0].start;
+        T prevInfo = todoList[0].initial;
+        std::stack<const CallBase*> stack = todoList[0].stack;
 
         while (next != nullptr) {
             // Add previous info depending on following conditions:
@@ -78,8 +88,14 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                 // Encountered already. Call merge function
                 std::pair<T,bool> mergeRes = merge(prevInfo, postAccess[next], next, data);
                 if (!mergeRes.second) {
-                    // Already visited and analysis does not wish to pursue further. Remove from worklist
-                    break;
+                    // Already visited and analysis does not wish to pursue further.
+                    // Remove from worklist, or pop stack
+                    if (!stack.empty()) {
+                        next = stack.top()->getNextNonDebugInstruction();
+                        stack.pop();
+                    } else {
+                        break;
+                    }
                 }
                 postAccess[next] = mergeRes.first;
             }
@@ -90,12 +106,17 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
             // Check for branching / terminating instructions
             // Missing because not sure if needed / relevant / used / too little info / lazy:
             // CleanupReturnInst, CatchReturnInst, CatchSwitchInst, CallBrInst, ResumeInst, InvokeInst, IndirectBrInst
-            #warning TODO SwitchInst
             if (const BranchInst* BR = dyn_cast<BranchInst>(next)) {
                 for (const BasicBlock* alt : BR->successors())
                     todoList.push_back( {&alt->front(), postAccess[next], stack} );
             }
-            if (isa<ReturnInst>(next) || isa<UnreachableInst>(next)) {
+            if (const SwitchInst* SI = dyn_cast<SwitchInst>(next)) {
+                for (int i = 0; i < SI->getNumSuccessors(); i++) {
+                    const BasicBlock* alt = SI->getSuccessor(i);
+                    todoList.push_back( {&alt->front(), postAccess[next], stack} );
+                }
+            }
+            if (isa<UnreachableInst>(next)) {
                 break;
             }
 
@@ -106,9 +127,20 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
             // If not, continue with normal next instruction
             const Instruction* iter = nullptr;
             if (const CallBase* CB = dyn_cast<CallBase>(next)) {
-                if (CB->getCalledFunction() && !CB->getCalledFunction()->isDeclaration()) {
+                if (CB->getCalledFunction() && (OMPNames.contains(CB->getCalledFunction()->getName()) || !CB->getCalledFunction()->isDeclaration())) {
                     stack.push(CB);
-                    iter = &CB->getCalledFunction()->getEntryBlock().front();
+                    if (!OMPNames.contains(CB->getCalledFunction()->getName())) {
+                        iter = &CB->getCalledFunction()->getEntryBlock().front();
+                    } else {
+                        if (const Function* ompFunc = dyn_cast<Function>(CB->getArgOperand(OMPNames[CB->getCalledFunction()->getName()]))) {
+                            if (!ompFunc->isDeclaration())
+                                iter = &ompFunc->getEntryBlock().front();
+                        }
+                        if (!iter) {
+                            errs() << "NOTE: Could not resolve OpenMP outlined call! Verification accuracy is impaired\n";
+                            stack.pop();
+                        }
+                    }
                 }
             }
             if (!iter) {
@@ -116,10 +148,19 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
             }
 
             // Check if returning from function
-            if (!stack.empty() && !next) {
+            if (!iter && !stack.empty()) {
                 // Forward to next from stack
                 iter = stack.top()->getNextNonDebugInstruction();
                 stack.pop();
+            } else if (!iter) {
+                // Stack is empty. But if we started inside a function, context includes all callsites
+                const Function* func = next->getParent()->getParent();
+                for (const User* U : func->users()) {
+                    if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                        // Add callsite next to todoList
+                        todoList.push_back( {CB->getNextNonDebugInstruction(), postAccess[next], stack} );
+                    }
+                }
             }
 
             // Know next instruction, continue loop or iter is null and we are done

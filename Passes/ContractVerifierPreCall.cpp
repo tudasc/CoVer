@@ -150,7 +150,11 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     // Correct usage will not contain error
     CallStatusVal res = CallStatusVal::CALLED;
     for (std::pair<const Instruction*, CallStatus> AI : AnalysisInfo) {
-        res = std::max(AI.second.CurVal, res);
+        if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
+            if (CB->getCalledFunction() == C.F) {
+                res = std::max(AI.second.CurVal, res);
+            }
+        }
     }
     return res;
 }

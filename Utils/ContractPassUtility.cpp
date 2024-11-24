@@ -1,9 +1,11 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
+#include <climits>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
+#include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Function.h>
@@ -11,12 +13,91 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
+#include <set>
 #include <string>
 #include <optional>
 #include <sys/types.h>
 #include <vector>
 
 using namespace llvm;
+
+std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
+    if (!isa<Instruction>(Ip)) return {};
+    std::set<std::pair<const Instruction*,int>> candidates = {{dyn_cast<Instruction>(Ip), 0}};
+    std::map<const Value*,int> candidatesConsidered;
+    while (!candidates.empty()) {
+        const Instruction* I = candidates.begin()->first;
+        int curSteps = candidates.begin()->second;
+        candidatesConsidered.insert({candidates.begin()->first, candidates.begin()->second});
+        candidates.erase(candidates.begin());
+        while (getPointerOperand(I) && (isa<GlobalValue>(getPointerOperand(I)) || isa<Instruction>(getPointerOperand(I)))) {
+            if (isa<GlobalValue>(getPointerOperand(I))) {
+                candidatesConsidered.insert({getPointerOperand(I), curSteps});
+                return candidatesConsidered;
+            } else {
+                if (!isa<GetElementPtrInst>(getPointerOperand(I))) curSteps++;
+                I = dyn_cast<Instruction>(getPointerOperand(I));
+            }
+        }
+        if (const AllocaInst* AI = dyn_cast<AllocaInst>(I)) {
+            // Possibly a function parameter, check args against storeinst users
+            const Function* tmp = AI->getParent()->getParent();
+            for (int i = 0; i < tmp->arg_size(); i++) {
+                for (const User* UA : AI->users() ) {
+                    if (!isa<StoreInst>(UA)) continue;
+                    if (tmp->getArg(i) != dyn_cast<StoreInst>(UA)->getValueOperand()) continue;
+                    // Yup, is an argument
+                    for (const User* U : tmp->users()) {
+                        if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                            // Callsite with correct argument
+                            int offset = 0;
+                            if (CB->getCalledFunction()->getName() == "__kmpc_fork_call")
+                                offset = 1;
+                            if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(i + offset))) {
+                                if (!candidatesConsidered.contains(cI)) {
+                                    candidates.insert({cI, --curSteps});   
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return candidatesConsidered;
+}
+
+int resolveFunctionDifference(const Value** A, const Value** B) {
+    std::map<const Value*,int> CandidatesA = getFunctionParentInstrCandidates(*A);
+    std::map<const Value*,int> CandidatesB = getFunctionParentInstrCandidates(*B);
+    for (std::pair<const Value*, int> Av : CandidatesA) {
+        for (std::pair<const Value*, int> Bv : CandidatesB) {
+            if (Av.first == Bv.first) {
+                *A = Av.first;
+                *B = Bv.first;
+                return Av.second - Bv.second;
+            }
+            if (isa<GlobalValue>(Av.first)) {
+                *A = Av.first;
+                return Av.second - Bv.second;
+            }
+            if (isa<GlobalValue>(Bv.first)) {
+                *B = Bv.first;
+                return Av.second - Bv.second;
+            }
+            if (isa<Instruction>(Av.first) && isa<Instruction>(Bv.first)) {
+                const Instruction* IAv = dyn_cast<Instruction>(Av.first);
+                const Instruction* IBv = dyn_cast<Instruction>(Bv.first);
+                if (IAv->getParent()->getParent() == IBv->getParent()->getParent()) {
+                    *A = IAv;
+                    *B = IBv;
+                    return Av.second - Bv.second;
+                }
+            }
+        }
+    }
+    return INT_MAX;
+}
 
 namespace ContractPassUtility {
 
@@ -45,24 +126,39 @@ bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag
 }
 
 bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc) {
-    const Value* source;
-    const Value* target;
+    const Value* source = contrP;
+    const Value* target = callP;
+    int diff = 0;
+    // Resolve function differences.
+    // If one is a global, this does not matter, so check if they are instructions first
+    if (isa<Instruction>(source) && isa<Instruction>(target)) {
+        const Function* Fs = {dyn_cast<Instruction>(source)->getParent()->getParent()};
+        const Function* Ft = {dyn_cast<Instruction>(target)->getParent()->getParent()};
+        if (Fs != Ft) {
+            // Definitely different functions
+            diff = resolveFunctionDifference(&source, &target);
+            if (diff == INT_MAX) return false;
+        }
+    }
     switch (acc) {
         case ContractTree::ParamAccess::NORMAL:
-            source = contrP;
-            target = callP;
+            if (diff != 0) return false; // Interproc with load inside
             break;
         case ContractTree::ParamAccess::DEREF:
             // Contr has a pointer, call has value.
-            source = contrP;
-            target = getLoadStorePointerOperand(callP);
+            // If interproc, diff should be -1 if already resolved
+            if (diff == 0)
+                target = getLoadStorePointerOperand(target);
+            else if (diff != -1) return false;
             break;
         case ContractTree::ParamAccess::ADDROF:
             // Contr has value, call has pointer. Go down from target param
-            source = getLoadStorePointerOperand(contrP);
-            target = callP;
+            // If interproc, diff should be 1 if already resolved
+            if (diff == 0)
+                source = getLoadStorePointerOperand(source);
+            else if (diff != 1) return false;
             break;
-        }
+    }
     // Now, need to check if they are equal / aliases
     while (true) {
         // If either is null, paramerror or if one does not have a pointer operand, then they can not match
