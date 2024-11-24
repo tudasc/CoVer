@@ -31,7 +31,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
 
-    for (ContractManagerAnalysis::LinearizedContract& C : DB.LinearizedContracts) {
+    for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
         for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a postcondition

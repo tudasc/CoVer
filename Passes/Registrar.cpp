@@ -5,6 +5,7 @@
 
 #include "ContractManager.hpp"
 #include "ContractVerifierPreCall.hpp"
+#include "ContractVerifierPostCall.hpp"
 #include "ContractVerifierRelease.hpp"
 #include "ContractPostProcess.hpp"
 
@@ -20,6 +21,10 @@ bool MPMHook(StringRef Name, ModulePassManager &MPM,
              ArrayRef<PassBuilder::PipelineElement>) {
     if (Name == "contractVerifierPreCall") {
         MPM.addPass(ContractVerifierPreCallPass());
+        return true;
+    }
+    if (Name == "contractVerifierPostCall") {
+        MPM.addPass(ContractVerifierPostCallPass());
         return true;
     }
     if (Name == "contractVerifierRelease") {
