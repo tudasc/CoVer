@@ -59,7 +59,7 @@ std::any ContractDataVisitor::visitExprFormula(ContractParser::ExprFormulaContex
         std::shared_ptr<ContractFormula> expForm = std::any_cast<std::shared_ptr<ContractFormula>>(this->visit(exprctx));
         exprs.push_back(expForm);
     }
-    ContractFormula contrF = { exprs, ctx->getText(), ctx->XORSep() ? FormulaType::XOR : FormulaType::OR };
+    ContractFormula contrF = { exprs, ctx->getText(), !ctx->XORSep().empty() ? FormulaType::XOR : FormulaType::OR };
     return std::make_shared<ContractFormula>(contrF);
 }
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {

@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/WithColor.h>
 #include <memory>
 #include <vector>
@@ -108,21 +109,42 @@ Fulfillment ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractF
     if (contrF->Children.empty()) {
         return *contrF->Status;
     }
-    std::vector<Fulfillment> f;
+    std::vector<Fulfillment> fs;
     for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
-        f.push_back(resolveFormula(Form));
+        fs.push_back(resolveFormula(Form));
     }
     switch (contrF->type) {
         case FormulaType::OR:
-            *contrF->Status = *std::min_element(f.begin(), f.end());
+            *contrF->Status = *std::min_element(fs.begin(), fs.end());
+            return *contrF->Status;
             break;
         case FormulaType::XOR:
-            if (f[0] == f[1] && f[0] != Fulfillment::UNKNOWN)
-                *contrF->Status = Fulfillment::BROKEN;
-            else if (f[0] == Fulfillment::FULFILLED || f[1] == Fulfillment::FULFILLED)
+            bool hasBeenFulfilled = false;
+            for (Fulfillment f : fs) {
+                if (f == Fulfillment::UNKNOWN) {
+                    // Unknown overrides everything
+                    *contrF->Status = Fulfillment::UNKNOWN;
+                    return *contrF->Status;
+                } else if (!hasBeenFulfilled && f == Fulfillment::FULFILLED) {
+                    // Not been fulfilled, XOR might hold
+                    hasBeenFulfilled = true;
+                } else if (hasBeenFulfilled && f == Fulfillment::FULFILLED) {
+                    // XOR does not hold
+                    *contrF->Status = Fulfillment::BROKEN;
+                    break;
+                }
+            }
+            if (hasBeenFulfilled && *contrF->Status != Fulfillment::BROKEN) {
+                // Exactly one fulfillment, XOR holds
                 *contrF->Status = Fulfillment::FULFILLED;
-            else
-                *contrF->Status = Fulfillment::UNKNOWN;
+                return *contrF->Status;
+            } else {
+                // Not unknown, otherwise early return
+                // Not success, otherwise above holds
+                // Therefore: Error condition
+                *contrF->Status = Fulfillment::BROKEN;
+                return *contrF->Status;
+            }
     }
-    return *contrF->Status;
+    llvm_unreachable("Unknown composite in contract definition!");
 }
