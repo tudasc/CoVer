@@ -96,8 +96,9 @@ with open(mpih_location) as f:
 # Call MPI_Init
 for func in function_decls.keys():
     if func in ["MPI_Init", "MPI_Init_thread"]:
+        function_contracts[func]["TAGS"].append("mpi_init")
         continue
-    function_contracts[func]["PRE"].append("called!(MPI_Init)")
+    function_contracts[func]["PRE"].append("called_tag!(mpi_init)")
 
 # Call MPI_Finalize
 for func in function_decls.keys():
@@ -159,7 +160,7 @@ function_contracts["MPI_Rget"]["POST"].append(f"( no! (read!(*0)) until! (called
 function_contracts["MPI_Rget"]["POST"].append(f"( no! (called_tag!(buf_read,$:0)) until! (called_tag!(rma_complete,$:7)) | \
                                                   no! (called_tag!(buf_read,$:0)) until! (called_tag!(req_complete,$:8)) )")
 
-tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0), ("MPI_Win_flush_local_all", 0)]
+tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0), ("MPI_Win_flush_local_all", 0), ("MPI_Win_complete", 0)]
 for func, win_idx in tag_rmacomplete:
     function_contracts[func]["TAGS"].append(f"rma_complete({win_idx})")
 tag_p2pcomplete = [("MPI_Wait", 0), ("MPI_Test", 0)]
@@ -174,14 +175,17 @@ tag_needrmaepoch = [("MPI_Put", 7),
                     ("MPI_Compare_and_swap", 6)]
 for func, win_idx in tag_needrmaepoch:
     function_contracts[func]["PRE"].append(f"( called_tag!(epoch_fence_create,$:{win_idx}) ^ \
-                                               called_tag!(epoch_lock_create,$:{win_idx}) )")
+                                               called_tag!(epoch_lock_create,$:{win_idx})  ^ \
+                                               called_tag!(epoch_pscw_create,$:{win_idx})  )")
 tag_createfencermaepoch = [("MPI_Win_fence", 1)]
 for func, win_idx in tag_createfencermaepoch:
     function_contracts[func]["TAGS"].append(f"epoch_fence_create({win_idx})")
 tag_createlockrmaepoch = [("MPI_Win_lock", 3), ("MPI_Win_lock_all", 1)]
 for func, win_idx in tag_createlockrmaepoch:
     function_contracts[func]["TAGS"].append(f"epoch_lock_create({win_idx})")
-
+tag_createpscwepoch = [("MPI_Win_start", 2)]
+for func, win_idx in tag_createpscwepoch:
+    function_contracts[func]["TAGS"].append(f"epoch_pscw_create({win_idx})")
 # RMA Window needs to be created
 tag_rmawin = [("MPI_Put", 7),
               ("MPI_Get", 7),
