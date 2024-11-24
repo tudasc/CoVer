@@ -38,8 +38,8 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
             switch (Expr->OP->type()) {
                 case OperationType::CALL:
                 case OperationType::CALLTAG: {
-                    const CallOperation& cOP = dynamic_cast<const CallOperation&>(*Expr->OP);
-                    result = checkPreCall(cOP, C, Expr->OP->type() == OperationType::CALLTAG, M, err);
+                    const CallOperation* cOP = dynamic_cast<const CallOperation*>(Expr->OP.get());
+                    result = checkPreCall(cOP, C, cOP->type() == OperationType::CALLTAG, M, err);
                     break;
                 }
                 default: continue;
@@ -132,7 +132,7 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> mergePreCallStat(Contrac
     return { cs, cs.CurVal > prev.CurVal };
 }
 
-ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation& cOP, const ContractManagerAnalysis::LinearizedContract& C, const bool isTag, const Module& M, std::string& error) {
+ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, const bool isTag, const Module& M, std::string& error) {
     const Function* mainF = M.getFunction("main");
     if (!mainF) {
         error = "Cannot find main function, cannot construct path to check precall!";
@@ -140,7 +140,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     }
     const Instruction* Entry = mainF->getEntryBlock().getFirstNonPHI();
 
-    IterTypePreCall data = { {}, cOP.Function, C.F, cOP.Params, isTag, Tags };
+    IterTypePreCall data = { {}, cOP->Function, C.F, cOP->Params, isTag, Tags };
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
     std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(Entry, transferPreCallStat, mergePreCallStat, &data, init);
 

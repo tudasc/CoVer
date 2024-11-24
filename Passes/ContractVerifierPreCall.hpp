@@ -22,7 +22,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
         static std::string createDebugStr(const CallBase* Provider, const std::set<const CallBase *> candidates);
 
     private:
-        CallStatusVal checkPreCall(const ContractTree::CallOperation& cOP, const ContractManagerAnalysis::LinearizedContract& C, const bool isTag, const Module& M, std::string& error);
+        CallStatusVal checkPreCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, const bool isTag, const Module& M, std::string& error);
         std::map<const Function*, std::vector<TagUnit>> Tags;
 };
 
