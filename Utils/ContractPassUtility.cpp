@@ -21,6 +21,9 @@
 
 using namespace llvm;
 
+// To only warn once if a CB is calling an unknown function
+static std::set<const CallBase*> UnknownCalledParam;
+
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
     if (!isa<Instruction>(Ip)) return {};
     std::set<std::pair<const Instruction*,int>> candidates = {{dyn_cast<Instruction>(Ip), 0}};
@@ -113,6 +116,13 @@ std::string getInstrLocStr(const Instruction* I) {
 
 bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
     if (!isTag) {
+        if (!CB->getCalledFunction()) {
+            if (!UnknownCalledParam.contains(CB)) {
+                errs() << "Could not get name for function at " << getInstrLocStr(CB) << "!\nAnalysis performance is impaired!\n";
+                UnknownCalledParam.insert(CB);
+            }
+            return false;
+        }
         return CB->getCalledFunction()->getName() == Target;
     } else {
         if (!Tags.contains(CB->getCalledFunction())) return false;
