@@ -111,7 +111,16 @@ add_custom_target(
   SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
   COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/mpi.h" "LLVMContractsPlugin ${GIT_REV}"
 )
-install(FILES "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h" DESTINATION include
+add_custom_target(
+  genSHMEMContracts ALL
+  SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py"
+  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/shmem.h" "LLVMContractsPlugin ${GIT_REV}"
+)
+install(
+  FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/shmem_contracts.h"
+  DESTINATION include
   PERMISSIONS
     OWNER_READ OWNER_WRITE
     GROUP_READ

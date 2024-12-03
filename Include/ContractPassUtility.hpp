@@ -69,9 +69,16 @@ struct WorklistEntry {
  */
 template <typename T>
 std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, void* data, T init) {
+    // Analysis Info mapping
     std::map<const Instruction*, T> postAccess;
+
+    // Worklist
     std::vector<WorklistEntry<T>> todoList = { {Start, init, {}} };
+
+    // Map of OpenMP functions to index with function pointer
     std::map<StringRef,int> OMPNames = {{"__kmpc_omp_task_alloc", 5}, {"__kmpc_fork_call", 2}};
+
+    // Start of worklist algorithm
     while (!todoList.empty()) {
         const Instruction* next = todoList[0].start;
         T prevInfo = todoList[0].initial;
