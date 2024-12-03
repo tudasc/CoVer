@@ -207,9 +207,10 @@ for func, win_idx in tag_rmawin:
     function_contracts[func]["POST"].append(f"no! (called!(MPI_Win_free,0:&{win_idx})) until! (called_tag!(rma_complete,$:{win_idx}))")
 
 # Make sure types are committed
-tag_typegen = [("MPI_Type_contiguous", 2)]
+tag_typegen = [("MPI_Type_contiguous", 2), ("MPI_Type_vector", 4)]
 for func, tag_idx in tag_typegen:
     function_contracts[func]["POST"].append(f"no! (called_tag!(type_use,$:*{tag_idx})) until! (called!(MPI_Type_commit,0:{tag_idx}))")
+    function_contracts[func]["POST"].append(f"no! (called!(MPI_Finalize)) until! (called!(MPI_Type_free,0:{tag_idx}))")
     function_contracts[func]["TAGS"].append(f"type_gen({tag_idx})")
 
 tag_typeuse = [("MPI_Send", 2), ("MPI_Isend", 2)]
