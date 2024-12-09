@@ -76,11 +76,11 @@ tag_buf = [("shmem_int_put_nbi", 1, "W", "R"),
             ]
 for func, buf_idx, forbid, action in tag_buf:
     if "R" in forbid:
-        function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called_tag!(shmem_complete))")
-        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_read,$:{buf_idx})) until! (called_tag!(shmem_complete))")
+        function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Local Data Race - Local read\"")
+        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_read,$:{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Local Data Race - Local read by call\"")
     if "W" in forbid:
-        function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (called_tag!(shmem_complete))")
-        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_write,$:{buf_idx})) until! (called_tag!(shmem_complete))")
+        function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Local Data Race - Local write\"")
+        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_write,$:{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Local Data Race - Local write by call\"")
     if "R" in action:
         function_contracts[func]["TAGS"].append(f"buf_read({buf_idx})")
     if "W" in action:

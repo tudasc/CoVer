@@ -100,19 +100,19 @@ for func in function_decls.keys():
     if func in ["MPI_Init", "MPI_Init_thread"]:
         function_contracts[func]["TAGS"].append("mpi_init")
         continue
-    function_contracts[func]["PRE"].append("called_tag!(mpi_init)")
+    function_contracts[func]["PRE"].append("called_tag!(mpi_init) MSG \"Missing Initialization call\"")
 
 # Call MPI_Finalize
 for func in function_decls.keys():
     if func in ["MPI_Finalize", "MPI_Abort"]:
         continue
-    function_contracts[func]["POST"].append("called!(MPI_Finalize)")
+    function_contracts[func]["POST"].append("called!(MPI_Finalize) MSG \"Missing Finalization call\"")
 
 # No request reuse until p2pcomplete for persistent comms, request must be completed
 tag_reqgen = [("MPI_Iallgather", 7), ("MPI_Iallreduce", 6), ("MPI_Ialltoall", 7), ("MPI_Ibarrier", 1), ("MPI_Ibcast", 5), ("MPI_Igather", 8), ("MPI_Ibsend", 6), ("MPI_Irecv", 6), ("MPI_Isend", 6), ("MPI_Isendrecv", 11), ("MPI_Start", 0)]
 for func, tag_idx in tag_reqgen:
-    function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called_tag!(req_complete,$:{tag_idx}))")
-    function_contracts[func]["POST"].append(f"called_tag!(req_complete,$:{tag_idx})")
+    function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called_tag!(req_complete,$:{tag_idx})) MSG \"Double Request Use\"")
+    function_contracts[func]["POST"].append(f"called_tag!(req_complete,$:{tag_idx}) MSG \"Request Leak\"")
     function_contracts[func]["TAGS"].append(f"request_gen({tag_idx})")
 
 # Local data races
@@ -137,11 +137,11 @@ for calltype, func, buf_idx, mark_idx, forbid, action in tag_buf:
     if calltype == "REQ": completiontag = "req_complete"
     if calltype != "EITHER":
         if "R" in forbid:
-            function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx}))")
-            function_contracts[func]["POST"].append(f"no! (called_tag!(buf_read,$:{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx}))")
+            function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local read\"")
+            function_contracts[func]["POST"].append(f"no! (called_tag!(buf_read,$:{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local read by call\"")
         if "W" in forbid:
-            function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx}))")
-            function_contracts[func]["POST"].append(f"no! (called_tag!(buf_write,$:{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx}))")
+            function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local write\"")
+            function_contracts[func]["POST"].append(f"no! (called_tag!(buf_write,$:{buf_idx})) until! (called_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local write by call\"")
     if "R" in action:
         function_contracts[func]["TAGS"].append(f"buf_read({buf_idx})")
     if "W" in action:
@@ -150,18 +150,18 @@ for calltype, func, buf_idx, mark_idx, forbid, action in tag_buf:
 # Special handling of EITHER (Rput, Rget)
 # Both may not be written
 function_contracts["MPI_Rput"]["POST"].append(f"( no! (write!(*0)) until! (called_tag!(rma_complete,$:7)) | \
-                                                  no! (write!(*0)) until! (called_tag!(req_complete,$:8)) )")
+                                                  no! (write!(*0)) until! (called_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local write\"")
 function_contracts["MPI_Rget"]["POST"].append(f"( no! (write!(*0)) until! (called_tag!(rma_complete,$:7)) | \
-                                                  no! (write!(*0)) until! (called_tag!(req_complete,$:8)) )")
+                                                  no! (write!(*0)) until! (called_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local write\"")
 function_contracts["MPI_Rput"]["POST"].append(f"( no! (called_tag!(buf_write,$:0)) until! (called_tag!(rma_complete,$:7)) | \
-                                                  no! (called_tag!(buf_write,$:0)) until! (called_tag!(req_complete,$:8)) )")
+                                                  no! (called_tag!(buf_write,$:0)) until! (called_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local write by MPI call\"")
 function_contracts["MPI_Rget"]["POST"].append(f"( no! (called_tag!(buf_write,$:0)) until! (called_tag!(rma_complete,$:7)) | \
-                                                  no! (called_tag!(buf_write,$:0)) until! (called_tag!(req_complete,$:8)) )")
+                                                  no! (called_tag!(buf_write,$:0)) until! (called_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local write by MPI call\"")
 # Rget can also not be read
 function_contracts["MPI_Rget"]["POST"].append(f"( no! (read!(*0)) until! (called_tag!(rma_complete,$:7)) | \
-                                                  no! (read!(*0)) until! (called_tag!(req_complete,$:8)) )")
+                                                  no! (read!(*0)) until! (called_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local read\"")
 function_contracts["MPI_Rget"]["POST"].append(f"( no! (called_tag!(buf_read,$:0)) until! (called_tag!(rma_complete,$:7)) | \
-                                                  no! (called_tag!(buf_read,$:0)) until! (called_tag!(req_complete,$:8)) )")
+                                                  no! (called_tag!(buf_read,$:0)) until! (called_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local read by MPI call\"")
 
 tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0), ("MPI_Win_flush_local_all", 0), ("MPI_Win_complete", 0)]
 for func, win_idx in tag_rmacomplete:
@@ -177,9 +177,9 @@ tag_needrmaepoch = [("MPI_Put", 7),
                     ("MPI_Fetch_and_op", 6),
                     ("MPI_Compare_and_swap", 6)]
 for func, win_idx in tag_needrmaepoch:
-    function_contracts[func]["PRE"].append(f"( called_tag!(epoch_fence_create,$:{win_idx}) ^ \
-                                               called_tag!(epoch_lock_create,$:{win_idx})  ^ \
-                                               called_tag!(epoch_pscw_create,$:{win_idx})  )")
+    function_contracts[func]["PRE"].append(f"( called_tag!(epoch_fence_create,$:{win_idx}) MSG \"No fence epoch\" ^ \
+                                               called_tag!(epoch_lock_create,$:{win_idx})  MSG \"No lock epoch\" ^ \
+                                               called_tag!(epoch_pscw_create,$:{win_idx})  MSG \"No PSCW epoch\") MSG \"Mixed sync or missing epoch\"")
 tag_createfencermaepoch = [("MPI_Win_fence", 1)]
 for func, win_idx in tag_createfencermaepoch:
     function_contracts[func]["TAGS"].append(f"epoch_fence_create({win_idx})")
@@ -197,20 +197,20 @@ tag_rmawin = [("MPI_Put", 7),
               ("MPI_Fetch_and_op", 6),
               ("MPI_Compare_and_swap", 6)]
 for func, win_idx in tag_rmawin:
-    function_contracts[func]["PRE"].append(f"called_tag!(rma_createwin,$:&{win_idx})")
+    function_contracts[func]["PRE"].append(f"called_tag!(rma_createwin,$:&{win_idx}) MSG \"Window initialization missing\"")
 tag_createwin = [("MPI_Win_create", 5), ("MPI_Win_allocate", 5)]
 for func, win_idx in tag_createwin:
     function_contracts[func]["TAGS"].append(f"rma_createwin({win_idx})")
 
 # No inflight calls when freeing
 for func, win_idx in tag_rmawin:
-    function_contracts[func]["POST"].append(f"no! (called!(MPI_Win_free,0:&{win_idx})) until! (called_tag!(rma_complete,$:{win_idx}))")
+    function_contracts[func]["POST"].append(f"no! (called!(MPI_Win_free,0:&{win_idx})) until! (called_tag!(rma_complete,$:{win_idx})) MSG \"Possible inflight call at MPI_Win_free\"")
 
 # Make sure types are committed
 tag_typegen = [("MPI_Type_contiguous", 2), ("MPI_Type_vector", 4)]
 for func, tag_idx in tag_typegen:
-    function_contracts[func]["POST"].append(f"no! (called_tag!(type_use,$:*{tag_idx})) until! (called!(MPI_Type_commit,0:{tag_idx}))")
-    function_contracts[func]["POST"].append(f"no! (called!(MPI_Finalize)) until! (called!(MPI_Type_free,0:{tag_idx}))")
+    function_contracts[func]["POST"].append(f"no! (called_tag!(type_use,$:*{tag_idx})) until! (called!(MPI_Type_commit,0:{tag_idx})) MSG \"Type not comitted before use\"")
+    function_contracts[func]["POST"].append(f"no! (called!(MPI_Finalize)) until! (called!(MPI_Type_free,0:{tag_idx})) MSG \"Data type leak\"")
     function_contracts[func]["TAGS"].append(f"type_gen({tag_idx})")
 
 tag_typeuse = [("MPI_Send", 2), ("MPI_Isend", 2)]

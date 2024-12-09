@@ -51,8 +51,10 @@ std::any ContractDataVisitor::visitExprList(ContractParser::ExprListContext *ctx
 }
 std::any ContractDataVisitor::visitExprFormula(ContractParser::ExprFormulaContext *ctx) {
     if (ctx->expression()) {
-        std::shared_ptr<ContractExpression> exp = std::make_shared<ContractExpression>(std::any_cast<ContractExpression>(this->visit(ctx->expression())));
-        return std::dynamic_pointer_cast<ContractFormula>(exp);
+        std::shared_ptr<ContractFormula> exp = std::make_shared<ContractExpression>(std::any_cast<ContractExpression>(this->visit(ctx->expression())));
+        if (ctx->msg)
+            exp->Message = ctx->msg->getText();
+        return exp;
     }
     std::vector<std::shared_ptr<ContractFormula>> exprs;
     for (ContractParser::ExprFormulaContext* exprctx : ctx->exprFormula()) {
@@ -60,6 +62,7 @@ std::any ContractDataVisitor::visitExprFormula(ContractParser::ExprFormulaContex
         exprs.push_back(expForm);
     }
     ContractFormula contrF = { exprs, ctx->getText(), !ctx->XORSep().empty() ? FormulaType::XOR : FormulaType::OR };
+    if (ctx->msg) contrF.Message = ctx->msg->getText();
     return std::make_shared<ContractFormula>(contrF);
 }
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {

@@ -8,6 +8,7 @@
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/WithColor.h>
 #include <memory>
+#include <optional>
 #include <vector>
 
 using namespace llvm;
@@ -15,12 +16,16 @@ using namespace ContractTree;
 
 Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
     Fulfillment s = Fulfillment::FULFILLED;
-    std::string reason;
+    std::map<std::shared_ptr<ContractFormula>, std::string> reasons;
     for (const std::shared_ptr<ContractFormula> Expr : C.Data.Pre) {
-        s = std::max(s, resolveFormula(Expr));
+        std::pair<Fulfillment,std::optional<std::string>> result = resolveFormula(Expr);
+        if (result.second) reasons[Expr] = *result.second;
+        s = std::max(s, result.first);
     }
     for (const std::shared_ptr<ContractFormula> Expr : C.Data.Post) {
-        s = std::max(s, resolveFormula(Expr));
+        std::pair<Fulfillment,std::optional<std::string>> result = resolveFormula(Expr);
+        if (result.second) reasons[Expr] = *result.second;
+        s = std::max(s, result.first);
     }
     if (!output) return s;
 
@@ -32,13 +37,19 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     if (s > Fulfillment::FULFILLED) {
         for (size_t i = 0; i < C.Data.Pre.size(); i++) {
             errs() << "--> Precondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Pre[i]->Status) << "\n";
-            if (*C.Data.Pre[i]->Status > Fulfillment::FULFILLED)
+            if (*C.Data.Pre[i]->Status > Fulfillment::FULFILLED) {
                 errs() << "    --> Expression String: " << C.Data.Pre[i]->ExprStr << "\n";
+                if (reasons.contains(C.Data.Pre[i]))
+                    errs() << "    --> Message: " << reasons[C.Data.Pre[i]] << "\n";
+            }
         }
         for (size_t i = 0; i < C.Data.Post.size(); i++) {
             errs() << "--> Postcondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Post[i]->Status) << "\n";
-            if (*C.Data.Post[i]->Status > Fulfillment::FULFILLED)
+            if (*C.Data.Post[i]->Status > Fulfillment::FULFILLED) {
                 errs() << "    --> Expression String: " << C.Data.Post[i]->ExprStr << "\n";
+                if (reasons.contains(C.Data.Post[i]))
+                    errs() << "    --> Message: " << reasons[C.Data.Post[i]] << "\n";
+            }
         }
     }
     if (IS_DEBUG) {
@@ -105,18 +116,24 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-Fulfillment ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF) {
+std::pair<Fulfillment,std::optional<std::string>> ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF) {
     if (contrF->Children.empty()) {
-        return *contrF->Status;
+        return {*contrF->Status, contrF->Message};
     }
     std::vector<Fulfillment> fs;
+    std::optional<std::string> outStr = contrF->Message;
     for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
-        fs.push_back(resolveFormula(Form));
+        std::pair<Fulfillment,std::optional<std::string>> children = resolveFormula(Form);
+        if (children.second) {
+            if (!outStr) outStr = "";
+            *outStr += ", " + *children.second;
+        }
+        fs.push_back(children.first);
     }
     switch (contrF->type) {
         case FormulaType::OR:
             *contrF->Status = *std::min_element(fs.begin(), fs.end());
-            return *contrF->Status;
+            return {*contrF->Status, outStr};
             break;
         case FormulaType::XOR:
             bool hasBeenFulfilled = false;
@@ -124,7 +141,7 @@ Fulfillment ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractF
                 if (f == Fulfillment::UNKNOWN) {
                     // Unknown overrides everything
                     *contrF->Status = Fulfillment::UNKNOWN;
-                    return *contrF->Status;
+                    return {*contrF->Status, outStr};
                 } else if (!hasBeenFulfilled && f == Fulfillment::FULFILLED) {
                     // Not been fulfilled, XOR might hold
                     hasBeenFulfilled = true;
@@ -137,13 +154,13 @@ Fulfillment ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractF
             if (hasBeenFulfilled && *contrF->Status != Fulfillment::BROKEN) {
                 // Exactly one fulfillment, XOR holds
                 *contrF->Status = Fulfillment::FULFILLED;
-                return *contrF->Status;
+                return {*contrF->Status, outStr};
             } else {
                 // Not unknown, otherwise early return
                 // Not success, otherwise above holds
                 // Therefore: Error condition
                 *contrF->Status = Fulfillment::BROKEN;
-                return *contrF->Status;
+                return {*contrF->Status, outStr};
             }
     }
     llvm_unreachable("Unknown composite in contract definition!");

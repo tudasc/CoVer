@@ -15,7 +15,7 @@ class ContractPostProcessingPass : public PassInfoMixin<ContractPostProcessingPa
         int xsucc, xfail, FP, FN, UN;
         void checkExpErr(ContractManagerAnalysis::Contract C);
         Fulfillment checkExpressions(ContractManagerAnalysis::Contract const& C, bool output);
-        Fulfillment resolveFormula(std::shared_ptr<ContractFormula> contrF);
+        std::pair<Fulfillment,std::optional<std::string>> resolveFormula(std::shared_ptr<ContractFormula> contrF);
 };
 
 } // namespace llvm
