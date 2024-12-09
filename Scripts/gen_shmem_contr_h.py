@@ -71,13 +71,13 @@ for func in function_decls.keys():
     if func in ["shmem_init", "shmem_init_thread"]:
         function_contracts[func]["TAGS"].append("shmem_init")
         continue
-    function_contracts[func]["PRE"].append("called_tag!(shmem_init)")
+    function_contracts[func]["PRE"].append("called_tag!(shmem_init) MSG \"Missing Initialization call\"")
 
 # Call shmem_finalize
 for func in function_decls.keys():
     if func in ["shmem_finalize", "shmem_global_exit"]:
         continue
-    function_contracts[func]["POST"].append("called!(shmem_finalize)")
+    function_contracts[func]["POST"].append("called!(shmem_finalize) MSG \"Missing Finalization call\"")
 
 # Local data races
 tag_buf = [("shmem_int_put_nbi", 1, "W", "R"),
@@ -103,6 +103,10 @@ tag_shmemcomplete = [("shmem_barrier_all"), ("shmem_barrier"), ("shmem_quiet")]
 for func in tag_shmemcomplete:
     function_contracts[func]["TAGS"].append(f"shmem_complete")
 
+# No inflight calls when freeing
+for func, buf_idx, _, _ in tag_buf:
+    function_contracts[func]["POST"].append(f"no! (called!(shmem_free,0:{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Possible inflight call at shmem_free\"")
+
 # Make sure contexts are created and freed
 tag_ctxuse = [("shmem_ctx_get8", 0), ("shmem_ctx_get16", 0), ("shmem_ctx_get32", 0), ("shmem_ctx_get64", 0), ("shmem_ctx_get128", 0), ("shmem_ctx_getmem", 0),
               ("shmem_ctx_put8", 0), ("shmem_ctx_put16", 0), ("shmem_ctx_put32", 0), ("shmem_ctx_put64", 0), ("shmem_ctx_put128", 0), ("shmem_ctx_putmem", 0)]
@@ -112,12 +116,12 @@ for func, ctx_idx in tag_ctxuse:
 tag_ctxuse += tag_ctxuse_nbi
 for func, ctx_idx in tag_ctxuse:
     function_contracts[func]["PRE"].append(f"called!(shmem_ctx_create,1:&{ctx_idx})")
-function_contracts["shmem_ctx_create"]["POST"].append(f"called!(shmem_ctx_destroy,0:*1)")
+function_contracts["shmem_ctx_create"]["POST"].append(f"called!(shmem_ctx_destroy,0:*1) MSG \"Context leak\"")
 
 # Make sure teams are freed
 tag_teamcreate = [("shmem_team_split_strided", 6), ("shmem_team_split_strided", 4), ("shmem_team_split_strided", 7)]
 for func, team_idx in tag_teamcreate:
-    function_contracts[func]["POST"].append(f"called!(shmem_team_destroy,0:*{team_idx})")
+    function_contracts[func]["POST"].append(f"called!(shmem_team_destroy,0:*{team_idx}) MSG \"Team leak\"")
 
 # Output file
 boilerplate_header = f"""
