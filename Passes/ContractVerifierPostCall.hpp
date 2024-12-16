@@ -5,6 +5,7 @@
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
 #include <map>
+#include <set>
 
 namespace llvm {
 
@@ -14,10 +15,10 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
 
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
-        static std::string createDebugStr(const CallBase* Provider);
+        static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<std::string>& err);
 
     private:
-        CallStatus checkPostCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, const bool isTag, const Module& M, std::string& error);
+        CallStatus checkPostCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error);
         std::map<const Function*, std::vector<TagUnit>> Tags;
 };
 

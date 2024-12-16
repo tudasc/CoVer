@@ -67,6 +67,7 @@ namespace ContractTree {
         const FormulaType type = FormulaType::OR;
         std::shared_ptr<Fulfillment> Status = std::make_shared<Fulfillment>(Fulfillment::UNKNOWN);
         std::optional<std::string> Message;
+        std::shared_ptr<std::vector<std::string>> ErrorInfo = std::make_shared<std::vector<std::string>>();
         virtual ~ContractFormula() = default;
     };
     struct ContractExpression : ContractFormula {

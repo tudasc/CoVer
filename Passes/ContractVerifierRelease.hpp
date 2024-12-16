@@ -1,6 +1,7 @@
 #pragma once
 
 #include "llvm/IR/PassManager.h"
+#include <llvm/IR/InstrTypes.h>
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 
@@ -12,9 +13,9 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
 
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
-        static std::string createDebugStr(const Instruction* Forbidden);
+        static void appendDebugStr(std::vector<std::string>& err, const Instruction* Forbidden, const CallBase* CB);
     private:
-        ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, const ContractManagerAnalysis::LinearizedContract& C, const Module& M, std::string& error);
+        ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, const Module& M, std::string& error);
         std::map<const Function*, std::vector<TagUnit>> Tags;
 };
 

@@ -39,7 +39,8 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
                 case OperationType::CALL:
                 case OperationType::CALLTAG: {
                     const CallOperation* cOP = dynamic_cast<const CallOperation*>(Expr->OP.get());
-                    result = checkPostCall(cOP, C, cOP->type() == OperationType::CALLTAG, M, err);
+                    C.DebugInfo->push_back("[ContractVerifierPostCall] Attempting to verify expression: " + Expr->ExprStr);
+                    result = checkPostCall(cOP, C, *Expr, cOP->type() == OperationType::CALLTAG, M, err);
                     break;
                 }
                 default: continue;
@@ -54,15 +55,22 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-std::string ContractVerifierPostCallPass::createDebugStr(const CallBase* Provider) {
-    std::stringstream str;
-    str << "[ContractVerifierPostCall] Did not find postcall function with required parameters for "
-        << demangle(Provider->getCalledFunction()->getName()) << " at "
-        << ContractPassUtility::getInstrLocStr(Provider) << "\n";
-    return str.str();
+void ContractVerifierPostCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<std::string>& err) {
+    // Generic error message
+    err.push_back("[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
+                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));
+    if (!candidates.empty()) {
+        // There were candidates, none fit
+        for (const CallBase* CB : candidates)
+            err.push_back("[ContractVerifierPostCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
+    } else {
+        // No candidates at all
+        err.push_back("[ContractVerifierPostCall] No candidates were found.");
+    }
 }
 
 struct IterTypePostCall {
+    std::set<const CallBase*> dbg_candidates;
     std::vector<std::string> dbg;
     const std::string Target;
     const CallBase* callsite;
@@ -89,7 +97,8 @@ ContractVerifierPostCallPass::CallStatus transferPostCallStat(ContractVerifierPo
                     return ContractVerifierPostCallPass::CallStatus::CALLED;
                 }
             }
-            // Missing required parameter...
+            // Missing required parameter... Add to debuginfo
+            Data->dbg_candidates.insert(CB);
         }
     }
     // Not a call. Just forward info
@@ -98,11 +107,16 @@ ContractVerifierPostCallPass::CallStatus transferPostCallStat(ContractVerifierPo
 
 std::pair<ContractVerifierPostCallPass::CallStatus,bool> mergePostCallStat(ContractVerifierPostCallPass::CallStatus prev, ContractVerifierPostCallPass::CallStatus cur, const Instruction* I, void* data) {
     ContractVerifierPostCallPass::CallStatus cs = std::max(prev, cur);
+    if ((prev == ContractVerifierPostCallPass::CallStatus::CALLED || cur == ContractVerifierPostCallPass::CallStatus::CALLED) &&
+         cs != ContractVerifierPostCallPass::CallStatus::CALLED) {
+        IterTypePostCall* Data = static_cast<IterTypePostCall*>(data);
+        Data->dbg.push_back("[ContractVerifierPostCall] NOTE: Successful fulfillment was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
+    }
     return { cs, cs > prev };
 }
 
-ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, const bool isTag, const Module& M, std::string& error) {
-    IterTypePostCall data = { {}, cOP->Function, nullptr, cOP->Params, isTag, Tags };
+ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error) {
+    IterTypePostCall data = { {}, {}, cOP->Function, nullptr, cOP->Params, isTag, Tags };
 
     for (const User* U : C.F->users()) {
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
@@ -111,7 +125,10 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
                 std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transferPostCallStat, mergePostCallStat, &data, CallStatus::NOTCALLED);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 for (std::pair<const Instruction *, CallStatus> x : AnalysisInfo) {
-                    if (isa<ReturnInst>(x.first) && x.first->getParent()->getParent()->getName() == "main" && x.second == CallStatus::NOTCALLED) return CallStatus::NOTCALLED;
+                    if (isa<ReturnInst>(x.first) && x.first->getParent()->getParent()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
+                        appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, *Expr.ErrorInfo);
+                        return CallStatus::NOTCALLED;
+                    }
                 }
             }
         }

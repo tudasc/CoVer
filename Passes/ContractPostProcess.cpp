@@ -14,6 +14,22 @@
 using namespace llvm;
 using namespace ContractTree;
 
+void outputSubformulaErrs(std::string type, const std::vector<std::shared_ptr<ContractFormula>> set, std::map<std::shared_ptr<ContractFormula>, std::string> reasons) {
+    for (std::shared_ptr<ContractFormula> form : set) {
+        if (*form->Status == Fulfillment::FULFILLED) continue;
+        errs() << "--> " + type + " Subformula Status: " << FulfillmentStr(*form->Status) << "\n";
+        if (*form->Status > Fulfillment::FULFILLED) {
+            errs() << "    --> Formula String: " << form->ExprStr << "\n";
+            if (reasons.contains(form))
+                errs() << "    --> Message: " << reasons[form] << "\n";
+            errs() << "    --> Error Info:\n";
+            for (std::string errinfo : *form->ErrorInfo) {
+                errs() << "        " << errinfo << "\n";
+            }
+        }
+    }
+}
+
 Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
     Fulfillment s = Fulfillment::FULFILLED;
     std::map<std::shared_ptr<ContractFormula>, std::string> reasons;
@@ -35,22 +51,8 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
     errs() << "--> Contract: " << C.ContractString << "\n";
     if (s > Fulfillment::FULFILLED) {
-        for (size_t i = 0; i < C.Data.Pre.size(); i++) {
-            errs() << "--> Precondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Pre[i]->Status) << "\n";
-            if (*C.Data.Pre[i]->Status > Fulfillment::FULFILLED) {
-                errs() << "    --> Expression String: " << C.Data.Pre[i]->ExprStr << "\n";
-                if (reasons.contains(C.Data.Pre[i]))
-                    errs() << "    --> Message: " << reasons[C.Data.Pre[i]] << "\n";
-            }
-        }
-        for (size_t i = 0; i < C.Data.Post.size(); i++) {
-            errs() << "--> Postcondition Status, Index " << i << ": " << FulfillmentStr(*C.Data.Post[i]->Status) << "\n";
-            if (*C.Data.Post[i]->Status > Fulfillment::FULFILLED) {
-                errs() << "    --> Expression String: " << C.Data.Post[i]->ExprStr << "\n";
-                if (reasons.contains(C.Data.Post[i]))
-                    errs() << "    --> Message: " << reasons[C.Data.Post[i]] << "\n";
-            }
-        }
+        outputSubformulaErrs("Precondition", C.Data.Pre, reasons);
+        outputSubformulaErrs("Postcondition", C.Data.Post, reasons);
     }
     if (IS_DEBUG) {
         WithColor(errs(), HighlightColor::Remark) << "--> Debug Begin\n";
@@ -118,7 +120,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
 
 std::pair<Fulfillment,std::optional<std::string>> ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF) {
     if (contrF->Children.empty()) {
-        return {*contrF->Status, contrF->Message};
+        return {*contrF->Status, *contrF->Status == Fulfillment::FULFILLED ? std::nullopt : contrF->Message};
     }
     std::vector<Fulfillment> fs;
     std::optional<std::string> outStr = contrF->Message;
@@ -133,35 +135,64 @@ std::pair<Fulfillment,std::optional<std::string>> ContractPostProcessingPass::re
     switch (contrF->type) {
         case FormulaType::OR:
             *contrF->Status = *std::min_element(fs.begin(), fs.end());
+            if (*contrF->Status != Fulfillment::FULFILLED) {
+                // Add error info from children. As its an OR: All must not be fulfilled, so concat all
+                contrF->ErrorInfo->push_back("No children satisfied for subformula: " + contrF->ExprStr);
+                for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
+                    contrF->ErrorInfo->push_back("Error Info for child: " + Form->ExprStr);
+                    contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
+                }
+            }
             return {*contrF->Status, outStr};
             break;
         case FormulaType::XOR:
-            bool hasBeenFulfilled = false;
-            for (Fulfillment f : fs) {
-                if (f == Fulfillment::UNKNOWN) {
-                    // Unknown overrides everything
+            std::shared_ptr<ContractFormula> prevFulfil = nullptr;
+            for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
+                if (!prevFulfil && *Form->Status == Fulfillment::FULFILLED) {
+                    prevFulfil = Form; // First fulfillment
+                    continue;
+                }
+                if (prevFulfil && *Form->Status == Fulfillment::FULFILLED) {
+                    // At least two children fulfilled -> error
+                    contrF->ErrorInfo->push_back("More than one child satisfied for subformula: " + contrF->ExprStr);
+                    if (!prevFulfil->ErrorInfo->empty()) {
+                        contrF->ErrorInfo->push_back("Messages from Child 1: " + prevFulfil->ExprStr);
+                        contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), prevFulfil->ErrorInfo->begin(), prevFulfil->ErrorInfo->end());
+                    }
+                    if (!Form->ErrorInfo->empty()) {
+                        contrF->ErrorInfo->push_back("Messages from Child 2: " + Form->ExprStr);
+                        contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
+                    }
+                    *contrF->Status = Fulfillment::BROKEN;
+                    return {*contrF->Status, outStr};
+                }
+                if (*Form->Status == Fulfillment::UNKNOWN) {
+                    contrF->ErrorInfo->push_back("Child fulfillment unknown for subformula: " + contrF->ExprStr);
+                    contrF->ErrorInfo->push_back("And child: " + Form->ExprStr);
+                    if (!Form->ErrorInfo->empty()) {
+                        contrF->ErrorInfo->push_back("Messages from unknown fulfillment Child: ");
+                        contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
+                    }
                     *contrF->Status = Fulfillment::UNKNOWN;
                     return {*contrF->Status, outStr};
-                } else if (!hasBeenFulfilled && f == Fulfillment::FULFILLED) {
-                    // Not been fulfilled, XOR might hold
-                    hasBeenFulfilled = true;
-                } else if (hasBeenFulfilled && f == Fulfillment::FULFILLED) {
-                    // XOR does not hold
-                    *contrF->Status = Fulfillment::BROKEN;
-                    break;
                 }
             }
-            if (hasBeenFulfilled && *contrF->Status != Fulfillment::BROKEN) {
-                // Exactly one fulfillment, XOR holds
+            if (prevFulfil) {
+                // At least one success logged, everythin is fine
+                contrF->ErrorInfo->push_back("Exactly one child satisfied of subformula: " + contrF->ExprStr);
                 *contrF->Status = Fulfillment::FULFILLED;
-                return {*contrF->Status, outStr};
-            } else {
-                // Not unknown, otherwise early return
-                // Not success, otherwise above holds
-                // Therefore: Error condition
-                *contrF->Status = Fulfillment::BROKEN;
-                return {*contrF->Status, outStr};
+                return {*contrF->Status, std::nullopt};
             }
+            // Not success or unknown, so no child satisfied
+            contrF->ErrorInfo->push_back("No child satisfied for subformula: " + contrF->ExprStr);
+            for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
+                if (!Form->ErrorInfo->empty()) {
+                    contrF->ErrorInfo->push_back("Messages from Child: " + Form->ExprStr);
+                    contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
+                }
+            }
+            *contrF->Status = Fulfillment::BROKEN;
+            return {*contrF->Status, outStr};
     }
     llvm_unreachable("Unknown composite in contract definition!");
 }
