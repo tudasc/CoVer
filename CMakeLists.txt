@@ -19,7 +19,7 @@ endif()
 find_package(antlr4-generator REQUIRED)
 find_package(antlr4-runtime REQUIRED)
 
-set(ANTLR4_JAR_LOCATION /usr/share/java/antlr-complete.jar)
+set(ANTLR4_JAR_LOCATION "/usr/share/java/antlr-complete.jar" CACHE STRING "Location of antlr4 jar file")
 
 ##
 ## Configure main project
