@@ -80,9 +80,9 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<std::string>& err, 
     if (isa<StoreInst>(Forbidden)) type = "store";
     if (isa<CallBase>(Forbidden)) type = "call to " + demangle(dyn_cast<CallBase>(Forbidden)->getCalledFunction()->getName());
 
-    str << "[ContractVerifierRelease] Found forbidden " + type + " at "
+    str << "[ContractVerifierRelease] Found " << type << " at "
         << ContractPassUtility::getInstrLocStr(Forbidden)
-        << " after callsite at " << ContractPassUtility::getInstrLocStr(CB)
+        << " which is in conflict with " << CB->getCalledFunction()->getName().str() << " at " << ContractPassUtility::getInstrLocStr(CB)
         << " before release";
     err.push_back(str.str());
 }

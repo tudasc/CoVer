@@ -45,7 +45,9 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     }
     if (!output) return s;
 
-    if (s == Fulfillment::FULFILLED) WithColor(errs(), HighlightColor::String) << "## Contract Fulfilled! ##\n";
+    if (s == Fulfillment::FULFILLED && IS_DEBUG) WithColor(errs(), HighlightColor::String) << "## Contract Fulfilled! ##\n";
+    if (s == Fulfillment::FULFILLED && !IS_DEBUG) return s; // No debug output, don't spam fulfilled contracts
+
     if (s == Fulfillment::UNKNOWN) WithColor(errs(), HighlightColor::Warning) << "## Contract Status Unknown ##\n";
     if (s == Fulfillment::BROKEN) WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
     errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
