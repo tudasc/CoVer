@@ -112,9 +112,9 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
         errs() << "Total number of FN: " << FN << "\n";
         errs() << "Total number of FP: " << FP << "\n\n";
         errs() << "Total number of UN: " << UN << "\n\n";
+        errs() << "Checking verification contract results:\n";
     }
 
-    errs() << "Checking verification contract results:\n";
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
         if (C.Data.xres == Fulfillment::UNKNOWN) {
             checkExpressions(C, true);
