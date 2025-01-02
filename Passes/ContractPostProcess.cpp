@@ -97,18 +97,22 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
 
-    errs() << "Checking correctness contract results:\n";
+    bool haveCorrContr = false;
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
         if (C.Data.xres != Fulfillment::UNKNOWN) {
+            haveCorrContr = true;
             checkExpErr(C);
         }
     }
-    errs() << "\nTotal number of correctness contracts: " << xfail + xsucc << "\n";
-    errs() << "Total number of xfail contracts: " << xfail << "\n";
-    errs() << "Total number of xsucc contracts: " << xsucc << "\n";
-    errs() << "Total number of FN: " << FN << "\n";
-    errs() << "Total number of FP: " << FP << "\n\n";
-    errs() << "Total number of UN: " << UN << "\n\n";
+    if (haveCorrContr) {
+        errs() << "Checking correctness contract results:\n";
+        errs() << "\nTotal number of correctness contracts: " << xfail + xsucc << "\n";
+        errs() << "Total number of xfail contracts: " << xfail << "\n";
+        errs() << "Total number of xsucc contracts: " << xsucc << "\n";
+        errs() << "Total number of FN: " << FN << "\n";
+        errs() << "Total number of FP: " << FP << "\n\n";
+        errs() << "Total number of UN: " << UN << "\n\n";
+    }
 
     errs() << "Checking verification contract results:\n";
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
