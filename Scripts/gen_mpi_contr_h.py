@@ -163,7 +163,7 @@ function_contracts["MPI_Rget"]["POST"].append(f"( no! (read!(*0)) until! (called
 function_contracts["MPI_Rget"]["POST"].append(f"( no! (called_tag!(buf_read,$:0)) until! (called_tag!(rma_complete,$:7)) | \
                                                   no! (called_tag!(buf_read,$:0)) until! (called_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local read by MPI call\"")
 
-tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0), ("MPI_Win_flush_local_all", 0), ("MPI_Win_complete", 0)]
+tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0), ("MPI_Win_flush_local", 1), ("MPI_Win_flush_local_all", 0), ("MPI_Win_complete", 0)]
 for func, win_idx in tag_rmacomplete:
     function_contracts[func]["TAGS"].append(f"rma_complete({win_idx})")
 tag_p2pcomplete = [("MPI_Wait", 0), ("MPI_Test", 0)]
