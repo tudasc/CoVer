@@ -119,7 +119,7 @@ for func, ctx_idx in tag_ctxuse:
 function_contracts["shmem_ctx_create"]["POST"].append(f"called!(shmem_ctx_destroy,0:*1) MSG \"Context leak\"")
 
 # Make sure teams are freed
-tag_teamcreate = [("shmem_team_split_strided", 6), ("shmem_team_split_strided", 4), ("shmem_team_split_strided", 7)]
+tag_teamcreate = [("shmem_team_split_strided", 6), ("shmem_team_split_2d", 4), ("shmem_team_split_2d", 7)]
 for func, team_idx in tag_teamcreate:
     function_contracts[func]["POST"].append(f"called!(shmem_team_destroy,0:*{team_idx}) MSG \"Team leak\"")
 
