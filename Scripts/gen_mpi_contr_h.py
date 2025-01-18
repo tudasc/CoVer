@@ -114,6 +114,11 @@ for func, tag_idx in tag_reqgen:
     function_contracts[func]["POST"].append(f"no! (called_tag!(request_gen,$:{tag_idx})) until! (called_tag!(req_complete,$:{tag_idx})) MSG \"Double Request Use\"")
     function_contracts[func]["POST"].append(f"called_tag!(req_complete,$:{tag_idx}) MSG \"Request Leak\"")
     function_contracts[func]["TAGS"].append(f"request_gen({tag_idx})")
+# Also add Rget, Rput to req_gen to satisfy unmatched wait, but not the other contrs
+function_contracts["MPI_Rget"]["TAGS"].append(f"request_gen(8)")
+function_contracts["MPI_Rput"]["TAGS"].append(f"request_gen(8)")
+# Unmatched Wait
+function_contracts["MPI_Wait"]["PRE"].append(f"called_tag!(request_gen,$:0) MSG \"Unmatched Wait\"")
 
 # Local data races
 tag_buf = [("RMAWIN", "MPI_Put", 0, 7, "W", "R"),
