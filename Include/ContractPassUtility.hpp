@@ -97,12 +97,17 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                 if (!mergeRes.second) {
                     // Already visited and analysis does not wish to pursue further.
                     // Remove from worklist, or pop stack
-                    if (!stack.empty()) {
-                        next = stack.top()->getNextNonDebugInstruction();
+                    const Instruction* tmpNext = nullptr;
+                    while (!tmpNext) {
+                        if (stack.empty()) break;
+                        tmpNext = stack.top()->getNextNonDebugInstruction();
                         stack.pop();
-                    } else {
-                        break;
                     }
+                    // Either tmpNext is set, or null because tail-call stack end or stack was empty
+                    if (tmpNext)
+                        next = tmpNext;
+                    else
+                        break;
                 }
                 postAccess[next] = mergeRes.first;
             }
