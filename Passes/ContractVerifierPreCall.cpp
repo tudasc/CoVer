@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Module.h>
 #include <memory>
 #include <utility>
 #include <vector>
