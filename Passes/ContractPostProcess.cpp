@@ -124,7 +124,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     }
 
     std::stringstream s;
-    s << "LLVMContractsPlugin: Elapsed " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n";
+    s << "LLVMContractsPlugin: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n";
     errs() << s.str();
 
     return PreservedAnalyses::all();

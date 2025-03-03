@@ -123,6 +123,10 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
         curDatabase.Tags[newCtr.F].insert(curDatabase.Tags[newCtr.F].end(), newCtr.Data.Tags.begin(), newCtr.Data.Tags.end());
     }
 
+    std::stringstream s;
+    s << "LLVMContractsPlugin: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";
+    errs() << s.str();
+
     return curDatabase;
 }
 
