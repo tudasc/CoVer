@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Function.h>
 #include <map>
@@ -35,6 +36,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             std::vector<Contract> Contracts; // For postprocessing only
             std::vector<LinearizedContract> LinearizedContracts; // For verification passes
             std::map<const Function*, std::vector<TagUnit>> Tags;
+            std::chrono::time_point<std::chrono::system_clock> start_time;
         } typedef ContractDatabase;
 
         // Run Pass

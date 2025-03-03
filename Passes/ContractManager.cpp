@@ -44,9 +44,10 @@ static std::optional<std::string> getFuncName(CallBase* FuncCall) {
 AnalysisKey ContractManagerAnalysis::Key;
 
 ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
-    errs() << "Running Contract Manager on Module: " << M.getName() << "\n";
-
     ContractDatabase curDatabase;
+    curDatabase.start_time = std::chrono::system_clock::now();
+
+    errs() << "Running Contract Manager on Module: " << M.getName() << "\n";
 
     GlobalVariable* Annotations = M.getGlobalVariable("llvm.global.annotations");
     if (Annotations == nullptr) {

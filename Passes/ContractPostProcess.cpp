@@ -9,6 +9,8 @@
 #include <llvm/Support/WithColor.h>
 #include <memory>
 #include <optional>
+#include <sstream>
+#include <string>
 #include <vector>
 
 using namespace llvm;
@@ -120,6 +122,10 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
             checkExpressions(C, true);
         }
     }
+
+    std::stringstream s;
+    s << "LLVMContractsPlugin: Elapsed " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n";
+    errs() << s.str();
 
     return PreservedAnalyses::all();
 }
