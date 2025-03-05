@@ -214,7 +214,7 @@ for func, win_idx in tag_rmawin:
 # Make sure types are committed
 tag_typegen = [("MPI_Type_contiguous", 2), ("MPI_Type_vector", 4)]
 for func, tag_idx in tag_typegen:
-    function_contracts[func]["POST"].append(f"no! (called_tag!(type_use,$:*{tag_idx})) until! (called!(MPI_Type_commit,0:{tag_idx})) MSG \"Type not comitted before use\"")
+    function_contracts[func]["POST"].append(f"no! (called_tag!(type_use,$:*{tag_idx})) until! (called!(MPI_Type_commit,0:{tag_idx})) MSG \"Type not committed before use\"")
     function_contracts[func]["POST"].append(f"no! (called!(MPI_Finalize)) until! (called!(MPI_Type_free,0:{tag_idx})) MSG \"Data type leak, free function not called\"")
     function_contracts[func]["POST"].append(f"no! (called_tag!(type_gen)) until! (called!(MPI_Type_free,0:{tag_idx})) MSG \"Data type leak, type handle lost\"")
     function_contracts[func]["TAGS"].append(f"type_gen({tag_idx})")
