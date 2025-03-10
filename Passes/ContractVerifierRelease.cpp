@@ -2,6 +2,7 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
+#include "ErrorMessage.h"
 
 #include <algorithm>
 #include <any>
@@ -60,7 +61,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
 }
 
 struct IterTypeRelease {
-    std::vector<std::string> err;
+    std::vector<ErrorMessage> err;
     std::vector<std::string> dbg;
     OperationType forbiddenType;
     std::vector<std::any> param;
@@ -71,7 +72,7 @@ struct IterTypeRelease {
     const bool isTagRel;
 };
 
-void ContractVerifierReleasePass::appendDebugStr(std::vector<std::string>& err, const Instruction* Forbidden, const CallBase* CB) {
+void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err, const Instruction* Forbidden, const CallBase* CB) {
     std::stringstream str;
     std::string type = "operation";
 
@@ -79,11 +80,18 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<std::string>& err, 
     if (isa<StoreInst>(Forbidden)) type = "store";
     if (isa<CallBase>(Forbidden)) type = "call to " + demangle(dyn_cast<CallBase>(Forbidden)->getCalledFunction()->getName());
 
-    str << "[ContractVerifierRelease] Found " << type << " at "
+    str << "Found " << type << " at "
         << ContractPassUtility::getInstrLocStr(Forbidden)
         << " which is in conflict with " << CB->getCalledFunction()->getName().str() << " at " << ContractPassUtility::getInstrLocStr(CB)
         << " before release";
-    err.push_back(str.str());
+
+    err.emplace_back(ErrorMessage{
+        .error_id = "Release",
+        .text = str.str(),
+        .references = {ContractPassUtility::getErrorReference(Forbidden),
+                       ContractPassUtility::getErrorReference(CB),             
+                     },
+    });
 }
 
 #define RWHelper(instr) \
