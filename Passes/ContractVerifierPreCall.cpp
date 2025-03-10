@@ -2,6 +2,7 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
+#include "ErrorMessage.h"
 
 #include <algorithm>
 #include <llvm/Demangle/Demangle.h>
@@ -59,22 +60,28 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-void ContractVerifierPreCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<std::string>& err) {
+void ContractVerifierPreCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err) {
     // Generic error message
-    err.push_back("[ContractVerifierPreCall] Did not find precall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters before "
-                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));
-    if (!candidates.empty()) {
-        // There were candidates, none fit
-        for (const CallBase* CB : candidates)
-            err.push_back("[ContractVerifierPreCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
-    } else {
-        // No candidates at all
-        err.push_back("[ContractVerifierPreCall] No candidates were found.");
-    }
+    err.emplace_back(ErrorMessage{
+        .text = "[ContractVerifierPreCall] Did not find precall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters before "
+                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
+        .references = {ErrorReference{Provider->getDebugLoc()->getFilename().str(), 
+                                      Provider->getDebugLoc()->getLine(), 
+                                      Provider->getDebugLoc()->getColumn()}},
+    });
+
+    // if (!candidates.empty()) {
+    //     // There were candidates, none fit
+    //     for (const CallBase* CB : candidates)
+    //         err.push_back("[ContractVerifierPreCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
+    // } else {
+    //     // No candidates at all
+    //     err.push_back("[ContractVerifierPreCall] No candidates were found.");
+    // }
 }
 
 struct IterTypePreCall {
-    std::vector<std::string> err;
+    std::vector<ErrorMessage> err;
     std::vector<std::string> dbg;
     const std::string Target;
     const Function* F;

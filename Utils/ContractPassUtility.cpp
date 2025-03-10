@@ -1,5 +1,6 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
+#include "ErrorMessage.h"
 #include <climits>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Demangle/Demangle.h>
@@ -111,7 +112,20 @@ std::optional<uint> getLineNumber(const Instruction* I) {
     return std::nullopt;
 }
 std::string getInstrLocStr(const Instruction* I) {
-    return demangle(I->getParent()->getParent()->getName()) + ":" + (getLineNumber(I).has_value() ? std::to_string(getLineNumber(I).value()) : "UNKNOWN");
+    if (const DebugLoc &debugLoc = I->getDebugLoc()) {
+        return (debugLoc->getDirectory() + "/" + debugLoc->getFilename()).str() + ":" + std::to_string(debugLoc.getLine()) + ":" + std::to_string(debugLoc->getColumn());
+    } else {
+        return "";
+    }
+    //return I->getParent()->getParent()-> + " :" + (getLineNumber(I).has_value() ? std::to_string(getLineNumber(I).value()) : "UNKNOWN");
+}
+
+ErrorReference getErrorReference(const Instruction* I) {
+    return ErrorReference{
+        .file = I->getDebugLoc()->getDirectory().str() + "/" + I->getDebugLoc()->getFilename().str(),
+        .line = I->getDebugLoc()->getLine(),
+        .column = I->getDebugLoc()->getColumn()
+    };
 }
 
 bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {

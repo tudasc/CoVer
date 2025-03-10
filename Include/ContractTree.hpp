@@ -6,6 +6,7 @@
  * If you are defining a new verifier, you will need to include this file and the ContractManager.
  */
 
+#include "ErrorMessage.h"
 #include <string>
 #include <memory>
 #include <optional>
@@ -66,8 +67,8 @@ namespace ContractTree {
         const std::string ExprStr;
         const FormulaType type = FormulaType::OR;
         std::shared_ptr<Fulfillment> Status = std::make_shared<Fulfillment>(Fulfillment::UNKNOWN);
-        std::optional<std::string> Message;
-        std::shared_ptr<std::vector<std::string>> ErrorInfo = std::make_shared<std::vector<std::string>>();
+        std::optional<ErrorMessage> Message;
+        std::shared_ptr<std::vector<ErrorMessage>> ErrorInfo = std::make_shared<std::vector<ErrorMessage>>();
         virtual ~ContractFormula() = default;
     };
     struct ContractExpression : ContractFormula {

@@ -2,6 +2,7 @@
 #include "ContractLangErrorListener.hpp"
 #include "ContractParser.h"
 #include "ContractTree.hpp"
+#include "ErrorMessage.h"
 #include <any>
 #include <memory>
 #include <optional>
@@ -53,7 +54,7 @@ std::any ContractDataVisitor::visitExprFormula(ContractParser::ExprFormulaContex
     if (ctx->expression()) {
         std::shared_ptr<ContractFormula> exp = std::make_shared<ContractExpression>(std::any_cast<ContractExpression>(this->visit(ctx->expression())));
         if (ctx->msg)
-            exp->Message = ctx->msg->getText();
+            exp->Message = ErrorMessage{.text = ctx->msg->getText()};
         return exp;
     }
     std::vector<std::shared_ptr<ContractFormula>> exprs;
@@ -62,7 +63,7 @@ std::any ContractDataVisitor::visitExprFormula(ContractParser::ExprFormulaContex
         exprs.push_back(expForm);
     }
     ContractFormula contrF = { exprs, ctx->getText(), !ctx->XORSep().empty() ? FormulaType::XOR : FormulaType::OR };
-    if (ctx->msg) contrF.Message = ctx->msg->getText();
+    if (ctx->msg) contrF.Message = ErrorMessage{.text = ctx->msg->getText()};
     return std::make_shared<ContractFormula>(contrF);
 }
 std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext *ctx) {
