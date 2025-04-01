@@ -150,11 +150,11 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     }
 
     std::stringstream s;
-    s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n";
+    s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
     errs() << s.str();
 
     std::ofstream file("contract_messages.json");
-    errs() << json_messages.dump(4);
+    errs() << json_messages.dump(4) << "\n";
     file << json_messages.dump(4);
     file.close();
 
