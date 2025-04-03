@@ -15,13 +15,14 @@ functags: TagMarker ScopePrefix tagUnit (ListSep tagUnit)* ScopePostfix;
 
 tagUnit: Variable (OPPrefix NatNum OPPostfix)?;
 
-expression: primitive | composite;
+expression: callOp | releaseOp | paramOp;
 
-primitive: readOp | writeOp | callOp;
 readOp: OPRead OPPrefix (Deref | AddrOf)? NatNum OPPostfix;
 writeOp: OPWrite OPPrefix (Deref | AddrOf)? NatNum OPPostfix;
 varMap: (callP=NatNum | TagParam) MapSep (Deref | AddrOf)? contrP=NatNum;
 callOp: (OPCall | OPCallTag) OPPrefix Variable (ListSep varMap)* OPPostfix;
+paramOp: OPParam OPPrefix NatNum MapSep paramReq (ListSep paramReq)* OPPostfix;
+paramReq: (ParamForbidEq | ParamGt | ParamGtEq | ParamLt | ParamLtEq) Variable;
 
-composite: releaseOp;
-releaseOp: OPRelease1 OPPrefix forbidden=primitive OPPostfix OPRelease2 OPPrefix until=callOp OPPostfix;
+relForbidden: readOp | writeOp | callOp;
+releaseOp: OPRelease1 OPPrefix forbidden=relForbidden OPPostfix OPRelease2 OPPrefix until=callOp OPPostfix;

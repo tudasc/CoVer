@@ -13,6 +13,7 @@ class ContractDataVisitor : public ContractParserBaseVisitor {
         std::any visitExpression(ContractParser::ExpressionContext *ctx) override;
         std::any visitReadOp(ContractParser::ReadOpContext *ctx) override;
         std::any visitWriteOp(ContractParser::WriteOpContext *ctx) override;
+        std::any visitParamOp(ContractParser::ParamOpContext *ctx) override;
         std::any visitCallOp(ContractParser::CallOpContext *ctx) override;
         std::any visitReleaseOp(ContractParser::ReleaseOpContext *ctx) override;
 

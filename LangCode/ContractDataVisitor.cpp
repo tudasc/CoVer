@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace ContractTree;
@@ -84,6 +85,20 @@ std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) 
         if (ctx->AddrOf())
             acc = ParamAccess::ADDROF;
     std::shared_ptr<const Operation> op = std::make_shared<const WriteOperation>(std::stoi(ctx->NatNum()->getText()), acc);
+    return op;
+}
+std::any ContractDataVisitor::visitParamOp(ContractParser::ParamOpContext *ctx) {
+    std::vector<std::pair<const Comparator, const std::string>> reqs;
+    for (ContractParser::ParamReqContext* req : ctx->paramReq()) {
+        Comparator comp;
+        if (req->ParamForbidEq()) comp = Comparator::NEQ;
+        if (req->ParamGt()) comp = Comparator::GT;
+        if (req->ParamGtEq()) comp = Comparator::GTEQ;
+        if (req->ParamLt()) comp = Comparator::LT;
+        if (req->ParamLtEq()) comp = Comparator::LTEQ;
+        reqs.push_back({comp, req->Variable()->getText()});
+    }
+    std::shared_ptr<const Operation> op = std::make_shared<const ParamOperation>(std::stoi(ctx->NatNum()->getText()), reqs);
     return op;
 }
 std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {

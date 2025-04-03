@@ -80,8 +80,9 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractVerifierPreCall.cpp
   Passes/ContractVerifierPostCall.cpp
   Passes/ContractVerifierRelease.cpp
-  Passes/Instrument.cpp
+  Passes/ContractVerifierParam.cpp
   Passes/ContractPostProcess.cpp
+  Passes/Instrument.cpp
   Utils/ContractPassUtility.cpp
   Include/ContractPassUtility.hpp
 )

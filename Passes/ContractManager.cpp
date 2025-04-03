@@ -51,6 +51,16 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     extractFromAnnotations(M);
     extractFromFunction(M);
 
+    // Annotations done, now add value pairs to database
+    for (GlobalVariable& GV : M.globals()) {
+        if (GV.getName().starts_with("ContractValueInfo_") || GV.getName().starts_with("ContractPtrInfo_")) {
+            Constant* data = GV.getInitializer();
+            StringRef name =  dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(data->getOperand(0))->getInitializer())->getAsCString();
+            Value* val = data->getOperand(1);
+            curDatabase.ContractVariableData[name.str()] = { val, GV.getName().starts_with("ContractPtrInfo_") };
+        }
+    }
+
     std::stringstream s;
     s << "CoVer: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";
     errs() << s.str();

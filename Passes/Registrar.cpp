@@ -7,6 +7,7 @@
 #include "ContractVerifierPreCall.hpp"
 #include "ContractVerifierPostCall.hpp"
 #include "ContractVerifierRelease.hpp"
+#include "ContractVerifierParam.hpp"
 #include "ContractPostProcess.hpp"
 #include "Instrument.hpp"
 
@@ -24,6 +25,10 @@ namespace {
         }
         if (Name == "contractVerifierRelease") {
             MPM.addPass(ContractVerifierReleasePass());
+            return true;
+        }
+        if (Name == "contractVerifierParam") {
+            MPM.addPass(ContractVerifierParamPass());
             return true;
         }
         if (Name == "contractPostProcess") {
