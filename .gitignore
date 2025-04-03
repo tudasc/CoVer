@@ -3,3 +3,4 @@ install/
 .cache/
 compile_commands.json
 .antlr/
+.vscode/
