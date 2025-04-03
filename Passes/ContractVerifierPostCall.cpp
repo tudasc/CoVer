@@ -33,7 +33,7 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
         for (std::shared_ptr<ContractExpression> const& Expr : C.Post) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
-            // Contract has a precondition
+            // Contract has a postcondition
             std::string err;
             CallStatus result;
             switch (Expr->OP->type()) {
