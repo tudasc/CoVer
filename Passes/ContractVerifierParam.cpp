@@ -42,6 +42,7 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
             if (Expr->OP->type() != OperationType::PARAM) continue;
             const ParamOperation* ParamOp = dynamic_cast<const ParamOperation*>(Expr->OP.get());
             C.DebugInfo->push_back("[ContractVerifierParam] Attempting to verify expression: " + Expr->ExprStr);
+            Fulfillment resf = Fulfillment::FULFILLED;
             for (std::pair<const Comparator, const std::string> req : ParamOp->reqs) {
                 // First, check against value database
                 if (!DB.ContractVariableData.contains(req.second)) {
@@ -57,7 +58,7 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
                         std::string errInfo = "";
                         Fulfillment f = checkParamReq(DB.ContractVariableData[req.second].first, CB->getArgOperand(ParamOp->idx), req.first, DB.ContractVariableData[req.second].second, errInfo);
                         if (f == Fulfillment::BROKEN) {
-                            *Expr->Status = Fulfillment::BROKEN;
+                            resf = Fulfillment::BROKEN;
                             if (!errInfo.empty()) {
                                     Expr->ErrorInfo->push_back({
                                     .error_id = "Param",
@@ -69,7 +70,7 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
                     }
                 }
             }
-            if (*Expr->Status == Fulfillment::UNKNOWN) *Expr->Status = Fulfillment::FULFILLED;
+            *Expr->Status = resf;
         }
     }
 
