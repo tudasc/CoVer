@@ -96,7 +96,8 @@ std::any ContractDataVisitor::visitParamOp(ContractParser::ParamOpContext *ctx) 
         if (req->ParamGtEq()) comp = Comparator::GTEQ;
         if (req->ParamLt()) comp = Comparator::LT;
         if (req->ParamLtEq()) comp = Comparator::LTEQ;
-        reqs.push_back({comp, req->Variable()->getText()});
+        if (req->ParamEqExcept()) comp = Comparator::EXEQ;
+        reqs.push_back({comp, req->value->getText()});
     }
     std::shared_ptr<const Operation> op = std::make_shared<const ParamOperation>(std::stoi(ctx->NatNum()->getText()), reqs);
     return op;

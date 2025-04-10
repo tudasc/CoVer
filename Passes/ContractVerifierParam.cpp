@@ -10,6 +10,8 @@
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Analysis.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/Type.h>
+#include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include <string>
@@ -44,32 +46,43 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
             C.DebugInfo->push_back("[ContractVerifierParam] Attempting to verify expression: " + Expr->ExprStr);
             Fulfillment resf = Fulfillment::FULFILLED;
             for (std::pair<const Comparator, const std::string> req : ParamOp->reqs) {
-                // First, check against value database
-                if (!DB.ContractVariableData.contains(req.second)) {
-                    errs() << "Undefined contract value identifier \"" << req.second << "\"!\n";
-                    errs() << "Requirement will not be analysed!\n";
-                    errs() << DB.ContractVariableData.begin()->first << " " << req.second << "\n";
-                    errs() << DB.ContractVariableData.begin()->first.length() << " " << req.second.length() << "\n";
-                    continue;
+                Value* var;
+                try {
+                    // First, check if constant value provided
+                    int ivalue = std::stoi(req.second);
+                    var = ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue);
+                } catch(std::exception& e) {
+                    // Otherwise, check against value database
+                    if (!DB.ContractVariableData.contains(req.second)) {
+                        errs() << "Undefined non-constint contract value identifier \"" << req.second << "\"!\n";
+                        errs() << "Requirement will not be analysed!\n";
+                        continue;
+                    }
+                    var = DB.ContractVariableData[req.second].first;
                 }
                 // Perform the check on each callsite
                 for (const User* U : C.F->users()) {
                     if (const CallBase* CB = dyn_cast<CallBase>(U)) {
                         std::string errInfo = "";
-                        Fulfillment f = checkParamReq(DB.ContractVariableData[req.second].first, CB->getArgOperand(ParamOp->idx), req.first, DB.ContractVariableData[req.second].second, errInfo);
+                        Fulfillment f = checkParamReq(var, CB->getArgOperand(ParamOp->idx), req.first, DB.ContractVariableData[req.second].second, errInfo);
                         if (f == Fulfillment::BROKEN) {
                             resf = Fulfillment::BROKEN;
                             if (!errInfo.empty()) {
                                     Expr->ErrorInfo->push_back({
                                     .error_id = "Param",
-                                    .text = errInfo + std::format("\nParameter Index: {:d}\nContract Value Name: {:s}", ParamOp->idx, req.second),
+                                    .text = std::format("{:s} Parameter Index: {:d}, Contract Value Name: {:s}", errInfo, ParamOp->idx, req.second),
                                     .references = {ContractPassUtility::getFileReference(CB)},
                                 });
                             }
                         }
+                        if (f == Fulfillment::FULFILLED && req.first == Comparator::EXEQ) {
+                            // Parameter fulfills exception value. Stop checking this parameter
+                            goto exit_param_analysis;
+                        }
                     }
                 }
             }
+            exit_param_analysis:
             *Expr->Status = resf;
         }
     }
@@ -95,13 +108,15 @@ std::string createCompErr(const Comparator comp, const ConstantInt* callCI, cons
             return "Call parameter value (" + callCs + ") not less than contract value (" + valueCs + ")!";
         case Comparator::LTEQ:
             return "Call parameter value (" + callCs + ") not less or equal to contract value (" + valueCs + ")!";
+        case Comparator::EXEQ:
+            llvm_unreachable("Exception Equal should not trigger an error!");
     }
 }
 
 Fulfillment compareCI(const ConstantInt* CI, const ConstantInt* CI2, Comparator comp) {
     switch (comp) {
         case Comparator::NEQ:
-            return !APInt::isSameValue(CI->getValue(), CI2->getValue()) ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
+            return CI->getValue().getSExtValue() != CI2->getValue().getSExtValue() ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
         case Comparator::GTEQ:
             return CI->getValue().sge(CI2->getValue()) ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
         case Comparator::GT:
@@ -110,20 +125,31 @@ Fulfillment compareCI(const ConstantInt* CI, const ConstantInt* CI2, Comparator 
             return CI->getValue().sle(CI2->getValue()) ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
         case Comparator::LT:
             return CI->getValue().slt(CI2->getValue()) ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
+        case Comparator::EXEQ:
+            return CI->getValue().getSExtValue() == CI2->getValue().getSExtValue() ? Fulfillment::FULFILLED : Fulfillment::UNKNOWN;
     }
 }
 
 Fulfillment ContractVerifierParamPass::checkParamReq(const Value* var, const Value* callVal, Comparator comp, bool isPtr, std::string& ErrInfo) {
-    if (comp == Comparator::NEQ && isPtr) {
-        if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
-            ErrInfo = "Parameter matches or is alias to forbidden pointer value!";
-            return Fulfillment::BROKEN;
+    if (isPtr) {
+        switch (comp) {
+            case Comparator::NEQ:
+                if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
+                    ErrInfo = "Parameter matches or is alias to forbidden pointer value!";
+                    return Fulfillment::BROKEN;
+                }
+                return Fulfillment::FULFILLED;
+            case Comparator::EXEQ:
+                if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
+                    ErrInfo = "Note: Parameter matches or is alias to exception value";
+                    return Fulfillment::FULFILLED;
+                }
+                // Not an exception. Continue analysis, so far no info gained
+                return Fulfillment::UNKNOWN;
+            default:
+                errs() << "Attempt to compare pointers! Not performing parameter analysis\n";
+                return Fulfillment::UNKNOWN;
         }
-        #warning TODO maybe unknown? Depends on analysis confidence
-        return Fulfillment::FULFILLED;
-    } else if (comp != Comparator::NEQ && isPtr) {
-        errs() << "Attempt to compare pointers! Not performing analysis\n";
-        return Fulfillment::UNKNOWN;
     }
     // Ensured that !isPtr, can get constinfo if present
     if (const ConstantInt* callCI = dyn_cast<ConstantInt>(callVal)) {

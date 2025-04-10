@@ -35,7 +35,7 @@ namespace ContractTree {
         virtual const OperationType type() const override { return OperationType::WRITE; };
     };
     enum Comparator {
-        NEQ, GT, GTEQ, LT, LTEQ
+        NEQ, GT, GTEQ, LT, LTEQ, EXEQ
     };
     struct ParamOperation : Operation {
         ParamOperation(int _idx, std::vector<std::pair<const Comparator, const std::string>> _reqs) : idx{_idx}, reqs{_reqs} {};

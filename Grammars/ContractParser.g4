@@ -22,7 +22,7 @@ writeOp: OPWrite OPPrefix (Deref | AddrOf)? NatNum OPPostfix;
 varMap: (callP=NatNum | TagParam) MapSep (Deref | AddrOf)? contrP=NatNum;
 callOp: (OPCall | OPCallTag) OPPrefix Variable (ListSep varMap)* OPPostfix;
 paramOp: OPParam OPPrefix NatNum MapSep paramReq (ListSep paramReq)* OPPostfix;
-paramReq: (ParamForbidEq | ParamGt | ParamGtEq | ParamLt | ParamLtEq) Variable;
+paramReq: (ParamEqExcept | ParamForbidEq | ParamGt | ParamGtEq | ParamLt | ParamLtEq) value=(Variable | NatNum);
 
 relForbidden: readOp | writeOp | callOp;
 releaseOp: OPRelease1 OPPrefix forbidden=relForbidden OPPostfix OPRelease2 OPPrefix until=callOp OPPostfix;
