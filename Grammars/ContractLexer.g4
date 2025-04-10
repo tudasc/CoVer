@@ -44,3 +44,4 @@ ParamGt: '>';
 ParamGtEq: '>=';
 ParamLt: '<';
 ParamLtEq: '<=';
+ParamEqExcept: '^=';
