@@ -62,6 +62,7 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractVerifierPreCall.cpp
   Passes/ContractVerifierPostCall.cpp
   Passes/ContractVerifierRelease.cpp
+  Passes/Instrument.cpp
   Passes/ContractPostProcess.cpp
   Utils/ContractPassUtility.cpp
   LangCode/ContractDataVisitor.cpp
@@ -86,6 +87,7 @@ install(
   FILES
     Include/ContractTree.hpp
     Include/Contracts.h
+    Include/DynamicAnalysis.h
     Passes/ContractManager.hpp
   DESTINATION include
   PERMISSIONS
