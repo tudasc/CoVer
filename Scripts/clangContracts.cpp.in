@@ -202,7 +202,7 @@ int main(int argc, const char** argv) {
     std::string tmpfile = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
     int fd = mkstemp(tmpfile.data());
     execSafe("llvm-link" + bitcode_files + llvmlink_obj_files + " -o " + tmpfile);
-    execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
+    execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess,instrumentContracts' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
     execSafe("llc -filetype=obj --relocation-model=pic" + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
     execSafe(wrap_target + " -lm -ldl -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o" + dest_arg);
