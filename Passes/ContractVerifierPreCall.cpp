@@ -80,7 +80,7 @@ struct IterTypePreCall {
     const Function* F;
     const std::vector<CallParam> reqParams;
     const bool isTag;
-    std::map<const Function*, std::vector<TagUnit>> Tags;
+    std::map<Function*, std::vector<TagUnit>> Tags;
 };
 
 ContractVerifierPreCallPass::CallStatus transferPreCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {

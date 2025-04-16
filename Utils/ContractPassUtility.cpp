@@ -114,7 +114,7 @@ std::string getInstrLocStr(const Instruction* I) {
     return demangle(I->getParent()->getParent()->getName()) + ":" + (getLineNumber(I).has_value() ? std::to_string(getLineNumber(I).value()) : "UNKNOWN");
 }
 
-bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
     if (!isTag) {
         if (!CB->getCalledFunction()) {
             if (!UnknownCalledParam.contains(CB)) {
