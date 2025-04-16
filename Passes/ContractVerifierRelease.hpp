@@ -20,7 +20,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
         ReleaseStatus transferRelease(ReleaseStatus cur, const Instruction* I, void* data);
         std::pair<ReleaseStatus,bool> mergeRelease(ReleaseStatus prev, ReleaseStatus cur, const Instruction* I, void* data);
         ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, const Module& M, std::string& error);
-        std::map<const Function*, std::vector<TagUnit>> Tags;
+        std::map<Function*, std::vector<TagUnit>> Tags;
 };
 
 } // namespace llvm

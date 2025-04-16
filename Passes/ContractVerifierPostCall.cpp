@@ -82,7 +82,7 @@ struct IterTypePostCall {
     const CallBase* callsite;
     const std::vector<CallParam> reqParams;
     const bool isTag;
-    std::map<const Function*, std::vector<TagUnit>> Tags;
+    std::map<Function*, std::vector<TagUnit>> Tags;
 };
 
 ContractVerifierPostCallPass::CallStatus transferPostCallStat(ContractVerifierPostCallPass::CallStatus cur, const Instruction* I, void* data) {

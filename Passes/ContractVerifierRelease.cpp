@@ -69,7 +69,7 @@ struct IterTypeRelease {
     std::string releaseFunc;
     std::vector<CallParam> releaseParam;
     const CallBase* callsite;
-    std::map<const Function*, std::vector<TagUnit>> Tags;
+    std::map<Function*, std::vector<TagUnit>> Tags;
     const bool isTagRel;
 };
 
