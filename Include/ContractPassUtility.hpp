@@ -49,7 +49,7 @@ namespace ContractPassUtility {
     /*
     * Check if call applies to target (which may be a tag or function name)
     */
-    bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags);
 
     /*
     * Check if contract and call parameter fit
@@ -59,7 +59,7 @@ namespace ContractPassUtility {
     /*
     * Check if two calls match by contract definition
     */
-    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags);
 };
 
 template<typename T>
