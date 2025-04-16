@@ -8,6 +8,7 @@
 #include "ContractVerifierPostCall.hpp"
 #include "ContractVerifierRelease.hpp"
 #include "ContractPostProcess.hpp"
+#include "Instrument.hpp"
 
 using namespace llvm;
 
@@ -33,6 +34,10 @@ bool MPMHook(StringRef Name, ModulePassManager &MPM,
     }
     if (Name == "contractPostProcess") {
         MPM.addPass(ContractPostProcessingPass());
+        return true;
+    }
+    if (Name == "instrumentContracts") {
+        MPM.addPass(InstrumentPass());
         return true;
     }
     return false;
