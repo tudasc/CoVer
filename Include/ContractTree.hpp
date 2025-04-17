@@ -59,7 +59,7 @@ namespace ContractTree {
 
     enum struct Fulfillment { FULFILLED, UNKNOWN, BROKEN };
     inline const std::string FulfillmentStr(Fulfillment f) { return std::vector<std::string>{ "Fulfilled", "Unknown", "Violated"}[(int)f]; };
-    enum struct FormulaType { XOR, OR };
+    enum struct FormulaType { AND = 5, OR = 6, XOR = 7 };
     struct ContractFormula {
         ContractFormula(std::vector<std::shared_ptr<ContractFormula>> _cF, std::string _str, FormulaType _type) : Children(_cF), ExprStr(_str), type(_type) {}
         ContractFormula(std::string _str) : ExprStr(_str) {}
