@@ -44,90 +44,95 @@ static std::optional<std::string> getFuncName(CallBase* FuncCall) {
 AnalysisKey ContractManagerAnalysis::Key;
 
 ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
-    ContractDatabase curDatabase;
     curDatabase.start_time = std::chrono::system_clock::now();
 
     errs() << "Running Contract Manager on Module: " << M.getName() << "\n";
 
-    GlobalVariable* Annotations = M.getGlobalVariable("llvm.global.annotations");
-    if (Annotations == nullptr) {
-        errs() << "No annotations present, quitting.\n";
-        return curDatabase;
-    }
-
-    Constant* ANNValues = Annotations->getInitializer();
-
-    ContractLangErrorListener listener;
-    ContractDataVisitor dataVisitor;
-
-    for (Use& annUse : ANNValues->operands()) {
-        ConstantStruct *ANN = dyn_cast<ConstantStruct>(annUse);
-        StringRef ANNStr = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(1))->getInitializer())->getAsCString();
-        antlr4::ANTLRInputStream input(ANNStr);
-
-        // Apply Lexer.
-        ContractLexer lexer(&input);
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(&listener);
-        antlr4::CommonTokenStream tokens(&lexer);
-        try {
-            tokens.fill();
-        } catch (ContractLangSyntaxError& e) {
-            errs() << "Detected non-contract annotation (Lexing Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << ANNStr << "\n";
-            continue;
-        }
-
-        // Apply Parser.
-        ContractParser parser(&tokens);
-        parser.removeErrorListeners();
-        parser.addErrorListener(&listener);
-        try {
-            parser.contract();
-        } catch (ContractLangSyntaxError& e) {
-            errs() << "Detected non-contract annotation (Parser Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << ANNStr << "\n";
-            if (IS_DEBUG) {
-                for (auto x : tokens.getTokens()) {
-                    errs() << "(" << x->getText() << "," << lexer.getVocabulary().getSymbolicName(x->getType()) << ")\n";
-                }
-            }
-            continue;
-        }
-        Function* F =  dyn_cast<Function>(ANN->getOperand(0));
-        StringRef location = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(2))->getInitializer())->getAsCString();
-        errs() << "Found contract in " << location << " with content: " << ANNStr << "\n";
-        parser.reset();
-
-        // Finally have contract data
-        ContractData Data = dataVisitor.getContractData(parser.contract());
-        Contract newCtr{F, ANNStr, Data};
-
-        // Add normal contract
-        curDatabase.Contracts.push_back(newCtr);
-
-        // Create and add Linearized Contract
-        std::vector<std::shared_ptr<ContractExpression>> PreLin;
-        for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Pre) {
-            std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
-            PreLin.insert( PreLin.end(), contrFLin.begin(), contrFLin.end() );
-        }
-        std::vector<std::shared_ptr<ContractExpression>> PostLin;
-        for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Post) {
-            std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
-            PostLin.insert( PostLin.end(), contrFLin.begin(), contrFLin.end() );
-        }
-
-        LinearizedContract lContract = { F, ANNStr, PreLin, PostLin, newCtr.DebugInfo};
-        curDatabase.LinearizedContracts.push_back(lContract);
-
-        // Append tag database
-        curDatabase.Tags[newCtr.F].insert(curDatabase.Tags[newCtr.F].end(), newCtr.Data.Tags.begin(), newCtr.Data.Tags.end());
-    }
+    extractFromAnnotations(M);
 
     std::stringstream s;
     s << "CoVer: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";
     errs() << s.str();
 
     return curDatabase;
+}
+
+void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
+    GlobalVariable* Annotations = M.getGlobalVariable("llvm.global.annotations");
+    if (Annotations == nullptr) {
+        errs() << "Note: No string annotations found.\n";
+        return;
+    }
+
+    Constant* ANNValues = Annotations->getInitializer();
+
+    for (Use& annUse : ANNValues->operands()) {
+        ConstantStruct *ANN = dyn_cast<ConstantStruct>(annUse);
+        StringRef ANNStr = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(1))->getInitializer())->getAsCString();
+        Function* F =  dyn_cast<Function>(ANN->getOperand(0));
+        addContract(ANNStr, F);
+    }
+}
+
+void ContractManagerAnalysis::addContract(StringRef contract, Function* F) {
+    ContractLangErrorListener listener;
+    ContractDataVisitor dataVisitor;
+
+    // Apply Lexer.
+    antlr4::ANTLRInputStream input(contract);
+    ContractLexer lexer(&input);
+    lexer.removeErrorListeners();
+    lexer.addErrorListener(&listener);
+    antlr4::CommonTokenStream tokens(&lexer);
+    try {
+        tokens.fill();
+    } catch (ContractLangSyntaxError& e) {
+        errs() << "Detected non-contract annotation (Lexing Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << contract << "\n";
+        return;
+    }
+
+    // Apply Parser.
+    ContractParser parser(&tokens);
+    parser.removeErrorListeners();
+    parser.addErrorListener(&listener);
+    try {
+        parser.contract();
+    } catch (ContractLangSyntaxError& e) {
+        errs() << "Detected non-contract annotation (Parser Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << contract << "\n";
+        if (IS_DEBUG) {
+            for (auto x : tokens.getTokens()) {
+                errs() << "(" << x->getText() << "," << lexer.getVocabulary().getSymbolicName(x->getType()) << ")\n";
+            }
+        }
+        return;
+    }
+    if (IS_DEBUG) errs() << "Found contract for function " << F->getName() << " with content: " << contract << "\n";
+    parser.reset();
+
+    // Finally have contract data
+    ContractData Data = dataVisitor.getContractData(parser.contract());
+    Contract newCtr{F, contract, Data};
+
+    // Add normal contract
+    curDatabase.Contracts.push_back(newCtr);
+
+    // Create and add Linearized Contract
+    std::vector<std::shared_ptr<ContractExpression>> PreLin;
+    for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Pre) {
+        std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
+        PreLin.insert( PreLin.end(), contrFLin.begin(), contrFLin.end() );
+    }
+    std::vector<std::shared_ptr<ContractExpression>> PostLin;
+    for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Post) {
+        std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
+        PostLin.insert( PostLin.end(), contrFLin.begin(), contrFLin.end() );
+    }
+
+    LinearizedContract lContract = { F, contract, PreLin, PostLin, newCtr.DebugInfo};
+    curDatabase.LinearizedContracts.push_back(lContract);
+
+    // Append tag database
+    curDatabase.Tags[newCtr.F].insert(curDatabase.Tags[newCtr.F].end(), newCtr.Data.Tags.begin(), newCtr.Data.Tags.end());
 }
 
 const std::vector<std::shared_ptr<ContractExpression>> ContractManagerAnalysis::linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF) {
