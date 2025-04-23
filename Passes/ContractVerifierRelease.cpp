@@ -80,11 +80,11 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err,
 
     if (isa<LoadInst>(Forbidden)) type = "load";
     if (isa<StoreInst>(Forbidden)) type = "store";
-    if (isa<CallBase>(Forbidden)) type = "call to " + demangle(dyn_cast<CallBase>(Forbidden)->getCalledFunction()->getName());
+    if (isa<CallBase>(Forbidden)) type = "call to " + demangle(dyn_cast<CallBase>(Forbidden)->getCalledOperand()->getName());
 
     str << "Found " << type << " at "
         << ContractPassUtility::getInstrLocStr(Forbidden)
-        << " which is in conflict with " << CB->getCalledFunction()->getName().str() << " at " << ContractPassUtility::getInstrLocStr(CB)
+        << " which is in conflict with " << CB->getCalledOperand()->getName().str() << " at " << ContractPassUtility::getInstrLocStr(CB)
         << " before release";
 
     err.push_back({
@@ -207,7 +207,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     ReleaseStatus result = ReleaseStatus::FORBIDDEN;
     for (const User* U : C.F->users()) {
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-            if (CB->getCalledFunction() == C.F) {
+            if (CB->getCalledOperand() == C.F) {
                 data.callsite = CB;
                 std::map<const Instruction *, ReleaseStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB->getNextNode(), transfer, merge, &data, ReleaseStatus::FORBIDDEN);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());

@@ -60,19 +60,19 @@ void ContractVerifierPostCallPass::appendDebugStr(std::string Target, bool isTag
     // Generic error message
     err.push_back({
         .error_id = "PostCall",
-        .text = "[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
-                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
+        .text = "Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
+                    + demangle(Provider->getCalledOperand()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
         .references = {ContractPassUtility::getFileReference(Provider)},
     });
-    // err.push_back("[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
+    // err.push_back("Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
     //                 + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));
     // if (!candidates.empty()) {
     //     // There were candidates, none fit
     //     for (const CallBase* CB : candidates)
-    //         err.push_back("[ContractVerifierPostCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
+    //         err.push_back("Unfitting Candidate: " + demangle(CB->getCalledOperand()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
     // } else {
     //     // No candidates at all
-    //     err.push_back("[ContractVerifierPostCall] No candidates were found.");
+    //     err.push_back("No candidates were found.");
     // }
 }
 
@@ -130,7 +130,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
 
     for (const User* U : C.F->users()) {
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-            if (CB->getCalledFunction() == C.F) {
+            if (CB->getCalledOperand() == C.F) {
                 data.callsite = CB;
                 std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transfer, merge, &data, CallStatus::NOTCALLED);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
