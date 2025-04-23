@@ -11,12 +11,11 @@
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/CommandLine.h>
 #include <memory>
-#include <optional>
-#include <string>
 
 #include <vector>
 #include "../LangCode/ContractDataExtractor.hpp"
@@ -49,6 +48,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     errs() << "Running Contract Manager on Module: " << M.getName() << "\n";
 
     extractFromAnnotations(M);
+    extractFromFunction(M);
 
     std::stringstream s;
     s << "CoVer: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";
@@ -72,6 +72,35 @@ void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
         Function* F =  dyn_cast<Function>(ANN->getOperand(0));
         addContract(ANNStr, F);
     }
+}
+
+void ContractManagerAnalysis::extractFromFunction(Module& M) {
+    std::vector<Function*> to_remove;
+    for (Function& F : M.functions()) {
+        if (F.getName().starts_with("contract_definitions_fort")) {
+            if (F.isDeclaration()) {
+                errs() << "Contract definition by function body failed, function body not found!\n";
+                continue;
+            }
+            const BasicBlock& BB = F.getEntryBlock(); // Exactly one basic block allowed, so this is ok
+            for (const Instruction& I : BB) {
+                if (const CallBase* CB = dyn_cast<CallBase>(&I)) {
+                    // Only care about this intrinsic
+                    #warning TODO probably should figure out a less hacky way.
+                    if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64") continue;
+                    StringRef CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString();
+                    // Call is from memmove -> insertvalue -> extractvalue -> funccall.
+                    const CallBase* ContrCall = (CallBase*)*CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin();
+                    addContract(CallStr, ContrCall->getCalledFunction());
+                }
+            }
+            // This function is unreachable, and should definitely not be analysed, so no need to compile. Drop it
+            to_remove.push_back(&F);
+        }
+    }
+    // Remove unneeded functions
+    for (Function* F : to_remove)
+        F->eraseFromParent();
 }
 
 void ContractManagerAnalysis::addContract(StringRef contract, Function* F) {

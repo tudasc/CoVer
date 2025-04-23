@@ -49,7 +49,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF);
 
         void extractFromAnnotations(const Module& M); // C/C++ Attributes
-        void extractFromFunction(const Module& M); // Fortran Workaround
+        void extractFromFunction(Module& M); // Fortran Workaround
 
         void addContract(StringRef contract, Function* F);
 };

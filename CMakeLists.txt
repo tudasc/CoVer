@@ -198,10 +198,17 @@ set(EXECUTABLE_WRAPPER_NAME "clangContracts++")
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
 add_executable(clangContracts++ "clangContracts++.cpp")
 
+set(COMPILER_WRAP_TARGET "mpif90")
+set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.f90|\\\\.F90)$")
+set(EXECUTABLE_WRAPPER_NAME "flangContracts")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/flangContracts.cpp" @ONLY)
+add_executable(flangContracts "flangContracts.cpp")
+
 install(
   FILES
     "${CMAKE_CURRENT_BINARY_DIR}/clangContracts"
     "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++"
+    "${CMAKE_CURRENT_BINARY_DIR}/flangContracts"
   DESTINATION bin
   PERMISSIONS
     OWNER_READ OWNER_WRITE OWNER_EXECUTE

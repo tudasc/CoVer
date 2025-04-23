@@ -2,6 +2,7 @@
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
 #include <climits>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -140,16 +141,17 @@ FileReference getFileReference(const Instruction* I) {
     };
 }
 
-bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
     if (!isTag) {
-        if (!CB->getCalledFunction()) {
+        if (!CB->getCalledFunction() || CB->getCalledOperand()->getName().empty()) {
             if (!UnknownCalledParam.contains(CB)) {
                 errs() << "Could not get name for function at " << getInstrLocStr(CB) << "!\nAnalysis performance is impaired!\n";
                 UnknownCalledParam.insert(CB);
             }
             return false;
         }
-        return CB->getCalledFunction()->getName() == Target;
+        return CB->getCalledOperand()->getName() == Target ||  // C-style match
+               CB->getCalledOperand()->getName() == Target.lower() + "_"; // Fortran-style match
     } else {
         if (!Tags.contains(CB->getCalledFunction())) return false;
         for (const ContractTree::TagUnit tag : Tags[CB->getCalledFunction()]) {

@@ -50,7 +50,7 @@ namespace ContractPassUtility {
     /*
     * Check if call applies to target (which may be a tag or function name)
     */
-    bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
 
     /*
     * Check if contract and call parameter fit
@@ -162,22 +162,22 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                     }
                 }
             }
-            if (!iter) {
+            if (!iter && !isa<ReturnInst>(next)) {
                 iter = next->getNextNonDebugInstruction();
             }
 
             // Check if returning from function
-            if (!iter && !stack.empty()) {
+            if (isa<ReturnInst>(next) && !stack.empty()) {
                 // Forward to next from stack
                 iter = stack.top()->getNextNonDebugInstruction();
                 stack.pop();
-            } else if (!iter) {
+            } else if (isa<ReturnInst>(next)) {
                 // Stack is empty. But if we started inside a function, context includes all callsites
                 const Function* func = next->getParent()->getParent();
                 for (const User* U : func->users()) {
                     if (const CallBase* CB = dyn_cast<CallBase>(U)) {
                         // Add callsite next to todoList
-                        todoList.push_back( {CB->getNextNonDebugInstruction(), postAccess[next], stack} );
+                        todoList.push_back( {CB->getNextNonDebugInstruction(), prevInfo, stack} );
                     }
                 }
             }
