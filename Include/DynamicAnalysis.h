@@ -14,7 +14,8 @@ struct TagsMap_t {
 };
 
 struct CallOp_t {
-    void** target_function;
+    void* target_function;
+    const char* function_name;
 };
 struct CallTagOp_t {
     const char* target_tag;
@@ -30,8 +31,8 @@ struct ContractFormula_t {
 };
 
 struct Contract_t {
-    ContractFormula_t precondition;
-    ContractFormula_t postcondition;
+    ContractFormula_t* precondition;
+    ContractFormula_t* postcondition;
     void* function;
     const char* function_name;
 };
