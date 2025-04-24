@@ -91,6 +91,8 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                     StringRef CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString();
                     // Call is from memmove -> insertvalue -> extractvalue -> funccall.
                     const CallBase* ContrCall = (CallBase*)*CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin();
+                    Value* V = ContrCall->getCalledOperand();
+                    if (V->hasOneUser()) continue;
                     addContract(CallStr, ContrCall->getCalledFunction());
                 }
             }
