@@ -208,7 +208,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     }
 }
 
-bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
     std::vector<const Value*> candidateParams;
     const Value* sourceParam = Source->getArgOperand(P.contrP);
 
