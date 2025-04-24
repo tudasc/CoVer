@@ -25,7 +25,6 @@
 #include <utility>
 #include <vector>
 
-
 using namespace llvm;
 using namespace ContractTree;
 
@@ -37,9 +36,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     if (!mainF) return PreservedAnalyses::all(); // No point
 
     // Generic Types and consts
-    Ptr_Type = PointerType::get(M.getContext(), 0);
-    Int_Type = IntegerType::get(M.getContext(), 64);
-    Null_Const = ConstantPointerNull::getNullValue(Ptr_Type);
+    createTypes(M);
 
     // Create Tag globals
     StructType* TagType;
@@ -94,8 +91,8 @@ std::pair<StructType*, Constant*> InstrumentPass::createTagGlobal(Module& M) {
     // Create global const arrays for the tags
     ArrayType* ArrFuncTy = ArrayType::get(Ptr_Type, count);
     ArrayType* ArrTagTy = ArrayType::get(TagTy, count);
-    GlobalVariable* ptrFuncs = createConstantGlobalUnique(M, ConstantArray::get(ArrFuncTy, funcs), "CONTR_TAG_ARRAY_PTRS");
-    GlobalVariable* ptrTags = createConstantGlobalUnique(M, ConstantArray::get(ArrTagTy, tags), "CONTR_TAG_ARRAY_TAGS");
+    GlobalVariable* ptrFuncs = createConstantGlobal(M, ConstantArray::get(ArrFuncTy, funcs), "CONTR_TAG_ARRAY_PTRS");
+    GlobalVariable* ptrTags = createConstantGlobal(M, ConstantArray::get(ArrTagTy, tags), "CONTR_TAG_ARRAY_TAGS");
 
     // Full tag map structure
     StructType* TagsTy = StructType::create(M.getContext(), "TagsMap_t");
@@ -108,50 +105,39 @@ std::pair<StructType*, Constant*> InstrumentPass::createTagGlobal(Module& M) {
 }
 
 std::pair<Constant*, int64_t> InstrumentPass::createContractsGlobal(Module& M) {
-    // Create Formula and Operation Types
-    Formula_Type = StructType::create(M.getContext(), "ContractFormula_t");
-    Formula_Type->setBody({Ptr_Type, Int_Type, Int_Type, Ptr_Type});
-    CallOp_Type = StructType::create(M.getContext(), "CallOp_t");
-    CallOp_Type->setBody(Ptr_Type);
-
-    // Contract Type
-    StructType* Contract_Type = StructType::create(M.getContext(), "Contract_t");
-    Contract_Type->setBody({Formula_Type, Formula_Type, Ptr_Type, Ptr_Type});
-
     std::vector<Constant*> contractConsts;
     for (ContractManagerAnalysis::Contract C : DB->Contracts) {
+        if (C.Data.Pre.empty() && C.Data.Post.empty()) continue;
         Constant* PrecondConst = createScopeGlobal(M, C.Data.Pre);
         Constant* PostcondConst = createScopeGlobal(M, C.Data.Post);
         Constant* funcStr = ConstantDataArray::getString(M.getContext(), C.F->getName());
         GlobalVariable* strGlobal = createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + C.F->getName().str());
-        Constant* contr = ConstantStruct::get(Contract_Type, {PrecondConst, PrecondConst, C.F, strGlobal});
+        Constant* contr = ConstantStruct::get(Contract_Type, {PrecondConst, PostcondConst, C.F, strGlobal});
         contractConsts.push_back(contr);
     }
 
     // Create list of contracts
     ArrayType* ArrContracts = ArrayType::get(Contract_Type, contractConsts.size());
-    GlobalVariable* arrContractGlobal = createConstantGlobalUnique(M,  ConstantArray::get(ArrContracts, contractConsts), "CONTR_LIST_CONTRACTS");
+    GlobalVariable* arrContractGlobal = createConstantGlobal(M,  ConstantArray::get(ArrContracts, contractConsts), "CONTR_LIST_CONTRACTS");
 
     return {arrContractGlobal, contractConsts.size()};
 }
 
 Constant* InstrumentPass::createScopeGlobal(Module& M, std::vector<std::shared_ptr<ContractFormula>> forms) {
     std::vector<Constant*> formsConst;
+    if (forms.empty()) return Null_Const;
     for (std::shared_ptr<ContractFormula> form : forms) {
         formsConst.push_back(createFormulaGlobal(M, form));
     }
-    GlobalVariable* Sublevel = nullptr;
-    if (!forms.empty()) {
-        ArrayType* ArrPreCond = ArrayType::get(Formula_Type, forms.size());
-        Sublevel = createConstantGlobalUnique(M, ConstantArray::get(ArrPreCond, formsConst), std::string("CONTR_SCOPECOND"));
-    }
-    return ConstantStruct::get(Formula_Type, { Sublevel ? Sublevel : Null_Const, ConstantInt::get(Int_Type, forms.size()), ConstantInt::get(Int_Type, (int64_t)FormulaType::AND), Null_Const});
+    ArrayType* ArrPreCond = ArrayType::get(Formula_Type, forms.size());
+    GlobalVariable* Sublevel = createConstantGlobalUnique(M, ConstantArray::get(ArrPreCond, formsConst), std::string("CONTR_SCOPECONDITIONS"));
+    return createConstantGlobalUnique(M, ConstantStruct::get(Formula_Type, { Sublevel, ConstantInt::get(Int_Type, forms.size()), ConstantInt::get(Int_Type, (int64_t)FormulaType::AND), Null_Const}), "CONTR_SCOPE");
 }
 
 Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form) {
     Constant* data = Null_Const;
     Constant* children = Null_Const;
-    int connective;
+    int64_t connective;
     if (form->Children.empty()) {
         // Expression
         std::shared_ptr<const Operation> OP = dynamic_pointer_cast<ContractExpression>(form)->OP;
@@ -160,27 +146,39 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
             case OperationType::READ:
             case OperationType::WRITE:
                 errs() << "TODO do not expect memory access in formula" << "\n";
-                return nullptr;
+                data = Null_Const;
             case OperationType::CALL:
-                data = M.getFunction(dynamic_pointer_cast<const CallOperation>(OP)->Function);
-                if (!data) errs() << "Specified function \"" << dynamic_pointer_cast<const CallOperation>(OP)->Function << "\" does not exist! Instrumentation failed!\n";
+                {
+                    Function* F = M.getFunction(dynamic_pointer_cast<const CallOperation>(OP)->Function);
+                    if (!F) errs() << "Specified function \"" << dynamic_pointer_cast<const CallOperation>(OP)->Function << "\" does not exist! Instrumentation failed!\n";
+                    Constant* funcStr = ConstantDataArray::getString(M.getContext(), F->getName());
+                    data = ConstantStruct::get(CallOp_Type, {F, createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + F->getName().str())});
+                    data = createConstantGlobalUnique(M, data, "CONTR_CALLOP");
+                }
                 break;
             case OperationType::CALLTAG:
                 data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), dynamic_pointer_cast<const CallTagOperation>(OP)->Function),
                                         "CONTR_TAG_STR_" + dynamic_pointer_cast<const CallTagOperation>(OP)->Function);
                 break;
             case OperationType::RELEASE:
-                errs() << "TODO" << "\n";
-                return nullptr;
+                #warning TODO release
+                data = Null_Const;
         }
+    } else {
+        connective = (int64_t)form->type;
+        std::vector<Constant*> childConsts;
+        for (std::shared_ptr<ContractFormula> child : form->Children) {
+            childConsts.push_back(createFormulaGlobal(M, child));
+        }
+        ArrayType* ArrChildren = ArrayType::get(Formula_Type, childConsts.size());
+        children = createConstantGlobalUnique(M, ConstantArray::get(ArrChildren, childConsts), "CONTRACT_CHILDREN");
     }
     return ConstantStruct::get(Formula_Type, {children, ConstantInt::get(Int_Type, form->Children.size()), ConstantInt::get(Int_Type, connective), data});
 }
 
 GlobalVariable* InstrumentPass::createConstantGlobalUnique(Module& M, Constant* C, std::string name) {
-    static uint64_t globals_counter = -1; // For name uniqueness
-    globals_counter++;
-    return createConstantGlobal(M, C, name + "_" + std::to_string(globals_counter));
+    static uint64_t globals_counter = 0; // For name uniqueness
+    return createConstantGlobal(M, C, name + "_" + std::to_string(globals_counter++));
 }
 
 
@@ -188,4 +186,25 @@ GlobalVariable* InstrumentPass::createConstantGlobal(Module& M, Constant* C, std
     GlobalVariable* GV = dyn_cast<GlobalVariable>(M.getOrInsertGlobal(name, C->getType()));
     GV->setInitializer(C);
     return GV;
+}
+
+void InstrumentPass::createTypes(Module& M) {
+    // Basic Types
+    Ptr_Type = PointerType::get(M.getContext(), 0);
+    Int_Type = IntegerType::get(M.getContext(), 64);
+    Null_Const = ConstantPointerNull::getNullValue(Ptr_Type);
+
+    // Operations
+    CallOp_Type = StructType::create(M.getContext(), "CallOp_t");
+    CallOp_Type->setBody({Ptr_Type, Ptr_Type}); // Function Pointer, char* Function Name
+
+    CallTagOp_Type = StructType::create(M.getContext(), "CallTagOp_t");
+    CallTagOp_Type->setBody(Ptr_Type); // char* Tag name
+
+    // Composite Types
+    Formula_Type = StructType::create(M.getContext(), "ContractFormula_t");
+    Formula_Type->setBody({Ptr_Type, Int_Type, Int_Type, Ptr_Type}); // Children, number of children, connective, expression data ptr
+
+    Contract_Type = StructType::create(M.getContext(), "Contract_t");
+    Contract_Type->setBody({Ptr_Type, Ptr_Type, Ptr_Type, Ptr_Type}); // Precondition ptr, Postcondition ptr, contr supplier ptr, supplier name
 }

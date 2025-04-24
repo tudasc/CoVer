@@ -20,11 +20,13 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         Constant* createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form);
         GlobalVariable* createConstantGlobalUnique(Module& M, Constant* C, std::string name);
         GlobalVariable* createConstantGlobal(Module& M, Constant* C, std::string name);
+        void createTypes(Module& M);
         PointerType* Ptr_Type; 
         IntegerType* Int_Type;
         StructType* Formula_Type;
         StructType* CallOp_Type;
         StructType* CallTagOp_Type;
+        StructType* Contract_Type;
         Constant* Null_Const;
         ContractManagerAnalysis::ContractDatabase* DB;
 };
