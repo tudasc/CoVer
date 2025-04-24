@@ -153,7 +153,7 @@ if (MPI_C_FOUND AND Python_FOUND)
     SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
     COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_FUNC_DECLS_FILE}" "CoVer ${GIT_REV}"
   )
-  set(PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h")
+  set(PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h;${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.f90")
   if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
     add_custom_target(
       genSHMEMContracts ALL

@@ -62,7 +62,7 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
                         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
                             // Callsite with correct argument
                             int offset = 0;
-                            if (CB->getCalledFunction()->getName() == "__kmpc_fork_call")
+                            if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "__kmpc_fork_call")
                                 offset = 1;
                             if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(i + offset))) {
                                 if (!candidatesConsidered.contains(cI)) {
@@ -143,7 +143,7 @@ FileReference getFileReference(const Instruction* I) {
 
 bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
     if (!isTag) {
-        if (!CB->getCalledFunction() || CB->getCalledOperand()->getName().empty()) {
+        if (CB->getCalledOperand()->getName().empty()) {
             if (!UnknownCalledParam.contains(CB)) {
                 errs() << "Could not get name for function at " << getInstrLocStr(CB) << "!\nAnalysis performance is impaired!\n";
                 UnknownCalledParam.insert(CB);
@@ -153,8 +153,9 @@ bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, 
         return CB->getCalledOperand()->getName() == Target ||  // C-style match
                CB->getCalledOperand()->getName() == Target.lower() + "_"; // Fortran-style match
     } else {
-        if (!Tags.contains(CB->getCalledFunction())) return false;
-        for (const ContractTree::TagUnit tag : Tags[CB->getCalledFunction()]) {
+        Function* F = (Function*)CB->getCalledOperand(); // Dirty cast ok, no member access. Needed because of fortran non-matching param
+        if (!Tags.contains(F)) return false;
+        for (const ContractTree::TagUnit tag : Tags[F]) {
             if (tag.tag == Target) {
                 return true;
             }
@@ -208,7 +209,7 @@ bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const
     if (!P.callPisTagVar) {
         candidateParams.push_back(Target->getArgOperand(P.callP));
     } else {
-        for (ContractTree::TagUnit TagU : Tags[Target->getCalledFunction()]) {
+        for (ContractTree::TagUnit TagU : Tags[(Function*)Target->getCalledOperand()]) {
             if (TagU.tag != TargetStr) continue;
             if (!TagU.param.has_value()) continue;
             candidateParams.push_back(Target->getArgOperand(*TagU.param));
