@@ -27,6 +27,7 @@ struct ContractFormula_t {
     ContractFormula_t* children;
     int64_t num_children;
     ContractConnective conn;
+    const char* msg;
     void** data; // Only filled if conn == UNARY. Pointer to corresponding operation struct.
 };
 
