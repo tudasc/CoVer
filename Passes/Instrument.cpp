@@ -39,9 +39,8 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     createTypes(M);
 
     // Create Tag globals
-    StructType* TagType;
     Constant* TagVal;
-    std::tie(TagType, TagVal) = createTagGlobal(M);
+    TagVal = createTagGlobal(M);
 
     // Create Contract globals
     Constant* ContractsVal;
@@ -49,8 +48,6 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     std::tie(ContractsVal, num_contrs) = createContractsGlobal(M);
 
     // Package database
-    StructType* DB_Type = StructType::create(M.getContext(), "ContractDB_t");
-    DB_Type->setBody( {Ptr_Type, Int_Type, TagType} );
     GlobalVariable* GlobalDB = dyn_cast<GlobalVariable>(M.getOrInsertGlobal("CONTR_DB", DB_Type));
     Constant* CDB = ConstantStruct::get(DB_Type, {ContractsVal, ConstantInt::get(Int_Type, num_contrs),  TagVal});
     GlobalDB->setInitializer(CDB);
@@ -67,11 +64,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-std::pair<StructType*, Constant*> InstrumentPass::createTagGlobal(Module& M) {
-    // Tag type: 
-    StructType* TagTy = StructType::create(M.getContext(), "Tag_t");
-    TagTy->setBody({Ptr_Type, Int_Type});
-
+Constant* InstrumentPass::createTagGlobal(Module& M) {
     // Create Tags
     std::vector<Constant*> tags;
     std::vector<Constant*> funcs;
@@ -81,7 +74,7 @@ std::pair<StructType*, Constant*> InstrumentPass::createTagGlobal(Module& M) {
             Constant* param = ConstantInt::get(Int_Type, tag.param ? *tag.param : -1);
             Constant* str = ConstantDataArray::getString(M.getContext(), tag.tag);
             GlobalVariable* strGlobal = createConstantGlobal(M, str, "CONTR_TAG_STR_" + tag.tag);
-            Constant* TagC = ConstantStruct::get(TagTy, {strGlobal,param});
+            Constant* TagC = ConstantStruct::get(Tag_Type, {strGlobal,param});
             funcs.push_back(functags.first);
             tags.push_back(TagC);
             count++;
@@ -90,18 +83,13 @@ std::pair<StructType*, Constant*> InstrumentPass::createTagGlobal(Module& M) {
 
     // Create global const arrays for the tags
     ArrayType* ArrFuncTy = ArrayType::get(Ptr_Type, count);
-    ArrayType* ArrTagTy = ArrayType::get(TagTy, count);
+    ArrayType* ArrTagTy = ArrayType::get(Tag_Type, count);
     GlobalVariable* ptrFuncs = createConstantGlobal(M, ConstantArray::get(ArrFuncTy, funcs), "CONTR_TAG_ARRAY_PTRS");
     GlobalVariable* ptrTags = createConstantGlobal(M, ConstantArray::get(ArrTagTy, tags), "CONTR_TAG_ARRAY_TAGS");
 
     // Full tag map structure
-    StructType* TagsTy = StructType::create(M.getContext(), "TagsMap_t");
-    TagsTy->setBody(
-        {Ptr_Type, Ptr_Type, Int_Type}
-    );
-
-    Constant* TagsStruct = ConstantStruct::get(TagsTy, {ptrFuncs, ptrTags, ConstantInt::get(Int_Type, count)});
-    return {TagsTy, TagsStruct};
+    Constant* TagsStruct = ConstantStruct::get(Tags_Type, {ptrFuncs, ptrTags, ConstantInt::get(Int_Type, count)});
+    return TagsStruct;
 }
 
 std::pair<Constant*, int64_t> InstrumentPass::createContractsGlobal(Module& M) {
@@ -202,9 +190,18 @@ void InstrumentPass::createTypes(Module& M) {
     CallTagOp_Type->setBody(Ptr_Type); // char* Tag name
 
     // Composite Types
+    Tag_Type = StructType::create(M.getContext(), "Tag_t");
+    Tag_Type->setBody({Ptr_Type, Int_Type});
+
     Formula_Type = StructType::create(M.getContext(), "ContractFormula_t");
     Formula_Type->setBody({Ptr_Type, Int_Type, Int_Type, Ptr_Type}); // Children, number of children, connective, expression data ptr
 
     Contract_Type = StructType::create(M.getContext(), "Contract_t");
     Contract_Type->setBody({Ptr_Type, Ptr_Type, Ptr_Type, Ptr_Type}); // Precondition ptr, Postcondition ptr, contr supplier ptr, supplier name
+
+    Tags_Type = StructType::create(M.getContext(), "TagsMap_t");
+    Tags_Type->setBody({Ptr_Type, Ptr_Type, Int_Type}); // Funcptr list, Tag + param struct list, num elems
+
+    DB_Type = StructType::create(M.getContext(), "ContractDB_t");
+    DB_Type->setBody( {Ptr_Type, Int_Type, Tags_Type} ); // contract list, num elems, tag container
 }

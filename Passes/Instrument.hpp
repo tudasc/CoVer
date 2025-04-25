@@ -14,7 +14,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
     private:
-        std::pair<StructType*, Constant*> createTagGlobal(Module &M); // Returns type, value
+        Constant* createTagGlobal(Module &M); // Returns type, value
         std::pair<Constant*, int64_t> createContractsGlobal(Module& M); // Returns value, number of elems (type is ptr)
         Constant* createScopeGlobal(Module& M, std::vector<std::shared_ptr<ContractFormula>> forms); // Returns value, number of elems (type is ptr)
         Constant* createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form);
@@ -24,6 +24,9 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         PointerType* Ptr_Type; 
         IntegerType* Int_Type;
         StructType* Formula_Type;
+        StructType* DB_Type;
+        StructType* Tag_Type;
+        StructType* Tags_Type;
         StructType* CallOp_Type;
         StructType* CallTagOp_Type;
         StructType* Contract_Type;
