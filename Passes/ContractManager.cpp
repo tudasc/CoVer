@@ -92,7 +92,7 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                     // Call is from memmove -> insertvalue -> extractvalue -> funccall.
                     const CallBase* ContrCall = (CallBase*)*CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin();
                     Value* V = ContrCall->getCalledOperand();
-                    if (V->hasOneUser()) continue;
+                    if (V->hasOneUser()) continue; // Only used here where the contract is defined. No need to verify.
                     addContract(CallStr, ContrCall->getCalledFunction());
                 }
             }
