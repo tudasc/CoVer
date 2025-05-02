@@ -63,16 +63,26 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     Instruction* entryI = mainF->getEntryBlock().getFirstNonPHIOrDbg();
     initFuncCI->insertBefore(entryI);
 
-    // Create callback function
-    FunctionType* FunctionCBType = FunctionType::get(Void_Type, Ptr_Type, true);
+    // Create callback function for rel func call
+    // Call sig: Function ptr, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
+    FunctionType* FunctionCBType = FunctionType::get(Void_Type, {Ptr_Type, Int_Type}, true);
     callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType);
     Function* callbackFunc = dyn_cast<Function>(callbackFuncCallee.getCallee());
     callbackFunc->setLinkage(GlobalValue::WeakAnyLinkage);
     NoopBB = BasicBlock::Create(M.getContext(), "", callbackFunc);
     ReturnInst::Create(M.getContext(), nullptr, NoopBB->begin());
 
+    // Create callback function for RW
+    // Call sig: int64-as-bool isWrite, mem ptr
+    callbackRWCallee = M.getOrInsertFunction("PPDCV_MemCallback", Void_Type, Int_Type, Ptr_Type);
+    Function* callbackRW = dyn_cast<Function>(callbackRWCallee.getCallee());
+    callbackRW->setLinkage(GlobalValue::WeakAnyLinkage);
+    NoopBB = BasicBlock::Create(M.getContext(), "", callbackRW);
+    ReturnInst::Create(M.getContext(), nullptr, NoopBB->begin());
+
     // Create callbacks
     instrumentFunctions(M);
+    instrumentRW(M);
 
     return PreservedAnalyses::all();
 }
@@ -241,6 +251,21 @@ void InstrumentPass::instrumentFunctions(Module &M) {
     // All functions referenced in tags
     for (std::pair<Function*, std::vector<TagUnit>> tag : DB->Tags) {
         insertFunctionInstrCallback(tag.first);
+    }
+    #warning TODO all functions referenced by name only
+}
+
+void InstrumentPass::instrumentRW(Module &M) {
+    for (Function& F : M) {
+        for (BasicBlock& BB : F) {
+            for (Instruction& I : BB) {
+                if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
+                    Value* V = getLoadStorePointerOperand(&I);
+                    CallInst* callbackCI = CallInst::Create(callbackRWCallee, { ConstantInt::get(Int_Type, isa<StoreInst>(I) ? 1 : 0), V});
+                    callbackCI->insertBefore(&I);
+                }
+            }
+        }
     }
 }
 
