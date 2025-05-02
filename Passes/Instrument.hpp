@@ -2,10 +2,12 @@
 
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/Constant.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
 #include <memory>
 #include <set>
+#include <vector>
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 
@@ -21,6 +23,9 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         std::pair<Constant*, int64_t> createContractsGlobal(Module& M); // Returns value, number of elems (type is ptr)
         Constant* createScopeGlobal(Module& M, std::vector<std::shared_ptr<ContractFormula>> forms); // Returns value, number of elems (type is ptr)
         Constant* createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form);
+        std::pair<Constant*,int64_t> createParamList(Module& M, std::vector<CallParam> p);
+
+        // Auxiliary
         GlobalVariable* createConstantGlobalUnique(Module& M, Constant* C, std::string name);
         GlobalVariable* createConstantGlobal(Module& M, Constant* C, std::string name);
         void createTypes(Module& M);
@@ -39,6 +44,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* DB_Type;
         StructType* Tag_Type;
         StructType* Tags_Type;
+        StructType* Param_Type;
         StructType* CallOp_Type;
         StructType* CallTagOp_Type;
         StructType* Contract_Type;

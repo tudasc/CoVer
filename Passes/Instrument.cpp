@@ -151,20 +151,24 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
             case OperationType::WRITE:
                 errs() << "TODO do not expect memory access in formula" << "\n";
                 data = Null_Const;
-            case OperationType::CALL:
-                {
-                    Function* F = M.getFunction(dynamic_pointer_cast<const CallOperation>(OP)->Function);
-                    if (!F) errs() << "Specified function \"" << dynamic_pointer_cast<const CallOperation>(OP)->Function << "\" does not exist! Instrumentation failed!\n";
+            case OperationType::CALL: {
+                    std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(OP);
+                    Function* F = M.getFunction(cOP->Function);
+                    if (!F) errs() << "Specified function \"" << cOP->Function << "\" does not exist! Instrumentation failed!\n";
                     Constant* funcStr = ConstantDataArray::getString(M.getContext(), F->getName());
-                    data = ConstantStruct::get(CallOp_Type, {F, createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + F->getName().str())});
+                    std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
+                    data = ConstantStruct::get(CallOp_Type, {F, createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + F->getName().str()), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
                     data = createConstantGlobalUnique(M, data, "CONTR_CALLOP");
                 }
                 break;
-            case OperationType::CALLTAG:
-                data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), dynamic_pointer_cast<const CallTagOperation>(OP)->Function),
-                                        "CONTR_TAG_STR_" + dynamic_pointer_cast<const CallTagOperation>(OP)->Function);
-                data = ConstantStruct::get(CallTagOp_Type, {data});
+            case OperationType::CALLTAG: {
+                std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(OP);
+                data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), cOP->Function),
+                                        "CONTR_TAG_STR_" + cOP->Function);
+                std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
+                data = ConstantStruct::get(CallTagOp_Type, {data, paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
                 data = createConstantGlobalUnique(M, data, "CONTR_CALLTAGOP");
+                }
                 break;
             case OperationType::RELEASE:
                 #warning TODO release
@@ -202,11 +206,14 @@ void InstrumentPass::createTypes(Module& M) {
     Void_Type = Type::getVoidTy(M.getContext());
 
     // Operations
+    Param_Type = StructType::create(M.getContext(), "CallParam_t");
+    Param_Type->setBody(Int_Type, Int_Type, Int_Type, Int_Type); // call param, bool param is tag ref, contr param, acc type
+
     CallOp_Type = StructType::create(M.getContext(), "CallOp_t");
-    CallOp_Type->setBody({Ptr_Type, Ptr_Type}); // Function Pointer, char* Function Name
+    CallOp_Type->setBody({Ptr_Type, Ptr_Type, Ptr_Type, Int_Type}); // Function Pointer, char* Function Name, list of params, num of params
 
     CallTagOp_Type = StructType::create(M.getContext(), "CallTagOp_t");
-    CallTagOp_Type->setBody(Ptr_Type); // char* Tag name
+    CallTagOp_Type->setBody(Ptr_Type, Ptr_Type, Int_Type); // char* Tag name, list of params, num of params
 
     // Composite Types
     Tag_Type = StructType::create(M.getContext(), "Tag_t");
@@ -237,6 +244,18 @@ void InstrumentPass::instrumentFunctions(Module &M) {
     }
 }
 
+std::pair<Constant*,int64_t> InstrumentPass::createParamList(Module& M, std::vector<CallParam> params) {
+    if (params.empty()) return { Null_Const, 0 };
+    std::vector<Constant*> paramConsts;
+    for (CallParam param : params) {
+        Constant* pConst = ConstantStruct::get(Param_Type, {ConstantInt::get(Int_Type, param.callP), ConstantInt::get(Int_Type, param.callPisTagVar), ConstantInt::get(Int_Type, param.contrP), ConstantInt::get(Int_Type, (int64_t)param.contrParamAccess)});
+        paramConsts.push_back(pConst);
+    }
+    ArrayType* paramArr_Type = ArrayType::get(Param_Type, paramConsts.size());
+    Constant* res = ConstantArray::get(paramArr_Type, paramConsts);
+    return {createConstantGlobalUnique(M, res, "CONTR_PARAMLIST"), paramConsts.size()};
+}
+
 void InstrumentPass::insertFunctionInstrCallback(Function* F) {
     if (already_instrumented.contains(F)) return;
     std::vector<CallBase*> callsites;
@@ -248,7 +267,10 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
     for (CallBase* callsite : callsites) {
         std::vector<Value*> params;
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
+        params.push_back(ConstantInt::get(Int_Type, callsite->arg_size()));
         for (Use& U : callsite->args()) {
+            params.push_back(U->getType()->isPointerTy() ? ConstantInt::get(Int_Type, 1) : ConstantInt::get(Int_Type, 0));
+            params.push_back(ConstantInt::get(Int_Type, U->getType()->getPrimitiveSizeInBits()));
             params.push_back(U);
         }
         CallInst* callbackCI = CallInst::Create(callbackFuncCallee, params);
