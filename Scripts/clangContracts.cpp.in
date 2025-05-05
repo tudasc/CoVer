@@ -24,7 +24,7 @@ std::string obj_files;
 std::string wrap_target = "@COMPILER_WRAP_TARGET@";
 
 std::regex source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
-std::vector<std::string> source_file_paths;
+std::string source_file_paths;
 std::vector<std::string> source_file_names;
 
 std::string exec(std::string const& cmd) {
@@ -83,7 +83,7 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
         } else if (arg == "--wrap-target") {
             wrap_target = all_args[++i];
         } else if (std::regex_match(arg, source_file_ending)) {
-            source_file_paths.push_back(arg);
+            source_file_paths += " " + arg;
             source_file_names.push_back(std::filesystem::path(arg).stem());
         } else if (arg == "-o") {
             dest_arg = " " + arg + " " + all_args[++i];
@@ -136,8 +136,7 @@ int main(int argc, const char** argv) {
 
     // Generate IR for source files
     if (!source_file_paths.empty()) {
-        std::string source_files_str = std::reduce(source_file_paths.begin(), source_file_paths.end(), std::string(" "));
-        execSafe(wrap_target + " -g -S -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + rem_args.second + source_files_str + (cur_linkkind > LINK ? dest_arg : ""));
+        execSafe(wrap_target + " -g -S -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + rem_args.second + source_file_paths + (cur_linkkind > LINK ? dest_arg : ""));
         
         if (cur_linkkind == ONLY_COMPILE && dest_arg.empty()) {
             // No output dir, but want "object" files. Rename generated .ll to .o
