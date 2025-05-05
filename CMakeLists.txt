@@ -78,15 +78,17 @@ install(
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/LLVMContractsPlugin.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include/")
 
-set(COMPILER_WRAP_EXPR "\${MPICC:-mpicc}")
-set(COMPILE_SRC_FILE_ENDINGS "\\.c")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.sh.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.configured" @ONLY)
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/clangContracts" INPUT "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.configured")
+set(COMPILER_WRAP_TARGET "mpicc")
+set(COMPILE_SRC_FILE_ENDINGS ".*\\\\.c$")
+set(EXECUTABLE_WRAPPER_NAME "clangContracts")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
+add_executable(clangContracts "clangContracts.cpp")
 
-set(COMPILER_WRAP_EXPR "\${MPICXX:-mpicxx}")
-set(COMPILE_SRC_FILE_ENDINGS "\\.cpp|\\.cc|\\.cxx")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.sh.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.configured" @ONLY)
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++" INPUT "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.configured")
+set(COMPILER_WRAP_TARGET "mpicxx")
+set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
+set(EXECUTABLE_WRAPPER_NAME "clangContracts++")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
+add_executable(clangContracts++ "clangContracts++.cpp")
 
 install(
   FILES
