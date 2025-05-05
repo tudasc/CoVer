@@ -1,12 +1,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
-#include <memory>
 #include <regex>
 #include <string>
 #include <filesystem>
-#include <numeric>
 #include <array>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -103,7 +102,7 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
         }
     }
 
-    return {rem_args_both, (cur_linkkind == ONLY_PREPROCESS ? " -E" : " -c") + rem_args_compile};
+    return {rem_args_both, rem_args_compile};
 }
 
 void sanityCheckCompiler() {
@@ -136,26 +135,27 @@ int main(int argc, const char** argv) {
 
     // Generate IR for source files
     if (!source_file_paths.empty()) {
-        execSafe(wrap_target + " -g -S -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + rem_args.second + source_file_paths + (cur_linkkind > LINK ? dest_arg : ""));
+        execSafe(wrap_target + " -g -c -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + rem_args.second + source_file_paths + (cur_linkkind > LINK ? dest_arg : ""));
         
         if (cur_linkkind == ONLY_COMPILE && dest_arg.empty()) {
             // No output dir, but want "object" files. Rename generated .ll to .o
             for (std::string file : source_file_names) {
-                std::filesystem::rename(file + ".ll", file + ".o");
+                std::filesystem::rename(file + ".bc", file + ".o");
             }
         } else if (cur_linkkind == LINK) {
             // Linking, so move bitcode files to tmp dir
             for (std::string file : source_file_names) {
-                std::string tmpfile = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
-                int fd = mkstemp(tmpfile.data());
+                std::string source = file + ".bc";
+                std::string destination = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
+                int fd = mkstemp(destination.data());
                 if (cur_execkind == DRY) [[unlikely]] {
-                    std::cout << "Would move: " << file << ".ll to " << tmpfile << "\n";
+                    std::cout << "Would move: " << source << " to " << destination << "\n";
                 } else {
-                    if (cur_execkind == VERBOSE) std::cout << "Moving: " << file << ".ll to " << tmpfile << "\n";
+                    if (cur_execkind == VERBOSE) std::cout << "Moving: " << source << " to " << destination << "\n";
                     // Cannot use rename, because it is on other fs. Copy-delete instead
-                    std::filesystem::copy_file(file + ".ll", tmpfile, std::filesystem::copy_options::overwrite_existing);
-                    std::filesystem::remove(file + ".ll");
-                    obj_files += " " + tmpfile;
+                    std::filesystem::copy_file(source, destination, std::filesystem::copy_options::overwrite_existing);
+                    std::filesystem::remove(source);
+                    obj_files += " " + destination;
                 }
                 close(fd);
             }
@@ -168,10 +168,10 @@ int main(int argc, const char** argv) {
     // Perform link and analysis steps
     std::string tmpfile = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
     int fd = mkstemp(tmpfile.data());
-    execSafe("llvm-link -S" + obj_files + " -o " + tmpfile);
+    execSafe("llvm-link" + obj_files + " -o " + tmpfile);
     execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess' " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
-    execSafe("llc -filetype=obj --relocation-model=pic" + opt_level + " " + tmpfile + ".opt " + "-o " + tmpfile + ".opt.o");
+    execSafe("llc -filetype=obj --relocation-model=pic" + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
     execSafe(wrap_target + " -lm -ldl -lpthread -loshmem -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o" + dest_arg);
     return 0;
 }
