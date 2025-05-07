@@ -121,9 +121,12 @@ void sanityCheckCompiler() {
 int main(int argc, const char** argv) {
     std::vector<std::string> all_args;
 
-    if (argc > 1) {
-        all_args.assign(argv + 1, argv + argc);
+    if (argc <= 1) {
+        printHelp();
+        exit(0);
     }
+
+    all_args.assign(argv + 1, argv + argc);
     std::pair<std::string,std::string> rem_args = parseParams(all_args);
 
     sanityCheckCompiler();
