@@ -95,9 +95,9 @@ with open(inputh_location) as f:
 
 # Finally, add contracts
 
-# Call MPI_Init
+# Call MPI initializer
 for func in function_decls.keys():
-    if func in ["MPI_Init", "MPI_Init_thread"]:
+    if func in ["MPI_Init", "MPI_Init_thread", "MPI_Session_init"]:
         function_contracts[func]["TAGS"].append("mpi_init")
         continue
     function_contracts[func]["PRE"].append("called_tag!(mpi_init) MSG \"Missing Initialization call\"")
