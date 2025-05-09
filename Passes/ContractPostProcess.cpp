@@ -4,8 +4,7 @@
 #include "ContractTree.hpp"
 #include <algorithm>
 #include "ErrorMessage.h"
-#include "json.hpp"
-#include <cstddef>
+#include <json/value.h>
 #include <fstream>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/Support/Error.h>
@@ -31,19 +30,19 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const st
             errs() << "    --> Error Info:\n";
             for (ErrorMessage errinfo : *form->ErrorInfo) {
                 errs() << "        " << errinfo.text << "\n";
-                auto j = nlohmann::ordered_json({
-                    {"type", reasons[form].text},
-                    {"error_id", errinfo.error_id},
-                    {"text", errinfo.text}
-                });
-                for (const auto& ref : errinfo.references) {
-                    j["references"].push_back({
-                        {"file", ref.file},
-                        {"line", ref.line},
-                        {"column", ref.column}
-                    });
+                Json::Value j;
+                j["type"] = reasons[form].text;
+                j["error_id"] = errinfo.error_id;
+                j["text"] = errinfo.text;
+                j["references"] = Json::arrayValue;
+                for (ErrorReference const& ref : errinfo.references) {
+                    Json::Value json_ref;
+                    json_ref["file"] = ref.file;
+                    json_ref["line"] = ref.line;
+                    json_ref["column"] = ref.column;
+                    j["references"].append(json_ref);
                 }
-                json_messages["messages"].push_back(j);
+                json_messages["messages"].append(j);
                 std::string type;
                 std::string error_id;
                 std::string text;
@@ -51,8 +50,6 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const st
             }
         }
     }
-    // errs() << json_messages.dump(4);
-    //file << json_messages.dump(4);
 }
 
 Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
@@ -154,8 +151,8 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     errs() << s.str();
 
     std::ofstream file("contract_messages.json");
-    errs() << json_messages.dump(4) << "\n";
-    file << json_messages.dump(4);
+    errs() << json_writer.write(json_messages) << "\n";
+    file << json_writer.write(json_messages);
     file.close();
 
     return PreservedAnalyses::all();

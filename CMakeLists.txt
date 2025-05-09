@@ -89,9 +89,34 @@ target_include_directories(CoVerPlugin
   PUBLIC
     Include/
 )
+target_compile_options (CoVerPlugin PUBLIC -fexceptions)
+
+##
+## Runtime Dependencies
+##
 
 target_link_libraries(ContractLanguage PRIVATE "${ANTLR4_LIBRARY}")
 target_link_libraries(CoVerPlugin PRIVATE ContractLanguage)
+
+# Attempt finding system version of JsonCpp
+find_package(PkgConfig)
+if (PKGCONFIG_FOUND AND (NOT BUNDLED_JSONCPP))
+    pkg_check_modules(JSONCPP jsoncpp)
+    if (JSONCPP_FOUND)
+        include_directories(${JSONCPP_INCLUDE_DIRS})
+        target_link_libraries(CoVerPlugin PUBLIC ${JSONCPP_LDFLAGS})
+    endif(JSONCPP_FOUND)
+endif(PKGCONFIG_FOUND AND (NOT BUNDLED_JSONCPP))
+
+# No system version: Enable bundled
+if((NOT JSONCPP_FOUND) OR BUNDLED_JSONCPP)
+    set(JSONCPP_WITH_TESTS OFF CACHE BOOL "" FORCE)
+    set(JSONCPP_WITH_POST_BUILD_UNITTEST OFF CACHE BOOL "" FORCE)
+    add_subdirectory(Externals/jsoncpp)
+    set_property(TARGET jsoncpp_static PROPERTY POSITION_INDEPENDENT_CODE ON)
+    include_directories(Externals/jsoncpp/include)
+    target_link_libraries(CoVerPlugin PRIVATE jsoncpp_static)
+endif((NOT JSONCPP_FOUND) OR BUNDLED_JSONCPP)
 
 install(TARGETS CoVerPlugin ContractLanguage LIBRARY DESTINATION lib)
 install(
