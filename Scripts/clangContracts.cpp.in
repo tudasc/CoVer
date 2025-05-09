@@ -21,6 +21,8 @@ std::regex obj_file_ending(".*(\\.o|\\.a|\\.so)");
 
 std::string wrap_target = "@COMPILER_WRAP_TARGET@";
 
+std::regex llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
+
 std::regex source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
 std::string source_file_paths;
 std::vector<std::string> source_file_names;
@@ -62,7 +64,7 @@ void printHelp() {
     printf("\n\t--dry-run: Only show the commands that would be run, but do not perform any");
     printf("\n\t--verbose: Print commands to be executed");
     printf("\n\t--wrap-target: Set the compiler to wrap around");
-    printf("\n");
+    printf("\n\n");
 }
 
 std::pair<std::string,std::string> parseParams(std::vector<std::string> const& all_args) {
@@ -107,6 +109,8 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
 
 void sanityCheckCompiler() {
     std::string cmd;
+
+    // Check for LLVM-based compiler
     cmd = wrap_target + " --version | head -n 1";
     std::string res  = exec(cmd);
     if (res.find("clang") == std::string::npos && res.find("flang") == std::string::npos) {
@@ -115,7 +119,15 @@ void sanityCheckCompiler() {
         std::cerr << "The wrapper will now exit\n";
         exit(-1);
     }
-    #warning TODO version check
+
+    // Check for LLVM version
+    std::smatch matches;
+    std::regex_search(res, matches, llvm_version_regex);
+    if (matches.size() < 2) {
+        std::cerr << "Unknown LLVM Version! This may cause issues!";
+    } else if (std::stoi(matches[1]) < std::stoi("@LLVM_VERSION_MIN@")) { // Ugly, but avoids linter error and is compiled away in O3 anyway
+        std::cerr << "Unsupported LLVM Version " << matches[1] << "! Expect issues!\n";
+    }
 }
 
 int main(int argc, const char** argv) {
