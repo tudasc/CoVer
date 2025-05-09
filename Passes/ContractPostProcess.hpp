@@ -4,7 +4,7 @@
 #include <memory>
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include "json.hpp"
+#include <json/json.h>
 
 namespace llvm {
 
@@ -19,7 +19,8 @@ class ContractPostProcessingPass : public PassInfoMixin<ContractPostProcessingPa
         std::pair<Fulfillment,std::optional<ErrorMessage>> resolveFormula(std::shared_ptr<ContractFormula> contrF);
         void outputSubformulaErrs(std::string type, const std::vector<std::shared_ptr<ContractFormula>> set, std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons);
 
-        nlohmann::ordered_json json_messages;
+        Json::Value json_messages;
+        Json::FastWriter json_writer;
 };
 
 } // namespace llvm
