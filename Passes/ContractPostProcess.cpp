@@ -150,8 +150,8 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
     errs() << s.str();
 
+    // Write json to file
     std::ofstream file("contract_messages.json");
-    errs() << json_writer.write(json_messages) << "\n";
     file << json_writer.write(json_messages);
     file.close();
 
