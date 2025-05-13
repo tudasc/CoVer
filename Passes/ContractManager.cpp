@@ -91,9 +91,21 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                     StringRef CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString();
                     // Call is from memmove -> insertvalue -> extractvalue -> funccall.
                     const CallBase* ContrCall = (CallBase*)*CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin();
-                    Value* V = ContrCall->getCalledOperand();
-                    if (V->hasOneUser()) continue; // Only used here where the contract is defined. No need to verify.
-                    addContract(CallStr, ContrCall->getCalledFunction());
+                    if (ContrCall->getCalledOperand()->getName() == "declare_contract_") {
+                        const Function* ContrSup = (Function*)ContrCall->getArgOperand(0);
+                        if (ContrSup->hasOneUser()) continue; // Only used here where the contract is defined. No need to verify.
+                        bool has_callsite = false;
+                        for (const User* U : ContrSup->users() ) {
+                            if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                                if (CB->getCalledOperand() == ContrSup) {
+                                    has_callsite = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!has_callsite) continue;
+                        addContract(CallStr, (Function*)(ContrCall->getArgOperand(0)));
+                    }
                 }
             }
             // This function is unreachable, and should definitely not be analysed, so no need to compile. Drop it
