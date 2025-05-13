@@ -292,10 +292,23 @@ boilerplate_header_fort = f"""
 
 #define CONTRACT_DEFINITION MACRO_CONCAT(CONTRACT_DEFINITIONS_FORT_, __LINE__)
 
-subroutine CONTRACT_DEFINITION 
+module contract_helper
+    interface
+        subroutine Declare_Contract(funcPtr, contrString)
+            procedure() :: funcPtr
+            character(len=*), intent(in) :: contrString
+        end subroutine
+    end interface
+end module
+
+subroutine CONTRACT_DEFINITION
+    use contract_helper
 """
 
-header_output_fort = boilerplate_header_fort
+header_output_fort = boilerplate_header_fort + "    use mpi\n    implicit none\n"
+header_output_fort_f08 = boilerplate_header_fort + "    use mpi_f08\n    implicit none\n"
+
+exclude_fortran = [ "MPI_Intercomm_create_from_groups", "MPI_Session_set_info", "MPI_Session_get_num_psets" ] # HACK: Not currently implemented
 
 def create_contract_output_for_func(types, contrs):
     out = ""
@@ -316,11 +329,17 @@ for func, contrs in function_contracts.items():
     header_output_c += function_decls[func][:-1] + " CONTRACT(\n"
     header_output_c += contract_str
     header_output_c += ");\n\n"
+    if func in exclude_fortran or "c2f" in func or "f2c" in func or "f082c" in func or "c2f08" in func: continue # Only defined for C
     # Now: Fortran
-    header_output_fort += "    call " + func + "(\" CONTRACT{" + contract_str.replace('"', '""').replace("\n", "").replace("    ", "") + "}\")\n"
+    contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "")
+    header_output_fort += "    call Declare_Contract(" + func + ", \"CONTRACT{" + contract_str_fort + "}\")\n"
+    # Fortran f08
+    contract_str_fort_f08 = re.sub("call!\\(([A-z_0-9]+)\\)", r"call!(\1_f08)", contract_str_fort)
+    header_output_fort_f08 += "    call Declare_Contract(" + func + "_f08, \"CONTRACT{" + contract_str_fort_f08 + "}\")\n"
 
 # End fortran subroutine
 header_output_fort += "end subroutine\n"
+header_output_fort_f08 += "end subroutine\n"
 
 with open(f"{output_path}/mpi_contracts.h", "w") as contr_file:
     contr_file.write(header_output_c)
@@ -328,3 +347,5 @@ with open(f"{output_path}/mpi_contracts.h", "w") as contr_file:
 with open(f"{output_path}/mpi_contracts.f90", "w") as contr_file:
     contr_file.write(header_output_fort)
 
+with open(f"{output_path}/mpi_contracts_f08.f90", "w") as contr_file:
+    contr_file.write(header_output_fort_f08)
