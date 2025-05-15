@@ -13,6 +13,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/Operator.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
@@ -32,6 +33,14 @@ using namespace llvm;
 // To only warn once if a CB is calling an unknown function
 static std::set<const CallBase*> UnknownCalledParam;
 
+const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
+    const Value* b = getPointerOperand(V);
+    if (b == nullptr) {
+        if (const GEPOperator* GEPOp = dyn_cast<GEPOperator>(V)) b = GEPOp->getPointerOperand();
+    }
+    return b;
+}
+
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
     if (!isa<Instruction>(Ip)) return {};
     std::set<std::pair<const Instruction*,int>> candidates = {{dyn_cast<Instruction>(Ip), 0}};
@@ -41,13 +50,13 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
         int curSteps = candidates.begin()->second;
         candidatesConsidered.insert({candidates.begin()->first, candidates.begin()->second});
         candidates.erase(candidates.begin());
-        while (getPointerOperand(I) && (isa<GlobalValue>(getPointerOperand(I)) || isa<Instruction>(getPointerOperand(I)))) {
-            if (isa<GlobalValue>(getPointerOperand(I))) {
-                candidatesConsidered.insert({getPointerOperand(I), curSteps});
+        while (ContractPassUtility::betterGetPointerOperand(I) && (isa<GlobalValue>(ContractPassUtility::betterGetPointerOperand(I)) || isa<Instruction>(ContractPassUtility::betterGetPointerOperand(I)))) {
+            if (isa<GlobalValue>(ContractPassUtility::betterGetPointerOperand(I))) {
+                candidatesConsidered.insert({ContractPassUtility::betterGetPointerOperand(I), curSteps});
                 return candidatesConsidered;
             } else {
-                if (!isa<GetElementPtrInst>(getPointerOperand(I))) curSteps++;
-                I = dyn_cast<Instruction>(getPointerOperand(I));
+                if (!isa<GetElementPtrInst>(ContractPassUtility::betterGetPointerOperand(I))) curSteps++;
+                I = dyn_cast<Instruction>(ContractPassUtility::betterGetPointerOperand(I));
             }
         }
         if (const AllocaInst* AI = dyn_cast<AllocaInst>(I)) {
