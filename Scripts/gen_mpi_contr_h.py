@@ -331,6 +331,7 @@ paramerror_status = [
 for func, idx in paramerror_status:
     add_contract(func, "PRE", f"param!({idx}:^=MPI_STATUS_IGNORE,!=NULL,!=MPI_STATUSES_IGNORE) MSG \"Status is invalid\"")
 
+# Buffer should never be null
 paramerror_null = [
     ("MPI_Initialized", 0),
     ("MPI_Send", 0),
@@ -344,6 +345,7 @@ paramerror_null = [
 for func, idx in paramerror_null:
     add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_IN_PLACE) MSG \"Parameter is null\"")
 
+# Datatype should not be null when doing communication
 paramerror_datatype = [
     ("MPI_Get", 6),
     ("MPI_Bcast", 2),
@@ -351,6 +353,7 @@ paramerror_datatype = [
 for func, idx in paramerror_datatype:
     add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_DATATYPE_NULL) MSG \"Data type is invalid\"")
 
+# When doing P2P sends, the tag should never be MPI_ANY_TAG
 paramerror_tag_send = [
     ("MPI_Send", 4),
     ("MPI_Isend", 4),
@@ -358,13 +361,7 @@ paramerror_tag_send = [
 for func, idx in paramerror_tag_send:
     add_contract(func, "PRE", f"param!({idx}:!=MPI_ANY_TAG,>=0) MSG \"Tag is invalid\"")
 
-paramerror_tag_recv = [
-    ("MPI_Recv", 4),
-    ("MPI_Irecv", 4),
-]
-for func, idx in paramerror_tag_recv:
-    add_contract(func, "PRE", f"param!({idx}:^=MPI_ANY_TAG,!=MPI_DATATYPE_NULL) MSG \"Tag is invalid\"")
-
+# MPI_OP_NULL should not be used for concrete operations
 paramerror_op = [
     ("MPI_Reduce", 4),
 ]
