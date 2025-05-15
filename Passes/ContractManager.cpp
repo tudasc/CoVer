@@ -76,7 +76,7 @@ void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
 
 void ContractManagerAnalysis::extractFromFunction(Module& M) {
     std::vector<Function*> to_remove;
-    for (Function& F : M.functions()) {
+    for (Function& F : M) {
         if (F.getName().starts_with("contract_definitions_fort")) {
             if (F.isDeclaration()) {
                 errs() << "Contract definition by function body failed, function body not found!\n";
@@ -87,10 +87,10 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                 if (const CallBase* CB = dyn_cast<CallBase>(&I)) {
                     // Only care about this intrinsic
                     #warning TODO probably should figure out a less hacky way.
-                    if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64") continue;
+                    if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64" && CB->getCalledFunction()->getName() != "llvm.memcpy.p0.p0.i64") continue;
                     StringRef CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString();
-                    // Call is from memmove -> insertvalue -> extractvalue -> funccall.
-                    const CallBase* ContrCall = (CallBase*)*CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin();
+                    // Call is from memmove -> insertvalue -> extractvalue -> funccall. on -O0, and memcpy -> funccall on -O1 and above
+                    const CallBase* ContrCall = (CallBase*)(isa<CallBase>(*CB->getArgOperand(0)->user_begin()) ? *CB->getArgOperand(0)->user_begin() : *CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin());
                     if (ContrCall->getCalledOperand()->getName() == "declare_contract_") {
                         const Function* ContrSup = (Function*)ContrCall->getArgOperand(0);
                         if (ContrSup->hasOneUser()) continue; // Only used here where the contract is defined. No need to verify.
