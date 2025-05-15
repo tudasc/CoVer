@@ -61,6 +61,11 @@ namespace ContractPassUtility {
     * Check if two calls match by contract definition
     */
     bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags, ModuleAnalysisManager* MAM);
+
+    /*
+    * Get Pointer operand of a load, store, GEPinst *or GEPOp*. Last one would not work on normal getPointerOperand!
+    */
+    const Value* betterGetPointerOperand(const Value* V);
 };
 
 template<typename T>
