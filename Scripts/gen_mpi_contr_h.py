@@ -355,13 +355,13 @@ paramerror_null = [
     ("MPI_Put", 0),
 ]
 for func, idx in paramerror_null:
-    function_contracts[func]["PRE"].append(f"alloc!(&{idx}) MSG \"Buffer is not allocated\"")
+    add_contract(func, "PRE", f"alloc!({idx}) MSG \"Buffer is not allocated\"")
 
 allocators = [
     ("MPI_Win_allocate", 0),
 ]
 for func, idx in allocators:
-    function_contracts[func]["POST"].append(f"alloc!({idx})")
+    add_contract(func, "POST", f"alloc!(&{idx})")
 
 
 # Datatype should not be null when doing communication
@@ -414,6 +414,9 @@ CONTRACT_PTR_PAIR(MPI_COMM_NULL,*MPI_COMM_NULL)
 CONTRACT_PTR_PAIR(MPI_STATUSES_IGNORE,*MPI_STATUSES_IGNORE)
 CONTRACT_PTR_PAIR(MPI_STATUS_IGNORE,*MPI_STATUS_IGNORE)
 CONTRACT_PTR_PAIR(MPI_DATATYPE_NULL,*MPI_DATATYPE_NULL)
+
+void* calloc(size_t num, size_t size) CONTRACT( POST {{ alloc!(99) }});
+void* malloc(size_t size) CONTRACT( POST {{ alloc!(99) }});
 
 """
 

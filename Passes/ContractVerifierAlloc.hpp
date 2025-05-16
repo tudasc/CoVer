@@ -17,7 +17,7 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
         enum struct AllocStatusVal { ALLOC, UNDEF, ERROR };
         struct AllocStatus {
             AllocStatusVal CurVal;
-            std::set<const Value*> candidate;
+            std::map<const Value*,ParamAccess> candidate;
         };
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 

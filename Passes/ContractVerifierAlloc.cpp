@@ -64,11 +64,19 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
 
     IterTypeAlloc* Data = static_cast<IterTypeAlloc*>(data);
 
+    // Propagate allocations
+    if (const StoreInst* SI = dyn_cast<StoreInst>(I)) {
+        if (cur.candidate.contains(SI->getValueOperand())) {
+            cur.candidate[SI->getPointerOperand()] = ParamAccess::ADDROF;
+        }
+    }
+
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
         if (AllocFuncs.contains(CB->getCalledFunction())) {
             for (const AllocOperation* alloc : AllocFuncs[CB->getCalledFunction()]) {
                 #warning TODO different access patterns
-                cur.candidate.insert(CB->getArgOperand(alloc->contrP));
+                if (alloc->contrP == 99) cur.candidate[CB] = alloc->contrParamAccess;
+                else cur.candidate[CB->getArgOperand(alloc->contrP)] = alloc->contrParamAccess;
             }
             // Dont return here! Maybe it also is contr sup
         }
@@ -79,8 +87,9 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
                 return cur;
             }
             // Not trivial, check if explicitly allocated
-            for (const Value* Candidate : cur.candidate) {
-                if (ContractPassUtility::checkParamMatch(CB->getArgOperand(Data->param), Candidate, Data->acc, MAM)) {
+            for (std::pair<const Value*,ParamAccess> Candidate : cur.candidate) {
+                CB->getArgOperand(Data->param)->print(errs()); errs() << "\n";
+                if (ContractPassUtility::checkParamMatch(CB->getArgOperand(Data->param), Candidate.first, Candidate.second, MAM)) {
                     // Success!
                     cur.CurVal = AllocStatusVal::ALLOC;
                     return cur;
@@ -97,7 +106,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
 }
 
 std::pair<ContractVerifierAllocPass::AllocStatus,bool> ContractVerifierAllocPass::mergeAllocStat(AllocStatus prev, AllocStatus cur, const Instruction* I, void* data) {
-    std::set<const Value*> intersect;
+    std::map<const Value*,ParamAccess> intersect;
     std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
                  std::inserter(intersect, intersect.begin()));
 
