@@ -337,13 +337,15 @@ paramerror_null = [
     ("MPI_Send", 0),
     ("MPI_Recv", 0),
     ("MPI_Sendrecv", 0),
-    ("MPI_Sendrecv", 5),
     ("MPI_Win_create", 0),
     ("MPI_Win_allocate", 4),
     ("MPI_Get", 0),
 ]
 for func, idx in paramerror_null:
     add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_IN_PLACE) MSG \"Parameter is null\"")
+
+# Allow MPI_IN_PLACE for recv buffer of sendrecv
+add_contract("MPI_Sendrecv", "PRE", f"param!(5:^=MPI_IN_PLACE,!=NULL) MSG \"Buffer is null\"")
 
 # Comm buffer should be allocated
 paramerror_null = [
