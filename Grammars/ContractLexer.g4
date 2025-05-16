@@ -36,6 +36,7 @@ OPCallTag: 'call_tag!';
 OPRelease1: 'no!';
 OPRelease2: 'until!';
 OPParam: 'param!';
+OPAlloc: 'alloc!';
 OPPrefix: '(';
 OPPostfix: ')';
 

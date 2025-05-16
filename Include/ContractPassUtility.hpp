@@ -66,6 +66,11 @@ namespace ContractPassUtility {
     * Get Pointer operand of a load, store, GEPinst *or GEPOp*. Last one would not work on normal getPointerOperand!
     */
     const Value* betterGetPointerOperand(const Value* V);
+
+    /*
+    * Check if V is definitely allocated
+    */
+    bool isTrivialAlloc(const Value* V);
 };
 
 template<typename T>

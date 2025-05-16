@@ -4,6 +4,7 @@
 #include <llvm/Passes/OptimizationLevel.h>
 
 #include "ContractManager.hpp"
+#include "ContractVerifierAlloc.hpp"
 #include "ContractVerifierPreCall.hpp"
 #include "ContractVerifierPostCall.hpp"
 #include "ContractVerifierRelease.hpp"
@@ -29,6 +30,10 @@ namespace {
         }
         if (Name == "contractVerifierParam") {
             MPM.addPass(ContractVerifierParamPass());
+            return true;
+        }
+        if (Name == "contractVerifierAlloc") {
+            MPM.addPass(ContractVerifierAllocPass());
             return true;
         }
         if (Name == "contractPostProcess") {

@@ -285,7 +285,7 @@ int main(int argc, const char** argv) {
     execSafe("llvm-link" + bitcode_files + " -o " + tmpfile);
 
     // Call LLVM passes
-    std::string passlist = "function(sroa),contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractPostProcess";
+    std::string passlist = "function(sroa),contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
     if (!opt_level.empty()) {
         passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
     }

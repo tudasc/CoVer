@@ -69,22 +69,17 @@ std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext 
     return ContractExpression(ctx->getText(), opPtr);
 }
 
-std::any ContractDataVisitor::visitReadOp(ContractParser::ReadOpContext *ctx) {
+std::any ContractDataVisitor::visitRwOp(ContractParser::RwOpContext *ctx) {
     ParamAccess acc = ParamAccess::NORMAL;
-        if (ctx->Deref())
-            acc = ParamAccess::DEREF;
-        if (ctx->AddrOf())
-            acc = ParamAccess::ADDROF;
-    std::shared_ptr<const Operation> op = std::make_shared<const ReadOperation>(std::stoi(ctx->NatNum()->getText()), acc);
-    return op;
-}
-std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) {
-    ParamAccess acc = ParamAccess::NORMAL;
-        if (ctx->Deref())
-            acc = ParamAccess::DEREF;
-        if (ctx->AddrOf())
-            acc = ParamAccess::ADDROF;
-    std::shared_ptr<const Operation> op = std::make_shared<const WriteOperation>(std::stoi(ctx->NatNum()->getText()), acc);
+    if (ctx->Deref()) acc = ParamAccess::DEREF;
+    if (ctx->AddrOf()) acc = ParamAccess::ADDROF;
+    std::shared_ptr<const Operation> op;
+    if (ctx->OPRead())
+        op = std::make_shared<const ReadOperation>(std::stoi(ctx->NatNum()->getText()), acc);
+    else if (ctx->OPWrite())
+        op = std::make_shared<const WriteOperation>(std::stoi(ctx->NatNum()->getText()), acc);
+    else if (ctx->OPAlloc())
+        op = std::make_shared<const AllocOperation>(std::stoi(ctx->NatNum()->getText()), acc);
     return op;
 }
 std::any ContractDataVisitor::visitParamOp(ContractParser::ParamOpContext *ctx) {
