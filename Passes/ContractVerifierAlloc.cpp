@@ -88,7 +88,6 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
             }
             // Not trivial, check if explicitly allocated
             for (std::pair<const Value*,ParamAccess> Candidate : cur.candidate) {
-                CB->getArgOperand(Data->param)->print(errs()); errs() << "\n";
                 if (ContractPassUtility::checkParamMatch(CB->getArgOperand(Data->param), Candidate.first, Candidate.second, MAM)) {
                     // Success!
                     cur.CurVal = AllocStatusVal::ALLOC;
