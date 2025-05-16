@@ -3,6 +3,7 @@
 #include <antlr4-runtime.h>
 #include <any>
 
+#include "ContractParser.h"
 #include "ContractParserBaseVisitor.h"
 
 class ContractDataVisitor : public ContractParserBaseVisitor {
@@ -11,8 +12,7 @@ class ContractDataVisitor : public ContractParserBaseVisitor {
         std::any visitExprList(ContractParser::ExprListContext *ctx) override;
         std::any visitExprFormula(ContractParser::ExprFormulaContext *ctx) override;
         std::any visitExpression(ContractParser::ExpressionContext *ctx) override;
-        std::any visitReadOp(ContractParser::ReadOpContext *ctx) override;
-        std::any visitWriteOp(ContractParser::WriteOpContext *ctx) override;
+        std::any visitRwOp(ContractParser::RwOpContext *ctx) override;
         std::any visitParamOp(ContractParser::ParamOpContext *ctx) override;
         std::any visitCallOp(ContractParser::CallOpContext *ctx) override;
         std::any visitReleaseOp(ContractParser::ReleaseOpContext *ctx) override;

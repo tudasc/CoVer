@@ -345,6 +345,25 @@ paramerror_null = [
 for func, idx in paramerror_null:
     add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_IN_PLACE) MSG \"Parameter is null\"")
 
+# Comm buffer should be allocated
+paramerror_null = [
+    ("MPI_Send", 0),
+    ("MPI_Recv", 0),
+    ("MPI_Sendrecv", 0),
+    ("MPI_Sendrecv", 5),
+    ("MPI_Get", 0),
+    ("MPI_Put", 0),
+]
+for func, idx in paramerror_null:
+    function_contracts[func]["PRE"].append(f"alloc!(&{idx}) MSG \"Buffer is not allocated\"")
+
+allocators = [
+    ("MPI_Win_allocate", 0),
+]
+for func, idx in allocators:
+    function_contracts[func]["POST"].append(f"alloc!({idx})")
+
+
 # Datatype should not be null when doing communication
 paramerror_datatype = [
     ("MPI_Get", 6),

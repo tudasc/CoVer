@@ -149,6 +149,22 @@ FileReference getFileReference(const Instruction* I) {
     };
 }
 
+bool isTrivialAlloc(const Value* V) {
+    // First possibility: Its a global alloc, trivially fulfilled
+    if (isa<GlobalVariable>(V)) {
+        return true;
+    }
+    // Second possibility: Its a stack var, trivially fulfilled
+    const Value* tmp = V;
+    while (isa<GetElementPtrInst>(tmp)) {
+        tmp = getPointerOperand(tmp);
+    }
+    if (isa<AllocaInst>(tmp)) return true;
+
+    // Not trivially allocated
+    return false;
+}
+
 bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
     if (!isTag) {
         if (CB->getCalledOperand()->getName().empty()) {

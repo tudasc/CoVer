@@ -14,7 +14,7 @@
 #include <vector>
 
 namespace ContractTree {
-    enum struct OperationType { READ, WRITE, CALL, CALLTAG, RELEASE, PARAM };
+    enum struct OperationType { READ, WRITE, ALLOC, CALL, CALLTAG, RELEASE, PARAM };
     enum struct ParamAccess { NORMAL, DEREF, ADDROF };
     struct Operation {
         virtual ~Operation() = default;
@@ -33,6 +33,10 @@ namespace ContractTree {
     struct WriteOperation : RWOperation {
         WriteOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
         virtual const OperationType type() const override { return OperationType::WRITE; };
+    };
+    struct AllocOperation : RWOperation {
+        AllocOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
+        virtual const OperationType type() const override { return OperationType::ALLOC; };
     };
     enum Comparator {
         NEQ, GT, GTEQ, LT, LTEQ, EXEQ
