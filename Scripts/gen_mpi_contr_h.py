@@ -360,7 +360,7 @@ for func, idx in paramerror_null:
     add_contract(func, "PRE", f"alloc!({idx}) MSG \"Buffer is not allocated\"")
 
 allocators = [
-    ("MPI_Win_allocate", 0),
+    ("MPI_Win_allocate", 4),
 ]
 for func, idx in allocators:
     add_contract(func, "POST", f"alloc!(&{idx})")
