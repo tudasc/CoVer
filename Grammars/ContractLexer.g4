@@ -30,8 +30,8 @@ AddrOf: '&';
 // All ops must end with '!' to differentiate from variables
 OPRead: 'read!';
 OPWrite: 'write!';
-OPCall: 'called!';
-OPCallTag: 'called_tag!';
+OPCall: 'call!';
+OPCallTag: 'call_tag!';
 OPRelease1: 'no!';
 OPRelease2: 'until!';
 OPPrefix: '(';

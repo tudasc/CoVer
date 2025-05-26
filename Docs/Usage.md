@@ -20,14 +20,14 @@ For ease of use, the macros defined in `Contracts.h` abstracts this syntax into 
 The contract string defines the actual requirements placed on the code.
 In general, three types of requirements are currently supported:
 - `Precall(f)`: A function `f` must be called prior to the contract supplier.
-  - Example: `PRE { called!(MPI_Init) }` at each MPI call, ensuring initialization.
+  - Example: `PRE { call!(MPI_Init) }` at each MPI call, ensuring initialization.
 - `PostCall(f)`: A function `f` must be called after the contract supplier.
-  - Example: `POST { called!(MPI_Finalize) }` at each MPI call, ensuring finalization.
+  - Example: `POST { call!(MPI_Finalize) }` at each MPI call, ensuring finalization.
 - `Release(f,op)`: After the contract supplier, an operation `op` must not occur until a function `f` is called.
-  - Example: `POST { no! (called!(MPI_Isend)) until! (called!(MPI_type_commit)) }` at each MPI type constructor, ensuring the type is committed before use.
+  - Example: `POST { no! (call!(MPI_Isend)) until! (call!(MPI_type_commit)) }` at each MPI type constructor, ensuring the type is committed before use.
 
 Multiple requirements are grouped by the scope (`PRE`, `POST`):
-- Example: `POST { no! (called!(MPI_Isend)) until! (called!(MPI_type_commit)), called!(MPI_Finalize) }`
+- Example: `POST { no! (call!(MPI_Isend)) until! (call!(MPI_type_commit)), call!(MPI_Finalize) }`
 
 For more complicated constructions (disjunctions, XOR, parameter matching, tagging, read/write operations) see the examples given in the predefined headers.
 

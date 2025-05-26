@@ -71,13 +71,13 @@ for func in function_decls.keys():
     if func in ["shmem_init", "shmem_init_thread"]:
         function_contracts[func]["TAGS"].append("shmem_init")
         continue
-    function_contracts[func]["PRE"].append("called_tag!(shmem_init) MSG \"Missing Initialization call\"")
+    function_contracts[func]["PRE"].append("call_tag!(shmem_init) MSG \"Missing Initialization call\"")
 
 # Call shmem_finalize
 for func in function_decls.keys():
     if func in ["shmem_finalize", "shmem_global_exit"]:
         continue
-    function_contracts[func]["POST"].append("called!(shmem_finalize) MSG \"Missing Finalization call\"")
+    function_contracts[func]["POST"].append("call!(shmem_finalize) MSG \"Missing Finalization call\"")
 
 # Local data races
 tag_buf = [("shmem_int_put_nbi", 1, "W", "R"),
@@ -89,11 +89,11 @@ tag_buf = [("shmem_int_put_nbi", 1, "W", "R"),
             ]
 for func, buf_idx, forbid, action in tag_buf:
     if "R" in forbid:
-        function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Local Data Race - Local read\"")
-        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_read,$:{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Local Data Race - Local read by call\"")
+        function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local read\"")
+        function_contracts[func]["POST"].append(f"no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local read by call\"")
     if "W" in forbid:
-        function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Local Data Race - Local write\"")
-        function_contracts[func]["POST"].append(f"no! (called_tag!(buf_write,$:{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Local Data Race - Local write by call\"")
+        function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local write\"")
+        function_contracts[func]["POST"].append(f"no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local write by call\"")
     if "R" in action:
         function_contracts[func]["TAGS"].append(f"buf_read({buf_idx})")
     if "W" in action:
@@ -105,7 +105,7 @@ for func in tag_shmemcomplete:
 
 # No inflight calls when freeing
 for func, buf_idx, _, _ in tag_buf:
-    function_contracts[func]["POST"].append(f"no! (called!(shmem_free,0:{buf_idx})) until! (called_tag!(shmem_complete)) MSG \"Possible inflight call at shmem_free\"")
+    function_contracts[func]["POST"].append(f"no! (call!(shmem_free,0:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Possible inflight call at shmem_free\"")
 
 # Make sure contexts are created and freed
 tag_ctxuse = [("shmem_ctx_get8", 0), ("shmem_ctx_get16", 0), ("shmem_ctx_get32", 0), ("shmem_ctx_get64", 0), ("shmem_ctx_get128", 0), ("shmem_ctx_getmem", 0),
@@ -115,13 +115,13 @@ for func, ctx_idx in tag_ctxuse:
     tag_ctxuse_nbi.append((func + "_nbi", ctx_idx))
 tag_ctxuse += tag_ctxuse_nbi
 for func, ctx_idx in tag_ctxuse:
-    function_contracts[func]["PRE"].append(f"called!(shmem_ctx_create,1:&{ctx_idx})")
-function_contracts["shmem_ctx_create"]["POST"].append(f"called!(shmem_ctx_destroy,0:*1) MSG \"Context leak\"")
+    function_contracts[func]["PRE"].append(f"call!(shmem_ctx_create,1:&{ctx_idx})")
+function_contracts["shmem_ctx_create"]["POST"].append(f"call!(shmem_ctx_destroy,0:*1) MSG \"Context leak\"")
 
 # Make sure teams are freed
 tag_teamcreate = [("shmem_team_split_strided", 6), ("shmem_team_split_2d", 4), ("shmem_team_split_2d", 7)]
 for func, team_idx in tag_teamcreate:
-    function_contracts[func]["POST"].append(f"called!(shmem_team_destroy,0:*{team_idx}) MSG \"Team leak\"")
+    function_contracts[func]["POST"].append(f"call!(shmem_team_destroy,0:*{team_idx}) MSG \"Team leak\"")
 
 # Output file
 boilerplate_header = f"""
