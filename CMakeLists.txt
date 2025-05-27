@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.15)
 
-project(LLVMContractsPlugin LANGUAGES CXX C)
+project(CoVer LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -33,7 +33,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 antlr4_generate(ContractLex ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractLexer.g4 LEXER)
 antlr4_generate(ContractPars ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractParser.g4 PARSER "" "VisitorArg" "" "${ANTLR4_TOKEN_FILES_ContractLex}" "${ANTLR4_TOKEN_DIRECTORY_ContractLex}")
 
-add_llvm_pass_plugin(LLVMContractsPlugin
+add_llvm_pass_plugin(CoVerPlugin
   Passes/Registrar.cpp
   Passes/ContractManager.cpp
   Passes/ContractVerifierPreCall.cpp
@@ -48,17 +48,17 @@ add_llvm_pass_plugin(LLVMContractsPlugin
   ${ANTLR4_SRC_FILES_ContractPars}
 )
 
-target_include_directories(LLVMContractsPlugin
+target_include_directories(CoVerPlugin
   PUBLIC
     Include/
     ${ANTLR4_INCLUDE_DIR_ContractLex}
     ${ANTLR4_INCLUDE_DIR_ContractPars}
     ${ANTLR4_INCLUDE_DIR}
 )
-target_link_libraries(LLVMContractsPlugin PRIVATE antlr4-runtime)
-target_compile_options (LLVMContractsPlugin PUBLIC -fexceptions)
+target_link_libraries(CoVerPlugin PRIVATE antlr4-runtime)
+target_compile_options (CoVerPlugin PUBLIC -fexceptions)
 
-install(TARGETS LLVMContractsPlugin LIBRARY DESTINATION lib)
+install(TARGETS CoVerPlugin LIBRARY DESTINATION lib)
 install(
   FILES
     Include/ContractTree.hpp
@@ -75,7 +75,7 @@ install(
 ## Utility Script for convenience
 ##
 
-set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/LLVMContractsPlugin.so")
+set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include/")
 
 set(COMPILER_WRAP_TARGET "mpicc")
@@ -111,12 +111,12 @@ execute_process(COMMAND git log --pretty=format:%h -n 1 OUTPUT_VARIABLE GIT_REV)
 add_custom_target(
   genMPIContracts ALL
   SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
-  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/mpi.h" "LLVMContractsPlugin ${GIT_REV}"
+  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/mpi.h" "CoVer ${GIT_REV}"
 )
 add_custom_target(
   genSHMEMContracts ALL
   SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py"
-  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/shmem.h" "LLVMContractsPlugin ${GIT_REV}"
+  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/shmem.h" "CoVer ${GIT_REV}"
 )
 install(
   FILES

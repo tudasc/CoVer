@@ -57,7 +57,7 @@ void execSafe(std::string const& cmd) {
 }
 
 void printHelp() {
-    printf("@EXECUTABLE_WRAPPER_NAME@ is a compiler wrapper to utilize LLVMContractsPlugin");
+    printf("@EXECUTABLE_WRAPPER_NAME@ is a compiler wrapper to utilize CoVer");
     printf("\nRequires LLVM >= @LLVM_VERSION_MIN@.");
     printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] <compiler-params>");
     printf("\n\t--help: Print this help text and exit");

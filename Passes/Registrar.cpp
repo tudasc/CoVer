@@ -48,12 +48,12 @@ void PBHook(PassBuilder &PB) {
     PB.registerAnalysisRegistrationCallback(MAMHook);
 }
 
-llvm::PassPluginLibraryInfo getLLVMContractsPluginInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "LLVMContractsPlugin",
+llvm::PassPluginLibraryInfo getCoVerInfo() {
+  return {LLVM_PLUGIN_API_VERSION, "CoVerPlugin",
           LLVM_VERSION_STRING, PBHook};
 }
 
 extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
-  return getLLVMContractsPluginInfo();
+  return getCoVerInfo();
 }

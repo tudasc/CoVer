@@ -1,6 +1,6 @@
-# LLVMContractsPlugin
+# CoVer
 
-LLVMContractsPlugin is an extensible contract verification framework for parallel programming models.
+CoVer is an extensible contract verification framework for parallel programming models.
 Currently, the tool ships configurations for MPI and OpenSHMEM. Further models may be added by adding suitable contract declarations.
 
 ## Usage

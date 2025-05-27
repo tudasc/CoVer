@@ -81,7 +81,7 @@ COPY docker_files/libantlr4-runtime-dev_4.10+dfsg-1_amd64.deb antlr4-runtime.deb
 COPY docker_files/libantlr4-runtime4.10_4.10+dfsg-1_amd64.deb antlr4-runtime1.deb
 RUN apt-get -y -qq --no-install-recommends install ./antlr4-runtime1.deb ./antlr4-runtime.deb
 
-# Install LLVMContractsPlugin
+# Install CoVer
 COPY ./ ./contrplugin
 # Remove local dev files if they exist
 RUN rm -rf ./contrplugin/build ./contrplugin/install
