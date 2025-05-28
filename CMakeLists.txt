@@ -151,11 +151,11 @@ if (MPI_C_FOUND AND Python_FOUND)
       SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py"
       COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/shmem.h" "CoVer ${GIT_REV}"
     )
-    list(APPEND PREMADE_CONTRACT_HEADERS "${MPI_C_HEADER_DIR}/shmem.h") # Works for OpenMPI, enough for now
+    list(APPEND PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/shmem_contracts.h") # Works for OpenMPI, enough for now
   endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
   install(
     FILES
-      "${PREMADE_CONTRACT_HEADERS}"
+      ${PREMADE_CONTRACT_HEADERS}
     DESTINATION include
     PERMISSIONS
       OWNER_READ OWNER_WRITE
