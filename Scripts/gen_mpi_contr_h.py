@@ -57,6 +57,7 @@ with open(inputh_location) as f:
             # Found a function definition. Get the function name
             res = re.search(r" (MPI_.*?)\(", line)
             funcname = res.group(1).strip()
+            if "c2f" in funcname or "f2c" in funcname: continue # Causes issues with MPICH
 
             # MPI Tools interface
             if "MPI_T_" in funcname:

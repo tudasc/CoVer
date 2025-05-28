@@ -51,7 +51,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
 
     GlobalVariable* Annotations = M.getGlobalVariable("llvm.global.annotations");
     if (Annotations == nullptr) {
-        errs() << "No annotations present, quitting.";
+        errs() << "No annotations present, quitting.\n";
         return curDatabase;
     }
 
