@@ -53,7 +53,7 @@ function_contracts = {}
 with open(inputh_location) as f:
     h_iter = iter(f.readlines())
     for line in h_iter:
-        if re.match(r"[ \tA-z0-9()\"]+ .* MPI_[\w]+[ \t]*\(.*", line):
+        if re.match(r"[ \tA-z0-9()\"]+.* MPI_[\w]+[ \t]*\([^\(]*$", line):
             # Found a function definition. Get the function name
             res = re.search(r" (MPI_.*?)\(", line)
             funcname = res.group(1).strip()
@@ -81,9 +81,9 @@ with open(inputh_location) as f:
             # Only one space in param list
             funcdec = re.sub(",[ \t]*", ", ", funcdec)
             # Remove any postfixes
-            parammatch = re.match(r".* MPI_[\w]+[ \t]*(\(.*\))", funcdec)
+            parammatch = re.match(r".* MPI_[\w]+[ \t]*(\([^\(]*\))", funcdec)
             if parammatch:
-                funcdec = funcdec[1:parammatch.end():] + ";"
+                funcdec = funcdec[0:parammatch.end():] + ";"
             # Remove any prefixes
             funcdec = re.sub(r".* (.* MPI_[A-z0-9_]+[ \t]*\(.*\))", r"\g<1>", funcdec)
             # Clear whitespace

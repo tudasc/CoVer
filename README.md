@@ -9,8 +9,14 @@ See [Usage](./Docs/Usage.md)
 
 ## Prerequisites
 
-- ANTLR4
 - LLVM 18 or newer
+- Java (Build dependency only)
+
+Optionally:
+- ANTLR4 (provided if not installed)
+- MPI (for premade headers)
+    - If OpenMPI with OpenSHMEM support is used, premade OpenSHMEM headers are generated as well.
+- Python (for premade headers)
 
 ## Building
 

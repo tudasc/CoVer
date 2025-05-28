@@ -16,10 +16,33 @@ else()
   message("Detected LLVM/Clang version ${LLVM_VERSION_MAJOR}")
 endif()
 
-find_package(antlr4-generator REQUIRED)
-find_package(antlr4-runtime REQUIRED)
+find_package(antlr4-generator QUIET)
+find_package(antlr4-runtime QUIET)
 
-set(ANTLR4_JAR_LOCATION "/usr/share/java/antlr-complete.jar" CACHE STRING "Location of antlr4 jar file")
+if (NOT antlr4-generator_FOUND)
+  set(ANTLR4_BAKED_VERSION 4.13.2)
+  set(ANTLR4_JAR_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/Externals/antlr-${ANTLR4_BAKED_VERSION}-complete.jar" CACHE STRING "Location of antlr4 jar file")
+  set(ANTLR_BUILD_CPP_TESTS OFF)
+  set(ANTLR_BUILD_SHARED OFF)
+  include(FetchContent)
+  set(ANTLR4_INSTALL ON)
+  FetchContent_Declare(
+    antlr4
+    GIT_REPOSITORY https://github.com/antlr/antlr4
+    GIT_TAG        "${ANTLR4_BAKED_VERSION}"
+    SOURCE_SUBDIR runtime/Cpp
+    QUIET
+  )
+  FetchContent_MakeAvailable(antlr4)
+  target_compile_options(antlr4_static PUBLIC -fPIC)
+  set(antlr4-generator_DIR "${antlr4_BINARY_DIR}")
+  find_package(antlr4-generator REQUIRED)
+  set(ANTLR4_INCLUDE_DIR "${antlr4_SOURCE_DIR}/runtime/Cpp/runtime/src")
+  set(ANTLR4_LIBRARY antlr4_static)
+else()
+  set(ANTLR4_JAR_LOCATION "/usr/share/java/antlr-complete.jar" CACHE STRING "Location of antlr4 jar file")
+  set(ANTLR4_LIBRARY antlr4-runtime)
+endif(NOT antlr4-generator_FOUND)
 
 ##
 ## Configure main project
@@ -55,8 +78,8 @@ target_include_directories(CoVerPlugin
     ${ANTLR4_INCLUDE_DIR_ContractPars}
     ${ANTLR4_INCLUDE_DIR}
 )
-target_link_libraries(CoVerPlugin PRIVATE antlr4-runtime)
-target_compile_options (CoVerPlugin PUBLIC -fexceptions)
+target_link_libraries(CoVerPlugin PRIVATE "${ANTLR4_LIBRARY}")
+target_compile_options (CoVerPlugin PUBLIC -fexceptions -frtti)
 
 install(TARGETS CoVerPlugin LIBRARY DESTINATION lib)
 install(
@@ -105,26 +128,38 @@ install(
 ## Premade MPI header for convenience and quick testing
 ##
 
-find_package(MPI REQUIRED)
-
 execute_process(COMMAND git log --pretty=format:%h -n 1 OUTPUT_VARIABLE GIT_REV)
-add_custom_target(
-  genMPIContracts ALL
-  SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
-  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/mpi.h" "CoVer ${GIT_REV}"
-)
-add_custom_target(
-  genSHMEMContracts ALL
-  SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py"
-  COMMAND python "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/shmem.h" "CoVer ${GIT_REV}"
-)
-install(
-  FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h"
-    "${CMAKE_CURRENT_BINARY_DIR}/shmem_contracts.h"
-  DESTINATION include
-  PERMISSIONS
-    OWNER_READ OWNER_WRITE
-    GROUP_READ
-    WORLD_READ
-)
+
+find_package(MPI COMPONENTS C)
+find_package(Python COMPONENTS Interpreter)
+
+if (MPI_C_FOUND AND Python_FOUND)
+  if (EXISTS "${MPI_C_HEADER_DIR}/mpi_proto.h")
+    set(MPI_FUNC_DECLS_FILE "${MPI_C_HEADER_DIR}/mpi_proto.h") # MPICH
+  else()
+    set(MPI_FUNC_DECLS_FILE "${MPI_C_HEADER_DIR}/mpi.h") # OpenMPI
+  endif(EXISTS "${MPI_C_HEADER_DIR}/mpi_proto.h")
+  add_custom_target(
+    genMPIContracts ALL
+    SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
+    COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_FUNC_DECLS_FILE}" "CoVer ${GIT_REV}"
+  )
+  set(PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h")
+  if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+    add_custom_target(
+      genSHMEMContracts ALL
+      SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py"
+      COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/shmem.h" "CoVer ${GIT_REV}"
+    )
+    list(APPEND PREMADE_CONTRACT_HEADERS "${MPI_C_HEADER_DIR}/shmem.h") # Works for OpenMPI, enough for now
+  endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+  install(
+    FILES
+      "${PREMADE_CONTRACT_HEADERS}"
+    DESTINATION include
+    PERMISSIONS
+      OWNER_READ OWNER_WRITE
+      GROUP_READ
+      WORLD_READ
+  )
+endif(MPI_C_FOUND AND Python_FOUND)
