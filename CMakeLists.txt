@@ -38,10 +38,10 @@ if (NOT antlr4-generator_FOUND)
   set(antlr4-generator_DIR "${antlr4_BINARY_DIR}")
   find_package(antlr4-generator REQUIRED)
   set(ANTLR4_INCLUDE_DIR "${antlr4_SOURCE_DIR}/runtime/Cpp/runtime/src")
-  set(ANTLR4_LIBRARY antlr4_static)
+  set(ANTLR4_LIBRARY antlr4_static CACHE STRING "ANTLR4 target to use")
 else()
   set(ANTLR4_JAR_LOCATION "/usr/share/java/antlr-complete.jar" CACHE STRING "Location of antlr4 jar file")
-  set(ANTLR4_LIBRARY antlr4-runtime)
+  set(ANTLR4_LIBRARY antlr4-runtime CACHE STRING "ANTLR4 target to use")
 endif(NOT antlr4-generator_FOUND)
 
 ##
