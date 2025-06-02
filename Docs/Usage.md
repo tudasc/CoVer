@@ -28,6 +28,7 @@ In general, three types of requirements are currently supported:
 
 Multiple requirements are grouped by the scope (`PRE`, `POST`):
 - Example: `POST { no! (call!(MPI_Isend)) until! (call!(MPI_type_commit)), call!(MPI_Finalize) }`
+  This contract will enforce *both* requirements. For a disjunction, use `|` instead of a comma, and for an exclusive or `^`.
 
 For more complicated constructions (disjunctions, XOR, parameter matching, tagging, read/write operations) see the examples given in the predefined headers.
 
