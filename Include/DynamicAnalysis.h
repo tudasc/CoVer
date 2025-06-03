@@ -29,6 +29,11 @@ struct CallParam_t {
     ParamAccess accType;
 };
 
+struct RWOp_t {
+    int64_t idx;
+    ParamAccess accType;
+    int64_t isWrite;
+};
 struct CallOp_t {
     void* target_function;
     const char* function_name;
@@ -39,6 +44,12 @@ struct CallTagOp_t {
     const char* target_tag;
     CallParam_t* params;
     int64_t num_params;
+};
+struct ReleaseOp_t {
+    void** release_op;
+    int64_t release_op_kind;
+    void** forbidden_op;
+    int64_t forbidden_op_kind;
 };
 
 // Number must match those defined in enums in ContractTree.hpp (operation + connective)!
