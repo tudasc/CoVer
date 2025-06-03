@@ -23,6 +23,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         std::pair<Constant*, int64_t> createContractsGlobal(Module& M); // Returns value, number of elems (type is ptr)
         Constant* createScopeGlobal(Module& M, std::vector<std::shared_ptr<ContractFormula>> forms); // Returns value, number of elems (type is ptr)
         Constant* createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form);
+        Constant* createOperationGlobal(Module& M, std::shared_ptr<const Operation> op);
         std::pair<Constant*,int64_t> createParamList(Module& M, std::vector<CallParam> p);
 
         // Auxiliary
@@ -49,6 +50,8 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* Param_Type;
         StructType* CallOp_Type;
         StructType* CallTagOp_Type;
+        StructType* ReleaseOp_Type;
+        StructType* RWOp_Type;
         StructType* Contract_Type;
         Constant* Null_Const;
 
