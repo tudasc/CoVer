@@ -146,7 +146,7 @@ Constant* InstrumentPass::createScopeGlobal(Module& M, std::vector<std::shared_p
 }
 
 Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form) {
-    Constant* data = Null_Const;
+    Constant* op_const = Null_Const;
     Constant* children = Null_Const;
     Constant* msg = Null_Const;
     if (form->Message)
@@ -155,35 +155,8 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
     if (form->Children.empty()) {
         // Expression
         std::shared_ptr<const Operation> OP = dynamic_pointer_cast<ContractExpression>(form)->OP;
+        op_const = createOperationGlobal(M, OP);
         connective = (int64_t)OP->type();
-        switch (OP->type()) {
-            case OperationType::READ:
-            case OperationType::WRITE:
-                errs() << "TODO do not expect memory access in formula" << "\n";
-                data = Null_Const;
-            case OperationType::CALL: {
-                    std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(OP);
-                    Function* F = M.getFunction(cOP->Function);
-                    if (!F) errs() << "Specified function \"" << cOP->Function << "\" does not exist! Instrumentation failed!\n";
-                    Constant* funcStr = ConstantDataArray::getString(M.getContext(), F->getName());
-                    std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
-                    data = ConstantStruct::get(CallOp_Type, {F, createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + F->getName().str()), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
-                    data = createConstantGlobalUnique(M, data, "CONTR_CALLOP");
-                }
-                break;
-            case OperationType::CALLTAG: {
-                std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(OP);
-                data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), cOP->Function),
-                                        "CONTR_TAG_STR_" + cOP->Function);
-                std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
-                data = ConstantStruct::get(CallTagOp_Type, {data, paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
-                data = createConstantGlobalUnique(M, data, "CONTR_CALLTAGOP");
-                }
-                break;
-            case OperationType::RELEASE:
-                #warning TODO release
-                data = Null_Const;
-        }
     } else {
         connective = (int64_t)form->type;
         std::vector<Constant*> childConsts;
@@ -193,7 +166,52 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
         ArrayType* ArrChildren = ArrayType::get(Formula_Type, childConsts.size());
         children = createConstantGlobalUnique(M, ConstantArray::get(ArrChildren, childConsts), "CONTRACT_CHILDREN");
     }
-    return ConstantStruct::get(Formula_Type, {children, ConstantInt::get(Int_Type, form->Children.size()), ConstantInt::get(Int_Type, connective), msg, data});
+    return ConstantStruct::get(Formula_Type, {children, ConstantInt::get(Int_Type, form->Children.size()), ConstantInt::get(Int_Type, connective), msg, op_const});
+}
+
+Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const Operation> op) {
+    Constant* data = Null_Const;
+    std::string name;
+    switch (op->type()) {
+        case OperationType::READ:
+        case OperationType::WRITE: {
+            std::shared_ptr<const RWOperation> rwOP = dynamic_pointer_cast<const RWOperation>(op);
+            ConstantInt* isWrite = ConstantInt::get(Int_Type, op->type() == OperationType::WRITE);
+            ConstantInt* const_paramacc = ConstantInt::get(Int_Type, (int)rwOP->contrParamAccess);
+            ConstantInt* const_idx = ConstantInt::get(Int_Type, (int)rwOP->contrP);
+            data = ConstantStruct::get(RWOp_Type, {const_idx, const_paramacc, isWrite});
+            name = "CONTR_RWOP";
+            break;
+        }
+        case OperationType::CALL: {
+            std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(op);
+            Function* F = M.getFunction(cOP->Function);
+            if (!F) errs() << "Specified function \"" << cOP->Function << "\" does not exist! Instrumentation failed!\n";
+            Constant* funcStr = ConstantDataArray::getString(M.getContext(), F->getName());
+            std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
+            data = ConstantStruct::get(CallOp_Type, {F, createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + F->getName().str()), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
+            name = "CONTR_CALLOP";
+            break;
+        }
+        case OperationType::CALLTAG: {
+            std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(op);
+            data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), cOP->Function), "CONTR_TAG_STR_" + cOP->Function);
+            std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
+            data = ConstantStruct::get(CallTagOp_Type, {data, paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
+            name = "CONTR_CALLTAGOP";
+            break;
+        }
+        case OperationType::RELEASE:
+            std::shared_ptr<const ReleaseOperation> rOP = dynamic_pointer_cast<const ReleaseOperation>(op);
+            Constant* forbidden_op = createOperationGlobal(M, rOP->Forbidden);
+            Constant* forb_type = ConstantInt::get(Int_Type, (int64_t)rOP->Forbidden->type());
+            Constant* release_op = createOperationGlobal(M, rOP->Until);
+            Constant* release_type = ConstantInt::get(Int_Type, (int64_t)rOP->Until->type());
+            data = ConstantStruct::get(ReleaseOp_Type, {release_op, release_type, forbidden_op, forb_type});
+            name = "CONTR_RELEASE";
+            break;
+    }
+    return createConstantGlobalUnique(M, data, name);
 }
 
 GlobalVariable* InstrumentPass::createConstantGlobalUnique(Module& M, Constant* C, std::string name) {
@@ -224,6 +242,12 @@ void InstrumentPass::createTypes(Module& M) {
 
     CallTagOp_Type = StructType::create(M.getContext(), "CallTagOp_t");
     CallTagOp_Type->setBody(Ptr_Type, Ptr_Type, Int_Type); // char* Tag name, list of params, num of params
+
+    ReleaseOp_Type = StructType::create(M.getContext(), "ReleaseOp_t");
+    ReleaseOp_Type->setBody(Ptr_Type, Int_Type, Ptr_Type, Int_Type); // void* release op, relop type, void* forbidden op, forbop type
+
+    RWOp_Type = StructType::create(M.getContext(), "RWOp_t");
+    RWOp_Type->setBody(Int_Type, Int_Type, Ptr_Type, Int_Type); // idx, paramaccess, isWrite
 
     // Composite Types
     Tag_Type = StructType::create(M.getContext(), "Tag_t");
