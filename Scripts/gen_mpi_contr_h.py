@@ -110,7 +110,20 @@ for func in function_decls.keys():
     function_contracts[func]["POST"].append("call!(MPI_Finalize) MSG \"Missing Finalization call\"")
 
 # No request reuse until p2pcomplete for persistent comms, request must be completed
-tag_reqgen = [("MPI_Iallgather", 7), ("MPI_Iallreduce", 6), ("MPI_Ialltoall", 7), ("MPI_Ibarrier", 1), ("MPI_Ibcast", 5), ("MPI_Igather", 8), ("MPI_Ibsend", 6), ("MPI_Irecv", 6), ("MPI_Isend", 6), ("MPI_Isendrecv", 11), ("MPI_Start", 0)]
+tag_reqgen = [("MPI_Iallgather", 7),
+              ("MPI_Iallreduce", 6),
+              ("MPI_Ialltoall", 7),
+              ("MPI_Ibarrier", 1),
+              ("MPI_Ibcast", 5),
+              ("MPI_Igather", 8),
+              ("MPI_Ibsend", 6),
+              ("MPI_Isend", 6),
+              ("MPI_Irsend", 6),
+              ("MPI_Issend", 6),
+              ("MPI_Irecv", 6),
+              ("MPI_Imrecv", 4),
+              ("MPI_Isendrecv", 11),
+              ("MPI_Start", 0)]
 for func, tag_idx in tag_reqgen:
     function_contracts[func]["POST"].append(f"no! (call_tag!(request_gen,$:{tag_idx})) until! (call_tag!(req_complete,$:{tag_idx})) MSG \"Double Request Use\"")
     function_contracts[func]["POST"].append(f"call_tag!(req_complete,$:{tag_idx}) MSG \"Request Leak\"")
@@ -135,7 +148,11 @@ tag_buf = [("RMAWIN", "MPI_Put", 0, 7, "W", "R"),
            ("RMAWIN", "MPI_Compare_and_swap", 1, 6, "W", "R"),
            ("RMAWIN", "MPI_Compare_and_swap", 2, 6, "RW", "W"),
            ("REQ", "MPI_Isend", 0, 6, "W", "R"),
+           ("REQ", "MPI_Ibsend", 0, 6, "W", "R"),
+           ("REQ", "MPI_Irsend", 0, 6, "W", "R"),
+           ("REQ", "MPI_Issend", 0, 6, "W", "R"),
            ("REQ", "MPI_Irecv", 0, 6, "RW", "W"),
+           ("REQ", "MPI_Imrecv", 0, 4, "RW", "W"),
            ("REQ", "MPI_Iallreduce", 0, 6, "W", "R"), # Send buffer - No writing
            ("REQ", "MPI_Iallreduce", 1, 6, "RW", "W")] # Recv buffer - No RW
 for calltype, func, buf_idx, mark_idx, forbid, action in tag_buf:
