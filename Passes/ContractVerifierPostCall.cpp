@@ -20,7 +20,6 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/Support/Casting.h>
-#include <llvm/Transforms/Instrumentation.h>
 
 using namespace llvm;
 using namespace ContractTree;
