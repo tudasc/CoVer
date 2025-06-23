@@ -131,14 +131,13 @@ for func, tag_idx in tag_reqgen:
 # Also add Rget, Rput to req_gen to satisfy unmatched wait, but not the other contrs
 function_contracts["MPI_Rget"]["TAGS"].append(f"request_gen(8)")
 function_contracts["MPI_Rput"]["TAGS"].append(f"request_gen(8)")
+function_contracts["MPI_Raccumulate"]["TAGS"].append(f"request_gen(9)")
 # Unmatched Wait
 function_contracts["MPI_Wait"]["PRE"].append(f"call_tag!(request_gen,$:0) MSG \"Unmatched Wait\"")
 
 # Local data races
 tag_buf = [("RMAWIN", "MPI_Put", 0, 7, "W", "R"),
-           ("EITHER", "MPI_Rput", 0, 7, "W", "R"),
            ("RMAWIN", "MPI_Get", 0, 7, "RW", "W"),
-           ("EITHER", "MPI_Rget", 0, 7, "RW", "W"),
            ("RMAWIN", "MPI_Get_accumulate", 0, 11, "W", "R"),
            ("RMAWIN", "MPI_Get_accumulate", 3, 11, "RW", "W"),
            ("RMAWIN", "MPI_Accumulate", 0, 8, "W", "R"),
@@ -170,21 +169,22 @@ for calltype, func, buf_idx, mark_idx, forbid, action in tag_buf:
     if "W" in action:
         function_contracts[func]["TAGS"].append(f"buf_write({buf_idx})")
 
-# Special handling of EITHER (Rput, Rget)
-# Both may not be written
-function_contracts["MPI_Rput"]["POST"].append(f"( no! (write!(*0)) until! (call_tag!(rma_complete,$:7)) | \
-                                                  no! (write!(*0)) until! (call_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local write\"")
-function_contracts["MPI_Rget"]["POST"].append(f"( no! (write!(*0)) until! (call_tag!(rma_complete,$:7)) | \
-                                                  no! (write!(*0)) until! (call_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local write\"")
-function_contracts["MPI_Rput"]["POST"].append(f"( no! (call_tag!(buf_write,$:0)) until! (call_tag!(rma_complete,$:7)) | \
-                                                  no! (call_tag!(buf_write,$:0)) until! (call_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local write by MPI call\"")
-function_contracts["MPI_Rget"]["POST"].append(f"( no! (call_tag!(buf_write,$:0)) until! (call_tag!(rma_complete,$:7)) | \
-                                                  no! (call_tag!(buf_write,$:0)) until! (call_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local write by MPI call\"")
-# Rget can also not be read
-function_contracts["MPI_Rget"]["POST"].append(f"( no! (read!(*0)) until! (call_tag!(rma_complete,$:7)) | \
-                                                  no! (read!(*0)) until! (call_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local read\"")
-function_contracts["MPI_Rget"]["POST"].append(f"( no! (call_tag!(buf_read,$:0)) until! (call_tag!(rma_complete,$:7)) | \
-                                                  no! (call_tag!(buf_read,$:0)) until! (call_tag!(req_complete,$:8)) ) MSG \"Local Data Race - Local read by MPI call\"")
+# Special handling of request-based RMA (Allow completion using both RMA sync and request)
+tag_buf_either = [("MPI_Rput", 0, 7, 8, "W", "R"),
+                  ("MPI_Rget", 0, 7, 8, "RW", "W"),
+                  ("MPI_Raccumulate", 0, 8, 9, "RW", "W"),
+]
+for func, buf_idx, win_idx, req_idx, forbid, action in tag_buf_either:
+    if "R" in forbid:
+        function_contracts[func]["POST"].append(f"( no! (read!(*{buf_idx})) until! (call_tag!(rma_complete,$:{win_idx})) | no! (read!(*{buf_idx})) until! (call_tag!(req_complete,$:{req_idx})) ) MSG \"Local Data Race - Local read\"")
+        function_contracts[func]["POST"].append(f"( no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!(rma_complete,$:{win_idx})) | no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!(req_complete,$:{req_idx})) ) MSG \"Local Data Race - Local read by MPI call\"")
+    if "W" in forbid:
+        function_contracts[func]["POST"].append(f"( no! (write!(*{buf_idx})) until! (call_tag!(rma_complete,$:{win_idx})) | no! (write!(*{buf_idx})) until! (call_tag!(req_complete,$:{req_idx})) ) MSG \"Local Data Race - Local write\"")
+        function_contracts[func]["POST"].append(f"( no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!(rma_complete,$:{win_idx})) | no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!(req_complete,$:{req_idx})) ) MSG \"Local Data Race - Local write by MPI call\"")
+    if "R" in action:
+        function_contracts[func]["TAGS"].append(f"buf_read({buf_idx})")
+    if "W" in action:
+        function_contracts[func]["TAGS"].append(f"buf_write({buf_idx})")
 
 tag_rmacomplete = [("MPI_Win_fence", 1), ("MPI_Win_unlock", 1), ("MPI_Win_unlock_all", 0), ("MPI_Win_flush", 1), ("MPI_Win_flush_all", 0), ("MPI_Win_flush_local", 1), ("MPI_Win_flush_local_all", 0), ("MPI_Win_complete", 0)]
 for func, win_idx in tag_rmacomplete:
