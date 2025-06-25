@@ -99,7 +99,7 @@ def add_contract(func: str, scope: str, contr: str):
     if func in function_contracts:
         function_contracts[func][scope].append(contr)
     else:
-        print(f"WARNING: Function \"{func}\" not found in MPI header! Probably an outdated MPI implementation!")
+        print(f"WARNING: Function \"{func}\" not found in MPI header! Probably an outdated MPI implementation!", file=sys.stderr)
 
 # Call MPI initializer
 for func in function_decls.keys():
