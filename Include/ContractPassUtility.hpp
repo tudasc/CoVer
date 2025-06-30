@@ -22,7 +22,7 @@
 
 using namespace llvm;
 
-#define DEBUG_ENV "LLVMCONTRACTS_DEBUG"
+#define DEBUG_ENV "COVER_LLVM_DEBUG"
 #define IS_DEBUG (getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1)
 
 namespace ContractPassUtility {
