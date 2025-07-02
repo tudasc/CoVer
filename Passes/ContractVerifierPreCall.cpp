@@ -62,12 +62,11 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
 
 void ContractVerifierPreCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err) {
     // Generic error message
-    err.emplace_back(ErrorMessage{
+    err.push_back({
+        .error_id = "PreCall",
         .text = "[ContractVerifierPreCall] Did not find precall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters before "
                     + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
-        .references = {ErrorReference{Provider->getDebugLoc()->getFilename().str(), 
-                                      Provider->getDebugLoc()->getLine(), 
-                                      Provider->getDebugLoc()->getColumn()}},
+        .references = {ContractPassUtility::getErrorReference(Provider)},
     });
 
     // if (!candidates.empty()) {
