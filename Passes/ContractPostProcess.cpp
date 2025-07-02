@@ -178,9 +178,9 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
             *contrF->Status = *std::min_element(fs.begin(), fs.end());
             if (*contrF->Status != Fulfillment::FULFILLED) {
                 // Add error info from children. As its an OR: All must not be fulfilled, so concat all
-                contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "No children satisfied for subformula: " + contrF->ExprStr});
+                contrF->ErrorInfo->push_back({.text = "No children satisfied for subformula: " + contrF->ExprStr});
                 for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
-                    contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "Error Info for child: " + Form->ExprStr});
+                    contrF->ErrorInfo->push_back({.text = "Error Info for child: " + Form->ExprStr});
                     contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
                 }
             }
@@ -195,23 +195,23 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
                 }
                 if (prevFulfil && *Form->Status == Fulfillment::FULFILLED) {
                     // At least two children fulfilled -> error
-                    contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "More than one child satisfied for subformula: " + contrF->ExprStr});
+                    contrF->ErrorInfo->push_back({.text = "More than one child satisfied for subformula: " + contrF->ExprStr});
                     if (!prevFulfil->ErrorInfo->empty()) {
-                        contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "Messages from Child 1: " + prevFulfil->ExprStr});
+                        contrF->ErrorInfo->push_back({.text = "Messages from Child 1: " + prevFulfil->ExprStr});
                         contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), prevFulfil->ErrorInfo->begin(), prevFulfil->ErrorInfo->end());
                     }
                     if (!Form->ErrorInfo->empty()) {
-                        contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "Messages from Child 2: " + Form->ExprStr});
+                        contrF->ErrorInfo->push_back({.text = "Messages from Child 2: " + Form->ExprStr});
                         contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
                     }
                     *contrF->Status = Fulfillment::BROKEN;
                     return {*contrF->Status, outMsg};
                 }
                 if (*Form->Status == Fulfillment::UNKNOWN) {
-                    contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "Child fulfillment unknown for subformula: " + contrF->ExprStr});
-                    contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "And child: " + Form->ExprStr});
+                    contrF->ErrorInfo->push_back({.text = "Child fulfillment unknown for subformula: " + contrF->ExprStr});
+                    contrF->ErrorInfo->push_back({.text = "And child: " + Form->ExprStr});
                     if (!Form->ErrorInfo->empty()) {
-                        contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "Messages from unknown fulfillment Child: "});
+                        contrF->ErrorInfo->push_back({.text = "Messages from unknown fulfillment Child: "});
                         contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
                     }
                     *contrF->Status = Fulfillment::UNKNOWN;
@@ -220,15 +220,15 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
             }
             if (prevFulfil) {
                 // At least one success logged, everythin is fine
-                contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "Exactly one child satisfied of subformula: " + contrF->ExprStr});
+                contrF->ErrorInfo->push_back({.text = "Exactly one child satisfied of subformula: " + contrF->ExprStr});
                 *contrF->Status = Fulfillment::FULFILLED;
                 return {*contrF->Status, std::nullopt};
             }
             // Not success or unknown, so no child satisfied
-            contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "No child satisfied for subformula: " + contrF->ExprStr});
+            contrF->ErrorInfo->push_back({.text = "No child satisfied for subformula: " + contrF->ExprStr});
             for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
                 if (!Form->ErrorInfo->empty()) {
-                    contrF->ErrorInfo->emplace_back(ErrorMessage{.text = "Messages from Child: " + Form->ExprStr});
+                    contrF->ErrorInfo->push_back({.text = "Messages from Child: " + Form->ExprStr});
                     contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
                 }
             }
