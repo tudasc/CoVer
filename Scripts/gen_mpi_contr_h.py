@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import json
 
 if len(sys.argv) < 3:
     print("Insufficient arguments!\nUsage: {os.path.basename(__file__)} <outpath> <mpi.h location> [identifier]")
@@ -307,8 +308,12 @@ subroutine CONTRACT_DEFINITION
 
 header_output_fort = boilerplate_header_fort + "    use mpi\n    implicit none\n"
 header_output_fort_f08 = boilerplate_header_fort + "    use mpi_f08\n    implicit none\n"
+header_output_fort_f08ts = header_output_fort_f08
 
 exclude_fortran = [ "MPI_Intercomm_create_from_groups", "MPI_Session_set_info", "MPI_Session_get_num_psets" ] # HACK: Not currently implemented
+
+with open("apis.json", "r") as api_file:
+    mpi_funcs = json.load(api_file)
 
 def create_contract_output_for_func(types, contrs):
     out = ""
@@ -320,6 +325,22 @@ def create_contract_output_for_func(types, contrs):
         out += f"        {contrs[c_type][-1]}\n"
         out += "    }\n"
     return out
+
+def has_buffer(func: str) -> bool:
+    api_func = mpi_funcs[func.lower()]
+    for p in api_func["parameters"]:
+        if p["kind"] == "BUFFER": return True
+    return False
+
+def create_f08_contract(func: str, contract: str, support_ts: bool):
+    call_op = re.search("call!\\(([A-z_0-9]+)\\)", contract)
+    contract_str_fort_f08 = contract
+    if call_op:
+        func_callop = call_op.group(1)
+        suffix = "_f08ts" if support_ts and has_buffer(func_callop) else "_f08"
+        contract_str_fort_f08 = re.sub("call!\\(([A-z_0-9]+)\\)", r"call!(\1" + suffix + ")", contract)
+    contract_func_suffix = "_f08ts" if has_buffer(func) and support_ts else "_f08"
+    return f"    call Declare_Contract({func}{contract_func_suffix}, \"CONTRACT{{{contract_str_fort_f08}}}\")\n"
 
 for func, contrs in function_contracts.items():
     if not contrs["PRE"] and not contrs["POST"] and not contrs["TAGS"]:
@@ -333,13 +354,14 @@ for func, contrs in function_contracts.items():
     # Now: Fortran
     contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "")
     header_output_fort += "    call Declare_Contract(" + func + ", \"CONTRACT{" + contract_str_fort + "}\")\n"
-    # Fortran f08
-    contract_str_fort_f08 = re.sub("call!\\(([A-z_0-9]+)\\)", r"call!(\1_f08)", contract_str_fort)
-    header_output_fort_f08 += "    call Declare_Contract(" + func + "_f08, \"CONTRACT{" + contract_str_fort_f08 + "}\")\n"
+    # Fortran f08(ts)
+    header_output_fort_f08 += create_f08_contract(func, contract_str_fort, False)
+    header_output_fort_f08ts += create_f08_contract(func, contract_str_fort, True)
 
 # End fortran subroutine
 header_output_fort += "end subroutine\n"
 header_output_fort_f08 += "end subroutine\n"
+header_output_fort_f08ts += "end subroutine\n"
 
 with open(f"{output_path}/mpi_contracts.h", "w") as contr_file:
     contr_file.write(header_output_c)
@@ -349,3 +371,6 @@ with open(f"{output_path}/mpi_contracts.f90", "w") as contr_file:
 
 with open(f"{output_path}/mpi_contracts_f08.f90", "w") as contr_file:
     contr_file.write(header_output_fort_f08)
+
+with open(f"{output_path}/mpi_contracts_f08ts.f90", "w") as contr_file:
+    contr_file.write(header_output_fort_f08ts)
