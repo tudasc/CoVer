@@ -121,7 +121,7 @@ std::string exec(std::string const& cmd, bool interactive = true) {
 void execSafe(std::string const& cmd) {
     if (ExecVerbose || ExecDryRun)
         std::cout << "Wrapper " << (ExecDryRun ? "would execute: " : "is executing: ") << cmd << "\n";
-    if (!ExecDryRun) std::cout << exec(cmd);
+    if (!ExecDryRun) exec(cmd);
 }
 
 std::string getOptParam(std::string param, std::string full) {
