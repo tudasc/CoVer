@@ -26,6 +26,7 @@
 #include "ContractTree.hpp"
 
 #include "ContractPassUtility.hpp"
+#include "TUIManager.h"
 
 using namespace llvm;
 
@@ -49,7 +50,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     curDatabase.start_time = std::chrono::system_clock::now();
     curDatabase.allowMultiReports = ClMultiReports;
 
-    errs() << "Running Contract Manager on Module: " << M.getName() << "\n";
+    errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
 
     extractFromAnnotations(M);
     extractFromFunction(M);
@@ -73,6 +74,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     errs() << timestr;
 
     ContractPassUtility::Initialize(M);
+    TUIManager::StartMenu(curDatabase);
 
     return curDatabase;
 }
