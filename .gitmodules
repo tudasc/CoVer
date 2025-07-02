@@ -4,3 +4,6 @@
 [submodule "Externals/llvm-dsa"]
 	path = Externals/llvm-dsa
 	url = https://github.com/N00byKing/llvm-dsa
+[submodule "Externals/FTXUI"]
+	path = Externals/FTXUI
+	url = https://github.com/ArthurSonzogni/FTXUI

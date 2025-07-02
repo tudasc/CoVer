@@ -90,7 +90,11 @@ std::vector<std::string> link_time_sources; // For predef fort contracts
 
 std::string opt_flags = "";
 
-std::string exec(std::string const& cmd) {
+std::string exec(std::string const& cmd, bool interactive = true) {
+    if (interactive) {
+        std::system(cmd.c_str());
+        return "";
+    }
     std::array<char, 128> buffer;
     std::string result;
     FILE* pipe = popen(cmd.c_str(), "r");
@@ -110,7 +114,7 @@ std::string exec(std::string const& cmd) {
 void execSafe(std::string const& cmd) {
     if (ExecVerbose || ExecDryRun)
         std::cout << "Wrapper " << (ExecDryRun ? "would execute: " : "is executing: ") << cmd << "\n";
-    if (!ExecDryRun) std::cout << exec(cmd);
+    if (!ExecDryRun) exec(cmd);
 }
 
 std::string getOptParam(std::string param, std::string full) {
@@ -179,7 +183,7 @@ void sanityCheckCompiler() {
 
     // Check for LLVM-based compiler
     cmd = WrapTarget + " --version | head -n 1";
-    compiler_ident  = exec(cmd);
+    compiler_ident  = exec(cmd, false);
     if (compiler_ident.find("clang") == std::string::npos && compiler_ident.find("flang") == std::string::npos) {
         std::cerr << "Unknown compiler \"" << compiler_ident.substr(0, compiler_ident.size()-1) << "\"!\n";
         std::cerr << "Make sure to use an LLVM-based compiler that supports outputting bitcode.\n";
