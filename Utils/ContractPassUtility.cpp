@@ -112,12 +112,9 @@ std::optional<uint> getLineNumber(const Instruction* I) {
     return std::nullopt;
 }
 std::string getInstrLocStr(const Instruction* I) {
-    if (const DebugLoc &debugLoc = I->getDebugLoc()) {
+    if (const DebugLoc &debugLoc = I->getDebugLoc())
         return (debugLoc->getDirectory() + "/" + debugLoc->getFilename()).str() + ":" + std::to_string(debugLoc.getLine()) + ":" + std::to_string(debugLoc->getColumn());
-    } else {
-        return "";
-    }
-    //return I->getParent()->getParent()-> + " :" + (getLineNumber(I).has_value() ? std::to_string(getLineNumber(I).value()) : "UNKNOWN");
+    return "UNKNOWN";
 }
 
 ErrorReference getErrorReference(const Instruction* I) {
