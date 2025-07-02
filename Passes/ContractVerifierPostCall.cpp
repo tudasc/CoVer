@@ -58,11 +58,10 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
 void ContractVerifierPostCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err) {
     // Generic error message
     err.push_back({
+        .error_id = "PostCall",
         .text = "[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
                     + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
-        .references = {{Provider->getDebugLoc()->getFilename().str(), 
-                                      Provider->getDebugLoc()->getLine(), 
-                                      Provider->getDebugLoc()->getColumn()}},
+        .references = {ContractPassUtility::getErrorReference(Provider)},
     });
     // err.push_back("[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
     //                 + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));

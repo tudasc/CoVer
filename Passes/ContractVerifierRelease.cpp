@@ -85,12 +85,12 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err,
         << " which is in conflict with " << CB->getCalledFunction()->getName().str() << " at " << ContractPassUtility::getInstrLocStr(CB)
         << " before release";
 
-    err.emplace_back(ErrorMessage{
+    err.push_back({
         .error_id = "Release",
         .text = str.str(),
         .references = {ContractPassUtility::getErrorReference(Forbidden),
                        ContractPassUtility::getErrorReference(CB),             
-                     },
+        },
     });
 }
 
