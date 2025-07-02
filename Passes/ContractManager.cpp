@@ -30,6 +30,10 @@ static cl::opt<bool> ClMultiReports(
     "cover-allow-multireports", cl::init(false),
     cl::desc("Allow multiple error reports of the same contract"),
     cl::Hidden);
+static cl::opt<bool> ClIsInteractive(
+    "cover-interactive-analysis", cl::init(false),
+    cl::desc("Run in interactive mode"),
+    cl::Hidden);
 
 static std::optional<std::string> getFuncName(CallBase* FuncCall) {
     if (!FuncCall->getCalledFunction()) {
@@ -47,12 +51,13 @@ AnalysisKey ContractManagerAnalysis::Key;
 ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
     curDatabase.start_time = std::chrono::system_clock::now();
     curDatabase.allowMultiReports = ClMultiReports;
+    curDatabase.isInteractive = ClIsInteractive;
 
     errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
 
     extractFromAnnotations(M);
 
-    TUIManager::StartMenu(curDatabase);
+    if (curDatabase.isInteractive) TUIManager::StartMenu(curDatabase);
 
     std::stringstream s;
     s << "CoVer: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";

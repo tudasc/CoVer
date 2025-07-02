@@ -39,6 +39,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             std::map<const Function*, std::vector<TagUnit>> Tags;
             std::chrono::time_point<std::chrono::system_clock> start_time;
             bool allowMultiReports = false;
+            bool isInteractive;
         } typedef ContractDatabase;
 
         // Run Pass

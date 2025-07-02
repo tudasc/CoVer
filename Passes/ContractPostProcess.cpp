@@ -1,6 +1,7 @@
 #include "ContractPostProcess.hpp"
 #include "ContractManager.hpp"
 #include "ContractPassUtility.hpp"
+#include "TUIManager.h"
 #include "ContractTree.hpp"
 #include <algorithm>
 #include "ErrorMessage.h"
@@ -10,26 +11,35 @@
 #include <llvm/Support/Error.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/WithColor.h>
+#include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 using namespace llvm;
 using namespace ContractTree;
 
+std::error_code err_ostream;
+raw_fd_ostream nullstream = raw_fd_ostream("/dev/null", err_ostream);
+raw_ostream& ContractPostProcessingPass::printMsg() {
+    if (isInteractive) return nullstream;
+    return errs();
+}
+
 void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const std::vector<std::shared_ptr<ContractFormula>> set, std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons) {
     for (std::shared_ptr<ContractFormula> form : set) {
         if (*form->Status == Fulfillment::FULFILLED) continue;
-        errs() << "--> " + type + " Subformula Status: " << FulfillmentStr(*form->Status) << "\n";
+        printMsg() << "--> " << type << " Subformula Status: " << FulfillmentStr(*form->Status) << "\n";
         if (*form->Status > Fulfillment::FULFILLED) {
-            errs() << "    --> Formula String: " << form->ExprStr << "\n";
+            printMsg() << "    --> Formula String: " << form->ExprStr << "\n";
             if (reasons.contains(form))
-                errs() << "    --> Message: " << reasons[form].text << "\n";
-            errs() << "    --> Error Info:\n";
+                printMsg() << "    --> Message: " << reasons[form].text << "\n";
+            printMsg() << "    --> Error Info:\n";
             for (ErrorMessage errinfo : *form->ErrorInfo) {
-                errs() << "        " << errinfo.text << "\n";
+                printMsg() << "        " << errinfo.text << "\n";
                 Json::Value j;
                 j["type"] = reasons[form].text;
                 j["error_id"] = errinfo.error_id;
@@ -67,26 +77,26 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     }
     if (!output) return s;
 
-    if (s == Fulfillment::FULFILLED && IS_DEBUG) WithColor(errs(), HighlightColor::String) << "## Contract Fulfilled! ##\n";
+    if (s == Fulfillment::FULFILLED && IS_DEBUG) WithColor(printMsg(), HighlightColor::String) << "## Contract Fulfilled! ##\n";
     if (s == Fulfillment::FULFILLED && !IS_DEBUG) return s; // No debug output, don't spam fulfilled contracts
 
-    if (s == Fulfillment::UNKNOWN) WithColor(errs(), HighlightColor::Warning) << "## Contract Status Unknown ##\n";
-    if (s == Fulfillment::BROKEN) WithColor(errs(), HighlightColor::Error) << "## Contract violation detected! ##\n";
-    errs() << "--> Function: " << demangle(C.F->getName()) << "\n";
-    errs() << "--> Contract: " << C.ContractString << "\n";
+    if (s == Fulfillment::UNKNOWN) WithColor(printMsg(), HighlightColor::Warning) << "## Contract Status Unknown ##\n";
+    if (s == Fulfillment::BROKEN) WithColor(printMsg(), HighlightColor::Error) << "## Contract violation detected! ##\n";
+    printMsg() << "--> Function: " << demangle(C.F->getName()) << "\n";
+    printMsg() << "--> Contract: " << C.ContractString << "\n";
 
     if (s > Fulfillment::FULFILLED) {
         outputSubformulaErrs("Precondition", C.Data.Pre, reasons);
         outputSubformulaErrs("Postcondition", C.Data.Post, reasons);
     }
     if (IS_DEBUG) {
-        WithColor(errs(), HighlightColor::Remark) << "--> Debug Begin\n";
+        WithColor(printMsg(), HighlightColor::Remark) << "--> Debug Begin\n";
         for (std::string dbg: *C.DebugInfo) {
-            WithColor(errs(), HighlightColor::Remark) << dbg << "\n";
+            WithColor(printMsg(), HighlightColor::Remark) << dbg << "\n";
         }
-        WithColor(errs(), HighlightColor::Remark) << "<-- Debug End\n";
+        WithColor(printMsg(), HighlightColor::Remark) << "<-- Debug End\n";
     }
-    errs() << "\n";
+    printMsg() << "\n";
     return s;
 }
 
@@ -112,13 +122,14 @@ void ContractPostProcessingPass::checkExpErr(ContractManagerAnalysis::Contract C
         }
     }
 
-    WithColor(errs(), col) << "Encountered " << err << " in Function \"" << demangle(C.F->getName()) << "\"\n";
-    errs() << "Contract: " << C.ContractString << "\n";
+    WithColor(printMsg(), col) << "Encountered " << err << " in Function \"" << demangle(C.F->getName()) << "\"\n";
+    printMsg() << "Contract: " << C.ContractString << "\n";
 }
 
 PreservedAnalyses ContractPostProcessingPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
+    isInteractive = DB.isInteractive;
 
     json_messages["messages"] = {};
 
@@ -130,14 +141,14 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
         }
     }
     if (haveCorrContr) {
-        errs() << "Checking correctness contract results:\n";
-        errs() << "\nTotal number of correctness contracts: " << xfail + xsucc << "\n";
-        errs() << "Total number of xfail contracts: " << xfail << "\n";
-        errs() << "Total number of xsucc contracts: " << xsucc << "\n";
-        errs() << "Total number of FN: " << FN << "\n";
-        errs() << "Total number of FP: " << FP << "\n\n";
-        errs() << "Total number of UN: " << UN << "\n\n";
-        errs() << "Checking verification contract results:\n";
+        printMsg() << "Checking correctness contract results:\n";
+        printMsg() << "\nTotal number of correctness contracts: " << xfail + xsucc << "\n";
+        printMsg() << "Total number of xfail contracts: " << xfail << "\n";
+        printMsg() << "Total number of xsucc contracts: " << xsucc << "\n";
+        printMsg() << "Total number of FN: " << FN << "\n";
+        printMsg() << "Total number of FP: " << FP << "\n\n";
+        printMsg() << "Total number of UN: " << UN << "\n\n";
+        printMsg() << "Checking verification contract results:\n";
     }
 
     for (ContractManagerAnalysis::Contract C : DB.Contracts) {
@@ -148,7 +159,9 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
 
     std::stringstream s;
     s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
-    errs() << s.str();
+    printMsg() << s.str();
+
+    if (isInteractive) TUIManager::ResultsScreen(json_messages);
 
     // Write json to file
     std::ofstream file("contract_messages.json");
