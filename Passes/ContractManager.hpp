@@ -48,6 +48,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             bool invalidate(Module &, PreservedAnalyses const&, ModuleAnalysisManager::Invalidator const&) const {
                 return false;
             }
+            bool isInteractive;
         } typedef ContractDatabase;
 
         // Run Analysis
