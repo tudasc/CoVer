@@ -44,6 +44,8 @@ else()
   set(ANTLR4_LIBRARY antlr4-runtime CACHE STRING "ANTLR4 target to use")
 endif(NOT antlr4-generator_FOUND)
 
+add_subdirectory(Externals/FTXUI)
+
 ##
 ## Configure main project
 ##
@@ -82,6 +84,7 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractVerifierRelease.cpp
   Passes/ContractPostProcess.cpp
   Utils/ContractPassUtility.cpp
+  Utils/TUIManager.cpp
   Include/ContractPassUtility.hpp
 )
 
@@ -99,7 +102,7 @@ target_compile_options (CoVerPlugin PUBLIC -fexceptions)
 ##
 
 target_link_libraries(ContractLanguage PRIVATE "${ANTLR4_LIBRARY}")
-target_link_libraries(CoVerPlugin PRIVATE ContractLanguage)
+target_link_libraries(CoVerPlugin PRIVATE ContractLanguage ftxui::screen ftxui::dom ftxui::component)
 
 # Attempt finding system version of JsonCpp
 find_package(PkgConfig)

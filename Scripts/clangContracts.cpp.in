@@ -33,7 +33,11 @@ std::vector<std::string> source_file_names;
 
 std::string opt_flags = "";
 
-std::string exec(std::string const& cmd) {
+std::string exec(std::string const& cmd, bool interactive = true) {
+    if (interactive) {
+        std::system(cmd.c_str());
+        return "";
+    }
     std::array<char, 128> buffer;
     std::string result;
     FILE* pipe = popen(cmd.c_str(), "r");
@@ -57,7 +61,7 @@ void execSafe(std::string const& cmd) {
             std::cout << "Wrapper " << (cur_execkind == VERBOSE ? "is executing: " : "would execute: ") << cmd << "\n";
             if (cur_execkind == DRY) break;
         case NORMAL:
-            std::cout << exec(cmd);
+            exec(cmd);
             break;
     }
 }
@@ -129,7 +133,7 @@ void sanityCheckCompiler() {
 
     // Check for LLVM-based compiler
     cmd = wrap_target + " --version | head -n 1";
-    std::string res  = exec(cmd);
+    std::string res  = exec(cmd, false);
     if (res.find("clang") == std::string::npos && res.find("flang") == std::string::npos) {
         std::cerr << "Unknown compiler \"" << res.substr(0, res.size()-1) << "\"!\n";
         std::cerr << "Make sure to use an LLVM-based compiler that supports outputting bitcode.\n";

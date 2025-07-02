@@ -1,3 +1,6 @@
 [submodule "Externals/jsoncpp"]
 	path = Externals/jsoncpp
 	url = https://github.com/open-source-parsers/jsoncpp
+[submodule "Externals/FTXUI"]
+	path = Externals/FTXUI
+	url = https://github.com/ArthurSonzogni/FTXUI
