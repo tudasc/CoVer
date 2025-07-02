@@ -158,7 +158,10 @@ tag_buf = [("RMAWIN", "MPI_Put", 0, 7, "W", "R"),
            ("REQ", "MPI_Irecv", 0, 6, "RW", "W"),
            ("REQ", "MPI_Imrecv", 0, 4, "RW", "W"),
            ("REQ", "MPI_Iallreduce", 0, 6, "W", "R"), # Send buffer - No writing
-           ("REQ", "MPI_Iallreduce", 1, 6, "RW", "W")] # Recv buffer - No RW
+           ("REQ", "MPI_Iallreduce", 1, 6, "RW", "W"), # Recv buffer - No RW
+           ("REQ", "MPI_Ireduce", 0, 7, "W", "R"),
+           ("REQ", "MPI_Ireduce", 1, 7, "RW", "W"),
+] 
 for calltype, func, buf_idx, mark_idx, forbid, action in tag_buf:
     if calltype == "RMAWIN": completiontag = "rma_complete"
     if calltype == "REQ": completiontag = "req_complete"
@@ -173,6 +176,13 @@ for calltype, func, buf_idx, mark_idx, forbid, action in tag_buf:
         add_contract(func, "TAGS", f"buf_read({buf_idx})")
     if "W" in action:
         add_contract(func, "TAGS", f"buf_write({buf_idx})")
+
+# Blocking functions that write/read a buffer
+tag_buf_blocking = [("MPI_Send", 0, "R"), ("MPI_Recv", 0, "W"), ("MPI_Reduce", 0, "R"), ("MPI_Reduce", 1, "W"), ("MPI_Allreduce", 0, "R"), ("MPI_Allreduce", 1, "W"),
+                    ("MPI_Bcast", 0, "RW")]
+for func, idx, access in tag_buf_blocking:
+    if "R" in access: add_contract(func, "TAGS", f"buf_read({idx})")
+    if "W" in access: add_contract(func, "TAGS", f"buf_write({idx})")
 
 # Special handling of request-based RMA (Allow completion using both RMA sync and request)
 tag_buf_either = [("MPI_Rput", 0, 7, 8, "W", "R"),
