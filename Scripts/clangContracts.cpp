@@ -39,6 +39,10 @@ static cl::opt<bool> PredefinedContracts("predefined-contracts",
     cl::desc("Automatically include the predefined contract definitions using the -include flag"),
     cl::cat(WrapperCategory));
 
+static cl::opt<bool> InteractiveStatic("interactive",
+    cl::desc("Run the CoVer TUI for static analysis"),
+    cl::cat(WrapperCategory));
+
 static cl::opt<bool> AllowMultiReports("allow-multireports",
     cl::desc("Allow multiple reports of same violated contract"),
     cl::cat(WrapperCategory));
@@ -129,6 +133,7 @@ std::pair<std::string,std::string> parseWrapperParams(std::pair<std::string,std:
     std::string& rem_args_compile = rem_args.second; // Second result, only for compiling
 
     if (AllowMultiReports) opt_flags += " -cover-allow-multireports=1";
+    if (InteractiveStatic) opt_flags += " --cover-interactive-analysis=1";
 
     if (InstrumentContracts.getNumOccurrences() && InstrumentContracts.empty()) InstrumentContracts = "full";
     if (!InstrumentContracts.empty()) opt_flags += " -cover-instrument-type=\"" + InstrumentContracts + "\"";
