@@ -22,7 +22,7 @@
 #include "ContractTree.hpp"
 
 #include "ContractPassUtility.hpp"
-#include "TUIManager.h"
+#include "TUIManager.hpp"
 
 using namespace llvm;
 

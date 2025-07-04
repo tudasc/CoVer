@@ -2,6 +2,7 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
+#include "TUIManager.hpp"
 #include "ErrorMessage.h"
 
 #include <algorithm>
@@ -55,13 +56,13 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-void ContractVerifierPostCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err) {
+void ContractVerifierPostCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err, const Instruction* retLoc) {
     // Generic error message
     err.push_back({
         .error_id = "PostCall",
         .text = "[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
-                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
-        .references = {ContractPassUtility::getErrorReference(Provider)},
+                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider) + " before exit point at " + ContractPassUtility::getInstrLocStr(retLoc),
+        .references = {ContractPassUtility::getErrorReference(Provider), ContractPassUtility::getErrorReference(retLoc)},
     });
     // err.push_back("[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
     //                 + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));
@@ -121,6 +122,15 @@ std::pair<ContractVerifierPostCallPass::CallStatus,bool> mergePostCallStat(Contr
     return { cs, cs > prev };
 }
 
+std::string postCallStatusToStr(ContractVerifierPostCallPass::CallStatus S) {
+    switch (S) {
+        case llvm::ContractVerifierPostCallPass::CallStatus::CALLED:
+            return "CALLED";
+        case llvm::ContractVerifierPostCallPass::CallStatus::NOTCALLED:
+            return "NOTCALLED";
+    }
+}
+
 ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error) {
     IterTypePostCall data = { {}, {}, cOP->Function, nullptr, cOP->Params, isTag, Tags };
 
@@ -128,11 +138,11 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledFunction() == C.F) {
                 data.callsite = CB;
-                std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transferPostCallStat, mergePostCallStat, &data, CallStatus::NOTCALLED);
+                ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transferPostCallStat, mergePostCallStat, &data, CallStatus::NOTCALLED);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
-                for (std::pair<const Instruction *, CallStatus> x : AnalysisInfo) {
+                for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getParent()->getParent()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
-                        appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, *Expr.ErrorInfo);
+                        appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, *Expr.ErrorInfo, x.first);
                         return CallStatus::NOTCALLED;
                     }
                 }

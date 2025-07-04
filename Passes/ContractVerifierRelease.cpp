@@ -208,12 +208,12 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledFunction() == C.F) {
                 data.callsite = CB;
-                std::map<const Instruction *, ReleaseStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB->getNextNode(), transfer, merge, &data, ReleaseStatus::FORBIDDEN);
+                ContractPassUtility::WorklistResult<ReleaseStatus> WLRes = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB->getNextNode(), transfer, merge, &data, ReleaseStatus::FORBIDDEN);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
                 data.err.clear();
-                for (std::pair<const Instruction *, ReleaseStatus> x : AnalysisInfo) {
-                    if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) return ReleaseStatus::ERROR;
+                for (std::pair<const Instruction *, ReleaseStatus> x : WLRes.AnalysisInfo) {
+                    if (x.second == ReleaseStatus::ERROR) return ReleaseStatus::ERROR;
                 }
             }
         }

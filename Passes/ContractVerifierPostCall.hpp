@@ -5,6 +5,7 @@
 #include "ErrorMessage.h"
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
+#include <llvm/IR/Instruction.h>
 #include <map>
 #include <set>
 
@@ -16,7 +17,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
 
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
-        static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err);
+        static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err, const Instruction* retLoc);
 
     private:
         CallStatus checkPostCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error);
