@@ -108,11 +108,12 @@ for func in function_decls.keys():
         continue
     add_contract(func, "PRE", "call_tag!(mpi_init) MSG \"Missing Initialization call\"")
 
-# Call MPI_Finalize
+# Call MPI finalizer
 for func in function_decls.keys():
     if func in ["MPI_Finalize", "MPI_Abort"]:
+        add_contract(func, "TAGS", "mpi_finalize")
         continue
-    add_contract(func, "POST", "call!(MPI_Finalize) MSG \"Missing Finalization call\"")
+    add_contract(func, "POST", "call_tag!(mpi_finalize) MSG \"Missing Finalization call\"")
 
 # No request reuse until p2pcomplete for persistent comms, request must be completed
 tag_reqgen = [("MPI_Iallgather", 7),
@@ -187,7 +188,7 @@ for func, idx, access in tag_buf_blocking:
 # Special handling of request-based RMA (Allow completion using both RMA sync and request)
 tag_buf_either = [("MPI_Rput", 0, 7, 8, "W", "R"),
                   ("MPI_Rget", 0, 7, 8, "RW", "W"),
-                  ("MPI_Raccumulate", 0, 8, 9, "RW", "W"),
+                  ("MPI_Raccumulate", 0, 8, 9, "W", "R"),
 ]
 for func, buf_idx, win_idx, req_idx, forbid, action in tag_buf_either:
     if "R" in forbid:
