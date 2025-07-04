@@ -158,6 +158,15 @@ tag_buf = [("RMAWIN", "MPI_Put", 0, 7, "W", "R"),
            ("REQ", "MPI_Issend", 0, 6, "W", "R"),
            ("REQ", "MPI_Irecv", 0, 6, "RW", "W"),
            ("REQ", "MPI_Imrecv", 0, 4, "RW", "W"),
+           ("REQ", "MPI_Ibcast", 0, 5, "W", "R"),
+           ("REQ", "MPI_Igather", 0, 8, "W", "R"),
+           ("REQ", "MPI_Igather", 3, 8, "RW", "W"),
+           ("REQ", "MPI_Iscan", 0, 6, "W", "R"),
+           ("REQ", "MPI_Iscan", 1, 6, "RW", "W"),
+           ("REQ", "MPI_Iscatter", 0, 8, "W", "R"),
+           ("REQ", "MPI_Iscatter", 3, 8, "RW", "W"),
+           ("REQ", "MPI_Ialltoall", 0, 7, "W", "R"),
+           ("REQ", "MPI_Ialltoall", 3, 7, "RW", "W"),
            ("REQ", "MPI_Iallreduce", 0, 6, "W", "R"), # Send buffer - No writing
            ("REQ", "MPI_Iallreduce", 1, 6, "RW", "W"), # Recv buffer - No RW
            ("REQ", "MPI_Ireduce", 0, 7, "W", "R"),
@@ -189,6 +198,8 @@ for func, idx, access in tag_buf_blocking:
 tag_buf_either = [("MPI_Rput", 0, 7, 8, "W", "R"),
                   ("MPI_Rget", 0, 7, 8, "RW", "W"),
                   ("MPI_Raccumulate", 0, 8, 9, "W", "R"),
+                  ("MPI_Rget_accumulate", 0, 11, 12, "W", "R"),
+                  ("MPI_Rget_accumulate", 3, 11, 12, "RW", "W"),
 ]
 for func, buf_idx, win_idx, req_idx, forbid, action in tag_buf_either:
     if "R" in forbid:
