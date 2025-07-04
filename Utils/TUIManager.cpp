@@ -1,12 +1,14 @@
-#include "TUIManager.h"
+#include "TUIManager.hpp"
 
 #include <fstream>
 #include <ftxui/component/component.hpp>
+#include <ftxui/component/component_base.hpp>
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <iostream>
+#include <llvm/Support/raw_ostream.h>
 #include <string>
 #include <vector>
 
@@ -15,6 +17,15 @@
 namespace TUIManager {
 
 constexpr int FILE_CONTEXT_SIZE = 5;
+
+std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
+    switch (kind) {
+        case ContractPassUtility::TraceKind::LINEAR: return "LINEAR";
+        case ContractPassUtility::TraceKind::BRANCH: return "BRANCH";
+        case ContractPassUtility::TraceKind::FUNCENTRY: return "FUNCENTRY";
+        case ContractPassUtility::TraceKind::FUNCEXIT: return "FUNCEXIT";
+    }
+}
 
 ftxui::ScreenInteractive screen = ftxui::ScreenInteractive::FullscreenPrimaryScreen();
 ftxui::Element header = ftxui::vbox({
@@ -37,7 +48,7 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
             header,
             ftxui::text(title) | ftxui::center,
             ftxui::separator(),
-            menu->Render(),
+            ftxui::yframe(menu->Render()),
             ftxui::separator()
            });
         }

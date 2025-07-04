@@ -2,6 +2,7 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
+#include "TUIManager.hpp"
 #include "ErrorMessage.h"
 
 #include <algorithm>
@@ -149,6 +150,19 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallP
     return { cs, cs.CurVal > prev.CurVal };
 }
 
+std::string postCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
+    switch (S.CurVal) {
+        case llvm::ContractVerifierPreCallPass::CallStatusVal::CALLED:
+            return "CALLED";
+        case llvm::ContractVerifierPreCallPass::CallStatusVal::NOTCALLED:
+            return "NOTCALLED";
+        case llvm::ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK:
+            return "PARAMCHECK";
+        case llvm::ContractVerifierPreCallPass::CallStatusVal::ERROR:
+            return "ERROR";
+    }
+}
+
 ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation* cOP, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error) {
     const Function* mainF = M.getFunction("main");
     if (!mainF) {
@@ -161,7 +175,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
     ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPreCallPass::transferPreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPreCallPass::mergePreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(Entry, transfer, merge, &data, init);
+    ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(Entry, transfer, merge, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
@@ -169,10 +183,13 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     // Take max over all analysis info
     // Correct usage will not contain error
     CallStatusVal res = CallStatusVal::CALLED;
-    for (std::pair<const Instruction*, CallStatus> AI : AnalysisInfo) {
+    for (std::pair<const Instruction*, CallStatus> AI : WLRes.AnalysisInfo) {
         if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
             if (CB->getCalledFunction() == C.F) {
                 res = std::max(AI.second.CurVal, res);
+                if (AI.second.CurVal == CallStatusVal::ERROR) {
+                    TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, WLRes.JumpTraces[CB], postCallStatusToStr);
+                }
             }
         }
     }
