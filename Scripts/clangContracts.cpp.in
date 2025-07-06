@@ -17,7 +17,7 @@ LinkKind cur_linkkind = LINK;
 std::string dest_arg;
 std::string opt_level;
 
-std::regex obj_file_ending(".*(\\.o|\\.a|\\.so)");
+std::regex link_file_ending(".*(\\.a|\\.so)");
 
 std::string wrap_target = "@COMPILER_WRAP_TARGET@";
 
@@ -25,6 +25,8 @@ std::regex llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
 
 std::regex source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
 std::string source_file_paths;
+std::regex obj_file_ending(".*(\\.o)");
+std::string llvmlink_obj_files = "";
 std::vector<std::string> source_file_names;
 
 std::string exec(std::string const& cmd) {
@@ -91,8 +93,10 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             cur_linkkind = ONLY_COMPILE;
         } else if (arg == "-E") {
             cur_linkkind = ONLY_PREPROCESS;
-        } else if (std::regex_match(arg, obj_file_ending)) {
+        } else if (std::regex_match(arg, link_file_ending)) {
             rem_args_link += " " + arg;
+        } else if (std::regex_match(arg, obj_file_ending)) {
+            llvmlink_obj_files += " " + arg;
         } else if (arg == "-MT") {
             rem_args_compile += " " + arg + " " + all_args[++i];
         } else {
@@ -146,8 +150,8 @@ int main(int argc, const char** argv) {
     // Generate IR for source files
     std::string bitcode_files;
     if (!source_file_paths.empty()) {
-        execSafe(wrap_target + " -g -c -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LINK ? dest_arg : ""));
-        
+        execSafe(wrap_target + " -g " + (cur_linkkind < ONLY_PREPROCESS ? "-c" : "-E") + " -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LINK ? dest_arg : ""));
+
         if (cur_linkkind == ONLY_COMPILE && dest_arg.empty()) {
             // No output dir, but want "object" files. Rename generated .ll to .o
             for (std::string file : source_file_names) {
@@ -179,7 +183,7 @@ int main(int argc, const char** argv) {
     // Perform link and analysis steps
     std::string tmpfile = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
     int fd = mkstemp(tmpfile.data());
-    execSafe("llvm-link" + bitcode_files + " -o " + tmpfile);
+    execSafe("llvm-link" + bitcode_files + llvmlink_obj_files + " -o " + tmpfile);
     execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess' " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
     execSafe("llc -filetype=obj --relocation-model=pic" + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
