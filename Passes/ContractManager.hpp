@@ -19,7 +19,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         static llvm::AnalysisKey Key;
 
         struct Contract {
-            const Function* const F;
+            Function* F;
             const StringRef ContractString;
             const ContractData Data;
             std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
