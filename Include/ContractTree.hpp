@@ -7,11 +7,13 @@
  */
 
 #include "ErrorMessage.h"
+#include <functional>
 #include <string>
 #include <memory>
 #include <optional>
-#include <utility>
 #include <vector>
+
+namespace ContractPassUtility { struct GenericWLRes{std::function<void()> handleDebug = nullptr;}; }
 
 namespace ContractTree {
     enum struct OperationType { READ, WRITE, CALL, CALLTAG, RELEASE };
@@ -73,6 +75,7 @@ namespace ContractTree {
     };
     struct ContractExpression : ContractFormula {
         ContractExpression(std::string _str, std::shared_ptr<const Operation> _op) : ContractFormula(_str), OP{_op} {}
+        std::shared_ptr<const ContractPassUtility::GenericWLRes> WorklistInfo;
         const std::shared_ptr<const Operation> OP;
     };
 

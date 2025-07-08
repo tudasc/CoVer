@@ -35,15 +35,22 @@ namespace ContractPassUtility {
     enum struct TraceKind { LINEAR, BRANCH, FUNCENTRY, FUNCEXIT };
     template<typename T>
     struct JumpTraceEntry {
+        JumpTraceEntry<T>() {}
+        JumpTraceEntry<T>(T ai, const Instruction* I, TraceKind k, std::vector<JumpTraceEntry<T>> preds) : analysisInfo{ai}, loc{I}, kind{k}, predecessors{preds} {}
         T analysisInfo;
         const Instruction* loc;
         TraceKind kind;
         std::vector<JumpTraceEntry<T>> predecessors;
+        bool operator<(const JumpTraceEntry<T> other) const { return _this_id < other._this_id; };
+        private:
+            int _this_id = trace_num++;
+            static inline int trace_num = 0;
     };
     template<typename T>
-    struct WorklistResult {
+    struct WorklistResult : GenericWLRes {
         std::map<const Instruction*, T> AnalysisInfo;
         std::map<const Instruction*, JumpTraceEntry<T>> JumpTraces;
+        std::function<std::string(T)> AnalysisInfoToStr = nullptr;
     };
 
     /*
@@ -58,7 +65,7 @@ namespace ContractPassUtility {
     * Format: <module>:<line> or UNKNOWN depending on output of getLineNumber
     */
     std::optional<uint> getLineNumber(const Instruction* I);
-    std::string getInstrLocStr(const Instruction* I);
+    std::string getInstrLocStr(const Instruction* I, bool longform = true);
     ErrorReference getErrorReference(const Instruction* I);
 
     /*
@@ -92,7 +99,8 @@ void updateJumpTrace(std::map<const Instruction*, ContractPassUtility::JumpTrace
         }
         trace[cur].analysisInfo = analysisInfo;
     } else {
-        trace[cur] = {analysisInfo, cur, kind, {trace[prev]}};
+        if (trace.contains(prev)) trace.insert({cur, ContractPassUtility::JumpTraceEntry<T>(analysisInfo, cur, kind, {trace[prev]})});
+        else trace.insert({cur, ContractPassUtility::JumpTraceEntry<T>(analysisInfo, cur, kind, {})});
     }
 }
 
@@ -118,7 +126,7 @@ template <typename T>
 ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(const Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
     // Jumptrace
     std::map<const Instruction*, JumpTraceEntry<T>> jumptraces;
-    jumptraces[Start] = {init, Start, {}};
+    updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
 
     // Analysis Info mapping
     std::map<const Instruction*, T> postAccess;
@@ -229,5 +237,5 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(cons
         }
         todoList.pop();
     }
-    return {postAccess, jumptraces};
+    return {{}, postAccess, jumptraces, nullptr};
 }

@@ -111,16 +111,16 @@ std::optional<uint> getLineNumber(const Instruction* I) {
     }
     return std::nullopt;
 }
-std::string getFile(const Instruction* I) {
+std::string getFile(const Instruction* I, bool longform = true) {
     if (I->getDebugLoc())
-        return (I->getDebugLoc()->getDirectory() != "" ? I->getDebugLoc()->getDirectory() + "/" : "").str() + I->getDebugLoc()->getFilename().str();
+        return (I->getDebugLoc()->getDirectory() != "" && longform ? I->getDebugLoc()->getDirectory() + "/" : "").str() + I->getDebugLoc()->getFilename().str();
     return "UNKNOWN";
 }
 
 
-std::string getInstrLocStr(const Instruction* I) {
+std::string getInstrLocStr(const Instruction* I, bool longform) {
     if (const DebugLoc &debugLoc = I->getDebugLoc())
-        return getFile(I) + ":" + std::to_string(debugLoc.getLine()) + ":" + std::to_string(debugLoc->getColumn());
+        return getFile(I, longform) + ":" + std::to_string(debugLoc.getLine()) + (longform ? ":" + std::to_string(debugLoc->getColumn()) : "");
     return "UNKNOWN";
 }
 
