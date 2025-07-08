@@ -150,20 +150,7 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallP
     return { cs, cs.CurVal > prev.CurVal };
 }
 
-std::string postCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
-    switch (S.CurVal) {
-        case llvm::ContractVerifierPreCallPass::CallStatusVal::CALLED:
-            return "CALLED";
-        case llvm::ContractVerifierPreCallPass::CallStatusVal::NOTCALLED:
-            return "NOTCALLED";
-        case llvm::ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK:
-            return "PARAMCHECK";
-        case llvm::ContractVerifierPreCallPass::CallStatusVal::ERROR:
-            return "ERROR";
-    }
-}
-
-ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation* cOP, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error) {
+ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation* cOP, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error) {
     const Function* mainF = M.getFunction("main");
     if (!mainF) {
         error = "Cannot find main function, cannot construct path to check precall!";
@@ -188,7 +175,9 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
             if (CB->getCalledFunction() == C.F) {
                 res = std::max(AI.second.CurVal, res);
                 if (AI.second.CurVal == CallStatusVal::ERROR) {
-                    TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, WLRes.JumpTraces[CB], postCallStatusToStr);
+                    std::function<void()> handleDebug_inst = std::bind(&ContractVerifierPreCallPass::handleDebug, WLRes, C);
+                    WLRes.handleDebug = handleDebug_inst;
+                    Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<CallStatus>>(WLRes);
                 }
             }
         }
