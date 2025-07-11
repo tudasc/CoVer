@@ -191,26 +191,29 @@ void ShowContractDetails(ContractManagerAnalysis::Contract C) {
     ShowContractFormula(violated_formulas[*menu_options.selected-1], "Inspecting Contract Subformula for Function: " + C.F->getName().str());
 }
 
-void ShowFile(Json::Value ref) {
-    std::string file = ref["file"].asString();
-    int line = ref["line"].asInt();
-    int column = ref["column"].asInt();
+void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line) {
     std::ifstream filestream(file);
     std::string out;
 
     // Now, read lines of relevance
-    int cur_line = 0;
+    int cur_line = 1;
     std::vector<ftxui::Element> lines;
+    
     while (filestream) {
         std::getline(filestream, out);
+        ftxui::Element text_elem = ftxui::text(out);
+        if (cur_line == focus_line) text_elem |= ftxui::focus;
+        if (highlights.contains(cur_line)) text_elem |= ftxui::bgcolor(highlights[cur_line]);
+        lines.push_back(text_elem);
         cur_line++;
-        if (cur_line == line) lines.push_back(ftxui::text(out) | ftxui::bgcolor(ftxui::Color::Red) | ftxui::focus);
-        else lines.push_back(ftxui::text(out));
     }
+    ShowLines(lines);
+}
 
+void ShowLines(std::vector<ftxui::Element> lines) {
     int selected = 0;
     ftxui::MenuOption menu_options = {
-        .entries = std::vector<std::string>{"Return to Report Details"},
+        .entries = std::vector<std::string>{"Exit view"},
         .selected = &selected,
         .on_enter = [&]() { screen.Exit(); }
     };
@@ -219,7 +222,7 @@ void ShowFile(Json::Value ref) {
         menu, [&] {
            return ftxui::vbox({
             header,
-            ftxui::text("File Context") | ftxui::center,
+            ftxui::text("Source Context") | ftxui::center,
             ftxui::separator(),
             ftxui::yframe(ftxui::vbox(lines)) | ftxui::size(ftxui::HEIGHT, ftxui::Constraint::LESS_THAN, 10),
             ftxui::separator(),
@@ -267,7 +270,9 @@ bool ShowMessageDetails(Json::Value msg) {
     screen.Loop(render);
     int choice = *menu_options.selected;
     while (choice > 1) { // File Reference Inspection
-        ShowFile(msg["references"][choice-2]);
+        std::string file = msg["references"][choice-2]["file"].asString();
+        int line = msg["references"][choice-2]["line"].asInt();
+        ShowFile(file, {{line, ftxui::Color::Red}}, line);
         screen.Loop(render);
         choice = *menu_options.selected;
     }
