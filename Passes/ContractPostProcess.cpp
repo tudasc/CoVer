@@ -46,7 +46,7 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const Co
                 j["error_id"] = errinfo.error_id;
                 j["text"] = errinfo.text;
                 j["references"] = Json::arrayValue;
-                for (ErrorReference const& ref : errinfo.references) {
+                for (FileReference const& ref : errinfo.references) {
                     Json::Value json_ref;
                     json_ref["file"] = ref.file;
                     json_ref["line"] = ref.line;

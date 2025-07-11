@@ -66,7 +66,7 @@ namespace ContractPassUtility {
     */
     std::optional<uint> getLineNumber(const Instruction* I);
     std::string getInstrLocStr(const Instruction* I, bool longform = true);
-    ErrorReference getErrorReference(const Instruction* I);
+    FileReference getFileReference(const Instruction* I);
 
     /*
     * Check if call applies to target (which may be a tag or function name)

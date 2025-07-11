@@ -68,7 +68,7 @@ void ContractVerifierPreCallPass::appendDebugStr(std::string Target, bool isTag,
         .error_id = "PreCall",
         .text = "[ContractVerifierPreCall] Did not find precall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters before "
                     + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
-        .references = {ContractPassUtility::getErrorReference(Provider)},
+        .references = {ContractPassUtility::getFileReference(Provider)},
     });
 
     // if (!candidates.empty()) {
