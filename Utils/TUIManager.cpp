@@ -68,7 +68,7 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
     return *menu_options.selected;
 }
 
-std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, std::string last_res) {
+std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res) {
     std::string input_str;
     ftxui::InputOption input_options = {
         .content = &input_str,
@@ -78,8 +78,8 @@ std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, st
     };
     ftxui::Component input_comp = ftxui::Input(input_options);
     std::vector<ftxui::Element> full_lines;
-    for (std::string line : lines) {
-        full_lines.push_back(ftxui::xframe(ftxui::text(line)));
+    for (ftxui::Element line : lines) {
+        full_lines.push_back(ftxui::xframe(line));
     }
     ftxui::Component render = ftxui::Renderer(
         input_comp, [&] {
