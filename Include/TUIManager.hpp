@@ -17,6 +17,8 @@
 #include "ContractPassUtility.hpp"
 #include "ErrorMessage.h"
 
+#define UI_ANALYSISINFO_PAD_SIZE 15
+
 using namespace llvm;
 
 template<typename T>
@@ -46,7 +48,7 @@ namespace TUIManager {
     template<typename T>
     bool DebugMenu(ContractPassUtility::WorklistResult<T> WLRes);
 
-    std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, std::string last_res = "");
+    std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res);
     int RenderMenu(std::vector<std::string> choices, std::string title);
     void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line = -1);
     void ShowLines(std::vector<ftxui::Element> lines);
@@ -86,7 +88,11 @@ std::vector<TUIManager::TraceBlock<T>> TUIManager::GetTraceList(std::map<const I
     do {
         JumpTraceEntry<T> last_entry = getLinearTrace(traceDB, cur_trace, infoToStr, preds);
         std::string start_loc = ContractPassUtility::getInstrLocStr(cur_trace.loc, false);
-        std::string end_loc = ContractPassUtility::getInstrLocStr(last_entry.loc, false);
+        std::string end_loc;
+        if (&*last_entry.loc->getParent()->getParent()->getEntryBlock().begin() == last_entry.loc)
+            end_loc = "function entry (" + last_entry.loc->getParent()->getParent()->getName().str() + ")";
+        else
+            end_loc = ContractPassUtility::getInstrLocStr(last_entry.loc, false);
         std::string full_line = traceKindToStr(cur_trace.kind) + " from " + start_loc + " to " + end_loc; // The same for all
         if (preds != 0) full_line += " then " + traceKindToStr(last_entry.kind) + " [Viewing Child " + std::to_string(preds_select[last_entry]) + "/" + std::to_string(preds - 1) + "]";
         trace_by_blocks.push_back({full_line, cur_trace, last_entry});
@@ -135,7 +141,7 @@ void TUIManager::ShowBlock(TraceBlock<T> block, bool transToSource, std::functio
             raw_string_ostream strstream(out);
             cur_trace.loc->print(strstream);
         }
-        lines.push_back(ftxui::hbox({ftxui::text(infoToStr(cur_trace.analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::Constraint::EQUAL, 15), ftxui::text(" | " + out)}));
+        lines.push_back(ftxui::hbox({ftxui::text(infoToStr(cur_trace.analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE), ftxui::text(" | " + out)}));
         cur_trace = cur_trace.predecessors[0];
     }
     ShowLines(lines);
@@ -146,15 +152,32 @@ void TUIManager::ShowTrace(std::map<const Instruction *, JumpTraceEntry<T>> trac
     std::string last_res = "";
     while (true) {
         std::vector<TUIManager::TraceBlock<T>> trace_by_blocks = GetTraceList(traceDB, trace, infoToStr, sibling_select);
-        std::vector<std::string> full_trace;
+        std::vector<ftxui::Element> full_trace;
         for (int i = 0; i < trace_by_blocks.size(); i++) {
-            std::string trace_block_str = std::to_string(i) + ": " + infoToStr(trace_by_blocks[i].first_entry.analysisInfo) + " -- " + trace_by_blocks[i].trace_list;
+            ftxui::Element trace_block_str = ftxui::hbox({
+                ftxui::text(std::to_string(i) + ": "),
+                ftxui::text(infoToStr(trace_by_blocks[i].first_entry.analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE),
+                ftxui::text(" -- " + trace_by_blocks[i].trace_list)
+            });
             full_trace.push_back(trace_block_str);
         }
         std::string input = RenderTxtEntry(full_trace, "JumpTrace", last_res);
         if (input == "exit" || input == "quit") return;
         else if (input == "help") {
             // Show help
+            std::vector<ftxui::Element> lines;
+            lines = {
+                ftxui::text("Trace debug menu"),
+                ftxui::text(""),
+                ftxui::text("Commands:"),
+                ftxui::text("    child [block num] [child num]"),
+                ftxui::text("        Show different predecessor blocks"),
+                ftxui::text("    view [source|ir] [block num]"),
+                ftxui::text("        Show instructions / approxmiate source and analysis information for block"),
+                ftxui::text("    exit"),
+                ftxui::text("        Leave debug menu"),
+            };
+            ShowLines(lines);
         } else if (input.starts_with("jump ")) {
 
         } else if (input.starts_with("child")) {
