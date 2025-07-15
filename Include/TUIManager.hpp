@@ -24,6 +24,9 @@ using namespace llvm;
 template<typename T>
 using JumpTraceEntry = ContractPassUtility::JumpTraceEntry<T>;
 
+template<typename T>
+using TraceDB = ContractPassUtility::TraceDB<T>;
+
 using TraceKind = ContractPassUtility::TraceKind;
 using Contract = llvm::ContractManagerAnalysis::Contract;
 
@@ -33,17 +36,17 @@ namespace TUIManager {
     void ResultsScreen(Json::Value res, std::map<Json::Value, const Contract> JsonMsgToContr);
 
     template<typename T>
-    void ShowTrace(std::map<const Instruction *, JumpTraceEntry<T>> traceDB, JumpTraceEntry<T> trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>,int> sibling_select = {});
+    void ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr);
     template<typename T>
     struct TraceBlock {
         std::string trace_list;
-        JumpTraceEntry<T> first_entry;
-        JumpTraceEntry<T> last_entry;
+        JumpTraceEntry<T>* first_entry;
+        JumpTraceEntry<T>* last_entry;
     };
     template<typename T>
-    JumpTraceEntry<T> getLinearTrace(std::map<const Instruction *, JumpTraceEntry<T>> traceDB, JumpTraceEntry<T> trace, std::function<std::string(T)> infoToStr, int& siblings);
+    JumpTraceEntry<T>* getLinearTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, int& siblings);
     template<typename T>
-    std::vector<TUIManager::TraceBlock<T>> GetTraceList(std::map<const Instruction *, JumpTraceEntry<T>> traceDB, JumpTraceEntry<T> trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>,int> sibling_select);
+    std::vector<TUIManager::TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>*,int> preds_select);
 
     template<typename T>
     bool DebugMenu(ContractPassUtility::WorklistResult<T> WLRes);
@@ -60,19 +63,15 @@ namespace TUIManager {
 }
 
 template<typename T>
-JumpTraceEntry<T> TUIManager::getLinearTrace(std::map<const Instruction *, JumpTraceEntry<T>> traceDB, JumpTraceEntry<T> trace, std::function<std::string(T)> infoToStr, int& siblings) {
-    JumpTraceEntry<T>* cur_trace = &trace;
+JumpTraceEntry<T>* TUIManager::getLinearTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, int& siblings) {
+    JumpTraceEntry<T>* cur_trace = trace;
     std::vector<std::string> trace_lines;
     siblings = 0;
     do {
-        if (cur_trace->kind != TraceKind::LINEAR) {
-            siblings = traceDB[cur_trace->loc].predecessors.size();
-        } else {
-            siblings = cur_trace->predecessors.size();
-        }
-        if (siblings == 1) cur_trace = &cur_trace->predecessors[0];
-    } while  (siblings == 1);
-    return *cur_trace;
+        siblings = cur_trace->predecessors.size();
+        if (siblings == 1) cur_trace = cur_trace->predecessors[0];
+    } while  (siblings == 1 && cur_trace->kind != TraceKind::FUNCEXIT && cur_trace->kind != TraceKind::FUNCENTRY); // Always show funcentry
+    return cur_trace;
 }
 
 template<typename T>
@@ -81,26 +80,25 @@ bool TUIManager::DebugMenu(ContractPassUtility::WorklistResult<T> WLRes) {
 }
 
 template<typename T>
-std::vector<TUIManager::TraceBlock<T>> TUIManager::GetTraceList(std::map<const Instruction *, JumpTraceEntry<T>> traceDB, JumpTraceEntry<T> trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>,int> preds_select) {
+std::vector<TUIManager::TraceBlock<T>> TUIManager::GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>*,int> preds_select) {
     std::vector<TUIManager::TraceBlock<T>> trace_by_blocks;
-    JumpTraceEntry<T> cur_trace = trace;
+    JumpTraceEntry<T>* cur_trace = trace;
     int preds = 0;
     do {
-        JumpTraceEntry<T> last_entry = getLinearTrace(traceDB, cur_trace, infoToStr, preds);
-        std::string start_loc = ContractPassUtility::getInstrLocStr(cur_trace.loc, false);
+        JumpTraceEntry<T>* last_entry = getLinearTrace(traceDB, cur_trace, infoToStr, preds);
+        std::string start_loc = ContractPassUtility::getInstrLocStr(cur_trace->loc, false);
         std::string end_loc;
-        if (&*last_entry.loc->getParent()->getParent()->getEntryBlock().begin() == last_entry.loc)
-            end_loc = "function entry (" + last_entry.loc->getParent()->getParent()->getName().str() + ")";
+        if (&*last_entry->loc->getParent()->getParent()->getEntryBlock().begin() == last_entry->loc) // Function begin does not have dbg info, but header does
+            end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc->getParent()->getParent(), false) + " (Function \"" + last_entry->loc->getParent()->getParent()->getName().str() + "\" entrypoint)";
         else
-            end_loc = ContractPassUtility::getInstrLocStr(last_entry.loc, false);
-        std::string full_line = traceKindToStr(cur_trace.kind) + " from " + start_loc + " to " + end_loc; // The same for all
-        if (preds != 0) full_line += " then " + traceKindToStr(last_entry.kind) + " [Viewing Child " + std::to_string(preds_select[last_entry]) + "/" + std::to_string(preds - 1) + "]";
+            end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc, false);
+        std::string full_line = traceKindToStr(cur_trace->kind) + " from " + start_loc + " to " + end_loc; // The same for all
+        if (preds != 0) full_line += " then " +  traceKindToStr(last_entry->kind) + (preds > 1 ? " [Viewing Child " + std::to_string(preds_select[last_entry]) + "/" + std::to_string(preds - 1) + "]" : "");
         trace_by_blocks.push_back({full_line, cur_trace, last_entry});
-        assert(preds != 1 && "buildTraceList returned #preds not eq 1!");
+        //assert(preds != 1 && "buildTraceList returned #preds not eq 1!");
         if (preds >= 1) {
             if (!preds_select.contains(last_entry)) preds_select[last_entry] = 0;
-            if (preds_select[last_entry] == 0) cur_trace = last_entry.predecessors[0];
-            else cur_trace = traceDB[last_entry.loc].predecessors[preds_select[last_entry]];
+            cur_trace = last_entry->predecessors[preds_select[last_entry]];
         }
     } while (preds != 0);
     return trace_by_blocks;
@@ -117,38 +115,39 @@ inline std::string getSpecificLine(std::string file, int line) {
 }
 
 template<typename T>
-void TUIManager::ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
-    JumpTraceEntry<T> cur_trace = block.first_entry;
-    std::vector<ftxui::Element> lines;
-    std::string out;
-    while (cur_trace.loc != block.last_entry.loc) {
-        if (transToSource) {
-            const DebugLoc dbg = cur_trace.loc->getDebugLoc();
-            if (!dbg) {
-                cur_trace = cur_trace.predecessors[0];
-                continue;
-            };
-
-            FileReference ref = ContractPassUtility::getFileReference(cur_trace.loc);
-            std::string out2 = out;
-            out = getSpecificLine(ref.file, ref.line);
-            if (out == out2) {
-                cur_trace = cur_trace.predecessors[0];
-                continue;
-            }
-        } else {
-            out.clear();
-            raw_string_ostream strstream(out);
-            cur_trace.loc->print(strstream);
-        }
-        lines.push_back(ftxui::hbox({ftxui::text(infoToStr(cur_trace.analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE), ftxui::text(" | " + out)}));
-        cur_trace = cur_trace.predecessors[0];
+std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::function<std::string(T)> infoToStr) {
+    if (translate) {
+        if (!trace->loc->getDebugLoc()) return "";
+        FileReference ref = ContractPassUtility::getFileReference(trace->loc);
+        return getSpecificLine(ref.file, ref.line);
+    } else {
+        std::string out;
+        raw_string_ostream strstream(out);
+        trace->loc->print(strstream);
+        return out;
     }
+}
+
+template<typename T>
+void TUIManager::ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
+    std::vector<ftxui::Element> lines;
+    std::string last;
+    for (JumpTraceEntry<T>* cur_trace = block.first_entry; cur_trace != block.last_entry; cur_trace = cur_trace->predecessors[0]) {
+        std::string newline = getSourceLine(cur_trace, transToSource, infoToStr);
+        if (newline.empty() || newline == last) continue;
+        lines.push_back(ftxui::hbox({ftxui::text(infoToStr(cur_trace->analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE), ftxui::text(" | " + newline)}));
+        last = newline;
+    }
+    // Print last
+    std::string newline = getSourceLine(block.last_entry, transToSource, infoToStr);
+    if (!newline.empty() && newline != last)
+        lines.push_back(ftxui::hbox({ftxui::text(infoToStr(block.last_entry->analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE), ftxui::text(" | " + newline)}));
     ShowLines(lines);
 }
 
 template<typename T>
-void TUIManager::ShowTrace(std::map<const Instruction *, JumpTraceEntry<T>> traceDB, JumpTraceEntry<T> trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>,int> sibling_select) {
+void TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
+    std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::string last_res = "";
     while (true) {
         std::vector<TUIManager::TraceBlock<T>> trace_by_blocks = GetTraceList(traceDB, trace, infoToStr, sibling_select);
@@ -156,7 +155,7 @@ void TUIManager::ShowTrace(std::map<const Instruction *, JumpTraceEntry<T>> trac
         for (int i = 0; i < trace_by_blocks.size(); i++) {
             ftxui::Element trace_block_str = ftxui::hbox({
                 ftxui::text(std::to_string(i) + ": "),
-                ftxui::text(infoToStr(trace_by_blocks[i].first_entry.analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE),
+                ftxui::text(infoToStr(trace_by_blocks[i].first_entry->analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE),
                 ftxui::text(" -- " + trace_by_blocks[i].trace_list)
             });
             full_trace.push_back(trace_block_str);
@@ -200,8 +199,8 @@ void TUIManager::ShowTrace(std::map<const Instruction *, JumpTraceEntry<T>> trac
                 continue;
             }
             TraceBlock<T> selected_block = trace_by_blocks[block];
-            if (child < 0 || child >= traceDB[selected_block.last_entry.loc].predecessors.size()) { // Exclude last, because that one does not have preds
-                last_res = "Invalid child number! Must be between 0 and " + std::to_string(traceDB[selected_block.last_entry.loc].predecessors.size() - 1);
+            if (child < 0 || child >= selected_block.last_entry->predecessors.size()) { // Exclude last, because that one does not have preds
+                last_res = "Invalid child number! Must be between 0 and " + std::to_string(selected_block.last_entry->predecessors.size() - 1);
                 continue;
             }
             last_res = "Switching child view for block " + std::to_string(block) + " to child " + std::to_string(child);
