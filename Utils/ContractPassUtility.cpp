@@ -117,6 +117,11 @@ std::string getFile(const Instruction* I, bool longform = true) {
     return "UNKNOWN";
 }
 
+std::string getInstrLocStr(const Function* I, bool longform) {
+    if (const DISubprogram* debugLoc = I->getSubprogram())
+        return ((longform ? debugLoc->getDirectory() + "/" : "") + debugLoc->getFilename()).str() + ":" + std::to_string(debugLoc->getLine());
+    return "UNKNOWN";
+}
 
 std::string getInstrLocStr(const Instruction* I, bool longform) {
     if (const DebugLoc &debugLoc = I->getDebugLoc())

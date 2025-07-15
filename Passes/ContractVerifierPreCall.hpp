@@ -50,13 +50,13 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
                 if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
                     if (CB->getCalledFunction() == C.F) {
                         if (AI.second.CurVal == CallStatusVal::ERROR) {
-                            startloc = &WLRes.JumpTraces[CB];
+                            startloc = WLRes.JumpTraces[CB];
                             break;
                         }
                     }
                 }
             }
-            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, *startloc, postCallStatusToStr);
+            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
         }
 };
 
