@@ -120,36 +120,6 @@ install(
 )
 
 ##
-## Utility Script for convenience
-##
-
-set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
-set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include/")
-
-set(COMPILER_WRAP_TARGET "mpicc")
-set(COMPILE_SRC_FILE_ENDINGS ".*\\\\.c$")
-set(EXECUTABLE_WRAPPER_NAME "clangContracts")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
-add_executable(clangContracts "clangContracts.cpp")
-
-set(COMPILER_WRAP_TARGET "mpicxx")
-set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
-set(EXECUTABLE_WRAPPER_NAME "clangContracts++")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
-add_executable(clangContracts++ "clangContracts++.cpp")
-
-install(
-  FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts"
-    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++"
-  DESTINATION bin
-  PERMISSIONS
-    OWNER_READ OWNER_WRITE OWNER_EXECUTE
-    GROUP_READ GROUP_EXECUTE
-    WORLD_READ WORLD_EXECUTE
-)
-
-##
 ## Premade MPI header for convenience and quick testing
 ##
 
@@ -188,3 +158,35 @@ if (MPI_C_FOUND AND Python_FOUND)
       WORLD_READ
   )
 endif(MPI_C_FOUND AND Python_FOUND)
+
+##
+## Utility Script for convenience
+##
+
+set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
+set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include/")
+
+string(REPLACE ";" "\", \"" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_HEADERS}")
+
+set(COMPILER_WRAP_TARGET "mpicc")
+set(COMPILE_SRC_FILE_ENDINGS ".*\\\\.c$")
+set(EXECUTABLE_WRAPPER_NAME "clangContracts")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
+add_executable(clangContracts "clangContracts.cpp")
+
+set(COMPILER_WRAP_TARGET "mpicxx")
+set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
+set(EXECUTABLE_WRAPPER_NAME "clangContracts++")
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
+add_executable(clangContracts++ "clangContracts++.cpp")
+
+install(
+  FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts"
+    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++"
+  DESTINATION bin
+  PERMISSIONS
+    OWNER_READ OWNER_WRITE OWNER_EXECUTE
+    GROUP_READ GROUP_EXECUTE
+    WORLD_READ WORLD_EXECUTE
+)

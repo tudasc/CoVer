@@ -21,6 +21,8 @@ std::regex link_file_ending(".*(\\.a|\\.so)");
 
 std::string wrap_target = "@COMPILER_WRAP_TARGET@";
 
+std::vector<std::string> predefined_contracts = {"@PREMADE_CONTRACT_PATHS_EMBED@"};
+
 std::regex llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
 
 std::regex source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
@@ -61,11 +63,12 @@ void execSafe(std::string const& cmd) {
 void printHelp() {
     printf("@EXECUTABLE_WRAPPER_NAME@ is a compiler wrapper to utilize CoVer");
     printf("\nRequires LLVM >= @LLVM_VERSION_MIN@.");
-    printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] <compiler-params>");
+    printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] [--predefined-contracts] <compiler-params>");
     printf("\n\t--help: Print this help text and exit");
     printf("\n\t--dry-run: Only show the commands that would be run, but do not perform any");
     printf("\n\t--verbose: Print commands to be executed");
     printf("\n\t--wrap-target: Set the compiler to wrap around");
+    printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions using the -include flag");
     printf("\n\n");
 }
 
@@ -84,6 +87,11 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             cur_execkind = VERBOSE;
         } else if (arg == "--wrap-target") {
             wrap_target = all_args[++i];
+        } else if (arg == "--predefined-contracts") {
+            for (std::string path : predefined_contracts) {
+                rem_args_compile += " -include " + path;
+                rem_args_link += " -include " + path;
+            }
         } else if (std::regex_match(arg, source_file_ending)) {
             source_file_paths += " " + arg;
             source_file_names.push_back(std::filesystem::path(arg).stem());
