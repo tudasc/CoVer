@@ -24,6 +24,8 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
         static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err);
 
     private:
+        std::pair<CallStatus,bool> mergePreCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data);
+        CallStatus transferPreCallStat(CallStatus cur, const Instruction* I, void* data);
         CallStatusVal checkPreCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error);
         std::map<const Function*, std::vector<TagUnit>> Tags;
 };
