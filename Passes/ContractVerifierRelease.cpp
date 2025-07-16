@@ -30,6 +30,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
+    printMultiReports = DB.allowMultiReports;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
         for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
@@ -105,7 +106,7 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err,
     return cur;
 
 ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transferRelease(ReleaseStatus cur, const Instruction* I, void* data) {
-    if (cur == ReleaseStatus::ERROR) return cur;
+    if (cur == ReleaseStatus::ERROR || (!printMultiReports && cur == ReleaseStatus::ERROR_UNFULFILLED)) return cur;
     if (cur == ReleaseStatus::FULFILLED) return cur;
 
     IterTypeRelease* Data = static_cast<IterTypeRelease*>(data);
@@ -158,10 +159,10 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
     return cur;
 }
 
-std::pair<ContractVerifierReleasePass::ReleaseStatus,bool> mergeRelease(ContractVerifierReleasePass::ReleaseStatus prev, ContractVerifierReleasePass::ReleaseStatus cur, const Instruction* I, void* data) {
-    ContractVerifierReleasePass::ReleaseStatus newStat = std::max(prev, cur);
-    if ((prev == ContractVerifierReleasePass::ReleaseStatus::FULFILLED || cur == ContractVerifierReleasePass::ReleaseStatus::FULFILLED) &&
-         newStat != ContractVerifierReleasePass::ReleaseStatus::FULFILLED) {
+std::pair<ContractVerifierReleasePass::ReleaseStatus,bool> ContractVerifierReleasePass::mergeRelease(ReleaseStatus prev, ReleaseStatus cur, const Instruction* I, void* data) {
+    ReleaseStatus newStat = std::max(prev, cur);
+    if ((prev == ReleaseStatus::FULFILLED || cur == ReleaseStatus::FULFILLED) &&
+         newStat != ReleaseStatus::FULFILLED) {
         IterTypeRelease* Data = static_cast<IterTypeRelease*>(data);
         Data->dbg.push_back("[ContractVerifierRelease] NOTE: Successful fulfillment (by release) was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
     }
