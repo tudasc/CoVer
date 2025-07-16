@@ -40,7 +40,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
             bool result = false;
             switch (Expr->OP->type()) {
                 case OperationType::RELEASE: {
-                    const ReleaseOperation& relOP = dynamic_cast<const ReleaseOperation&>(*Expr->OP);
+                    const ReleaseOperation& relOP = static_cast<const ReleaseOperation&>(*Expr->OP);
                     C.DebugInfo->push_back("[ContractVerifierRelease] Attempting to verify expression: " + Expr->ExprStr);
                     result = checkRelease(relOP, C, *Expr, M, err) == ReleaseStatus::FULFILLED;
                     break;
@@ -178,13 +178,13 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     switch (forbiddenType) {
         case ContractTree::OperationType::CALLTAG:
         case ContractTree::OperationType::CALL:
-            param.push_back(dynamic_cast<const CallOperation&>(*relOp.Forbidden).Function);
-            param.push_back(dynamic_cast<const CallOperation&>(*relOp.Forbidden).Params);
+            param.push_back(static_cast<const CallOperation&>(*relOp.Forbidden).Function);
+            param.push_back(static_cast<const CallOperation&>(*relOp.Forbidden).Params);
             break;
         case ContractTree::OperationType::READ:
         case ContractTree::OperationType::WRITE:
-            param.push_back(dynamic_cast<const RWOperation&>(*relOp.Forbidden).contrP);
-            param.push_back(dynamic_cast<const RWOperation&>(*relOp.Forbidden).contrParamAccess);
+            param.push_back(static_cast<const RWOperation&>(*relOp.Forbidden).contrP);
+            param.push_back(static_cast<const RWOperation&>(*relOp.Forbidden).contrParamAccess);
             break;
         default:
             error = "Unknown release parameter for forbidden!";
@@ -195,8 +195,8 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     if (relOp.Until->type() == OperationType::CALLTAG) {
         isTagRel = true;
     }
-    std::string releaseFunc = dynamic_cast<const CallOperation&>(*relOp.Until).Function;
-    std::vector<CallParam> releaseParam = dynamic_cast<const CallOperation&>(*relOp.Until).Params;
+    std::string releaseFunc = static_cast<const CallOperation&>(*relOp.Until).Function;
+    std::vector<CallParam> releaseParam = static_cast<const CallOperation&>(*relOp.Until).Params;
 
     IterTypeRelease data = { {}, {}, forbiddenType, param, releaseFunc, releaseParam, nullptr, Tags, isTagRel};
     ContractPassUtility::TransferFunction<ReleaseStatus> transfer = std::bind(&ContractVerifierReleasePass::transferRelease, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
