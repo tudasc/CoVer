@@ -213,7 +213,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
                 data.err.clear();
                 for (std::pair<const Instruction *, ReleaseStatus> x : AnalysisInfo) {
-                    if (x.second == ReleaseStatus::ERROR) return ReleaseStatus::ERROR;
+                    if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) return ReleaseStatus::ERROR;
                 }
             }
         }
