@@ -37,7 +37,7 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
             switch (Expr->OP->type()) {
                 case OperationType::CALL:
                 case OperationType::CALLTAG: {
-                    const CallOperation* cOP = dynamic_cast<const CallOperation*>(Expr->OP.get());
+                    const CallOperation* cOP = static_cast<const CallOperation*>(Expr->OP.get());
                     C.DebugInfo->push_back("[ContractVerifierPostCall] Attempting to verify expression: " + Expr->ExprStr);
                     result = checkPostCall(cOP, C, *Expr, cOP->type() == OperationType::CALLTAG, M, err);
                     break;

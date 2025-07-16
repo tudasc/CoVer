@@ -1,6 +1,5 @@
 #include "ContractManager.hpp"
 
-#include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/DependenceAnalysis.h"
 #include "llvm/Analysis/MemorySSA.h"
 #include "llvm/IR/BasicBlock.h"
@@ -18,12 +17,8 @@
 #include <optional>
 #include <string>
 
-#include <antlr4-runtime.h>
 #include <vector>
-#include "ContractLexer.h"
-#include "ContractParser.h"
-#include "../LangCode/ContractLangErrorListener.hpp"
-#include "../LangCode/ContractDataVisitor.hpp"
+#include "../LangCode/ContractDataExtractor.hpp"
 #include "ContractTree.hpp"
 
 #include "ContractPassUtility.hpp"
@@ -75,43 +70,13 @@ void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
 }
 
 void ContractManagerAnalysis::addContract(StringRef contract, Function* F) {
-    ContractLangErrorListener listener;
-    ContractDataVisitor dataVisitor;
 
-    // Apply Lexer.
-    antlr4::ANTLRInputStream input(contract);
-    ContractLexer lexer(&input);
-    lexer.removeErrorListeners();
-    lexer.addErrorListener(&listener);
-    antlr4::CommonTokenStream tokens(&lexer);
-    try {
-        tokens.fill();
-    } catch (ContractLangSyntaxError& e) {
-        errs() << "Detected non-contract annotation (Lexing Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << contract << "\n";
-        return;
-    }
-
-    // Apply Parser.
-    ContractParser parser(&tokens);
-    parser.removeErrorListeners();
-    parser.addErrorListener(&listener);
-    try {
-        parser.contract();
-    } catch (ContractLangSyntaxError& e) {
-        errs() << "Detected non-contract annotation (Parser Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << contract << "\n";
-        if (IS_DEBUG) {
-            for (auto x : tokens.getTokens()) {
-                errs() << "(" << x->getText() << "," << lexer.getVocabulary().getSymbolicName(x->getType()) << ")\n";
-            }
-        }
-        return;
-    }
+    std::optional<ContractData> Data = getContractData(contract.str());
+    if (!Data) return;
     if (IS_DEBUG) errs() << "Found contract for function " << F->getName() << " with content: " << contract << "\n";
-    parser.reset();
 
     // Finally have contract data
-    ContractData Data = dataVisitor.getContractData(parser.contract());
-    Contract newCtr{F, contract, Data};
+    Contract newCtr{F, contract, *Data};
 
     // Add normal contract
     curDatabase.Contracts.push_back(newCtr);
@@ -137,8 +102,7 @@ void ContractManagerAnalysis::addContract(StringRef contract, Function* F) {
 
 const std::vector<std::shared_ptr<ContractExpression>> ContractManagerAnalysis::linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF) {
     if (contrF->Children.empty()) {
-        assert(std::dynamic_pointer_cast<ContractExpression>(contrF) != nullptr);
-        return { std::dynamic_pointer_cast<ContractExpression>(contrF) };
+        return { std::static_pointer_cast<ContractExpression>(contrF) };
     }
     std::vector<std::shared_ptr<ContractExpression>> exprs;
     for (std::shared_ptr<ContractFormula> form : contrF->Children ) {

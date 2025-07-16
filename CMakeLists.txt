@@ -52,9 +52,27 @@ list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
 include(AddLLVM)
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
+link_directories(${LLVM_LIBRARY_DIR})
 
 antlr4_generate(ContractLex ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractLexer.g4 LEXER)
 antlr4_generate(ContractPars ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractParser.g4 PARSER "" "VisitorArg" "" "${ANTLR4_TOKEN_FILES_ContractLex}" "${ANTLR4_TOKEN_DIRECTORY_ContractLex}")
+
+add_library(ContractLanguage
+  ${ANTLR4_SRC_FILES_ContractLex}
+  ${ANTLR4_SRC_FILES_ContractPars}
+  LangCode/ContractDataVisitor.cpp
+  LangCode/ContractLangErrorListener.cpp
+  LangCode/ContractDataExtractor.cpp
+)
+target_include_directories(ContractLanguage
+  PUBLIC
+    Include/
+    ${ANTLR4_INCLUDE_DIR_ContractLex}
+    ${ANTLR4_INCLUDE_DIR_ContractPars}
+    ${ANTLR4_INCLUDE_DIR}
+)
+set_property(TARGET ContractLanguage PROPERTY POSITION_INDEPENDENT_CODE ON)
+target_compile_options (ContractLanguage PUBLIC -fexceptions)
 
 add_llvm_pass_plugin(CoVerPlugin
   Passes/Registrar.cpp
@@ -64,11 +82,7 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractVerifierRelease.cpp
   Passes/ContractPostProcess.cpp
   Utils/ContractPassUtility.cpp
-  LangCode/ContractDataVisitor.cpp
-  LangCode/ContractLangErrorListener.cpp
   Include/ContractPassUtility.hpp
-  ${ANTLR4_SRC_FILES_ContractLex}
-  ${ANTLR4_SRC_FILES_ContractPars}
 )
 
 target_include_directories(CoVerPlugin
@@ -78,10 +92,11 @@ target_include_directories(CoVerPlugin
     ${ANTLR4_INCLUDE_DIR_ContractPars}
     ${ANTLR4_INCLUDE_DIR}
 )
-target_link_libraries(CoVerPlugin PRIVATE "${ANTLR4_LIBRARY}")
-target_compile_options (CoVerPlugin PUBLIC -fexceptions -frtti)
 
-install(TARGETS CoVerPlugin LIBRARY DESTINATION lib)
+target_link_libraries(ContractLanguage PRIVATE "${ANTLR4_LIBRARY}")
+target_link_libraries(CoVerPlugin PRIVATE ContractLanguage)
+
+install(TARGETS CoVerPlugin ContractLanguage LIBRARY DESTINATION lib)
 install(
   FILES
     Include/ContractTree.hpp
