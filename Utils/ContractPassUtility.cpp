@@ -113,7 +113,7 @@ std::optional<uint> getLineNumber(const Instruction* I) {
 }
 std::string getInstrLocStr(const Instruction* I) {
     if (const DebugLoc &debugLoc = I->getDebugLoc())
-        return (debugLoc->getDirectory() + "/" + debugLoc->getFilename()).str() + ":" + std::to_string(debugLoc.getLine()) + ":" + std::to_string(debugLoc->getColumn());
+        return (debugLoc->getDirectory() != "" ? debugLoc->getDirectory() + "/" : "").str() + debugLoc->getFilename().str() + ":" + std::to_string(debugLoc.getLine()) + ":" + std::to_string(debugLoc->getColumn());
     return "UNKNOWN";
 }
 
