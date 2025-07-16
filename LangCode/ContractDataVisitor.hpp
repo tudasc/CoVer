@@ -4,9 +4,6 @@
 #include <any>
 
 #include "ContractParserBaseVisitor.h"
-#include "tree/ParseTree.h"
-
-#include "ContractTree.hpp"
 
 class ContractDataVisitor : public ContractParserBaseVisitor {
     public:
@@ -18,8 +15,6 @@ class ContractDataVisitor : public ContractParserBaseVisitor {
         std::any visitWriteOp(ContractParser::WriteOpContext *ctx) override;
         std::any visitCallOp(ContractParser::CallOpContext *ctx) override;
         std::any visitReleaseOp(ContractParser::ReleaseOpContext *ctx) override;
-
-        ContractTree::ContractData getContractData(antlr4::tree::ParseTree* tree);
 
     private:
         std::any aggregateResult(std::any res1, std::any res2) override { return !res1.has_value() ? res2 : res1; };

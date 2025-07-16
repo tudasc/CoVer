@@ -11,10 +11,6 @@
 
 using namespace ContractTree;
 
-ContractData ContractDataVisitor::getContractData(antlr4::tree::ParseTree* tree) {
-    return std::any_cast<ContractData>(this->visit(tree));
-}
-
 std::any ContractDataVisitor::visitContract(ContractParser::ContractContext *ctx) {
     std::vector<std::shared_ptr<ContractFormula>> preExprs;
     if (ctx->precondition()) {
