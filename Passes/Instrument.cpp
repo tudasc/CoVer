@@ -60,8 +60,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     CallInst* initFuncCI = CallInst::Create(initFuncCallee, GlobalDB);
     BasicBlock* NoopBB = BasicBlock::Create(M.getContext(), "", initFunc);
     ReturnInst::Create(M.getContext(), nullptr, NoopBB->begin());
-    Instruction* entryI = mainF->getEntryBlock().getFirstNonPHIOrDbg();
-    initFuncCI->insertBefore(entryI);
+    initFuncCI->insertBefore(mainF->getEntryBlock().getFirstNonPHIOrDbg());
 
     // Create callback function for rel func call
     // Call sig: Function ptr, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
@@ -235,19 +234,19 @@ void InstrumentPass::createTypes(Module& M) {
 
     // Operations
     Param_Type = StructType::create(M.getContext(), "CallParam_t");
-    Param_Type->setBody(Int_Type, Int_Type, Int_Type, Int_Type); // call param, bool param is tag ref, contr param, acc type
+    Param_Type->setBody({Int_Type, Int_Type, Int_Type, Int_Type}); // call param, bool param is tag ref, contr param, acc type
 
     CallOp_Type = StructType::create(M.getContext(), "CallOp_t");
     CallOp_Type->setBody({Ptr_Type, Ptr_Type, Ptr_Type, Int_Type}); // Function Pointer, char* Function Name, list of params, num of params
 
     CallTagOp_Type = StructType::create(M.getContext(), "CallTagOp_t");
-    CallTagOp_Type->setBody(Ptr_Type, Ptr_Type, Int_Type); // char* Tag name, list of params, num of params
+    CallTagOp_Type->setBody({Ptr_Type, Ptr_Type, Int_Type}); // char* Tag name, list of params, num of params
 
     ReleaseOp_Type = StructType::create(M.getContext(), "ReleaseOp_t");
-    ReleaseOp_Type->setBody(Ptr_Type, Int_Type, Ptr_Type, Int_Type); // void* release op, relop type, void* forbidden op, forbop type
+    ReleaseOp_Type->setBody({Ptr_Type, Int_Type, Ptr_Type, Int_Type}); // void* release op, relop type, void* forbidden op, forbop type
 
     RWOp_Type = StructType::create(M.getContext(), "RWOp_t");
-    RWOp_Type->setBody(Int_Type, Int_Type, Ptr_Type, Int_Type); // idx, paramaccess, isWrite
+    RWOp_Type->setBody({Int_Type, Int_Type, Ptr_Type, Int_Type}); // idx, paramaccess, isWrite
 
     // Composite Types
     Tag_Type = StructType::create(M.getContext(), "Tag_t");
@@ -286,7 +285,7 @@ void InstrumentPass::instrumentRW(Module &M) {
                 if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
                     Value* V = getLoadStorePointerOperand(&I);
                     CallInst* callbackCI = CallInst::Create(callbackRWCallee, { ConstantInt::get(Int_Type, isa<StoreInst>(I) ? 1 : 0), V});
-                    callbackCI->insertBefore(&I);
+                    callbackCI->insertBefore(I.getIterator());
                 }
             }
         }
@@ -323,7 +322,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             params.push_back(U);
         }
         CallInst* callbackCI = CallInst::Create(callbackFuncCallee, params);
-        callbackCI->insertBefore(callsite);
+        callbackCI->insertBefore(callsite->getIterator());
     }
     already_instrumented.insert(F);
 }
