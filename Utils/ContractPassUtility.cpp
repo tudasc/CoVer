@@ -111,15 +111,22 @@ std::optional<uint> getLineNumber(const Instruction* I) {
     }
     return std::nullopt;
 }
+std::string getFile(const Instruction* I) {
+    if (I->getDebugLoc())
+        return (I->getDebugLoc()->getDirectory() != "" ? I->getDebugLoc()->getDirectory() + "/" : "").str() + I->getDebugLoc()->getFilename().str();
+    return "UNKNOWN";
+}
+
+
 std::string getInstrLocStr(const Instruction* I) {
     if (const DebugLoc &debugLoc = I->getDebugLoc())
-        return (debugLoc->getDirectory() != "" ? debugLoc->getDirectory() + "/" : "").str() + debugLoc->getFilename().str() + ":" + std::to_string(debugLoc.getLine()) + ":" + std::to_string(debugLoc->getColumn());
+        return getFile(I) + ":" + std::to_string(debugLoc.getLine()) + ":" + std::to_string(debugLoc->getColumn());
     return "UNKNOWN";
 }
 
 ErrorReference getErrorReference(const Instruction* I) {
     return ErrorReference{
-        .file = I->getDebugLoc()->getDirectory().str() + "/" + I->getDebugLoc()->getFilename().str(),
+        .file = getFile(I),
         .line = I->getDebugLoc()->getLine(),
         .column = I->getDebugLoc()->getColumn()
     };
