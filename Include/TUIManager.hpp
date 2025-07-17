@@ -36,7 +36,7 @@ namespace TUIManager {
     void ResultsScreen(Json::Value res, std::map<Json::Value, const Contract> JsonMsgToContr);
 
     template<typename T>
-    void ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr);
+    bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr);
     template<typename T>
     struct TraceBlock {
         std::string trace_list;
@@ -47,9 +47,6 @@ namespace TUIManager {
     JumpTraceEntry<T>* getLinearTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, int& siblings);
     template<typename T>
     std::vector<TUIManager::TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>*,int> preds_select);
-
-    template<typename T>
-    bool DebugMenu(ContractPassUtility::WorklistResult<T> WLRes);
 
     std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res);
     int RenderMenu(std::vector<std::string> choices, std::string title);
@@ -72,11 +69,6 @@ JumpTraceEntry<T>* TUIManager::getLinearTrace(TraceDB<T> traceDB, JumpTraceEntry
         if (siblings == 1) cur_trace = cur_trace->predecessors[0];
     } while  (siblings == 1 && cur_trace->kind != TraceKind::FUNCEXIT && cur_trace->kind != TraceKind::FUNCENTRY); // Always show funcentry
     return cur_trace;
-}
-
-template<typename T>
-bool TUIManager::DebugMenu(ContractPassUtility::WorklistResult<T> WLRes) {
-    return false;
 }
 
 template<typename T>
@@ -146,7 +138,7 @@ void TUIManager::ShowBlock(TraceBlock<T> block, bool transToSource, std::functio
 }
 
 template<typename T>
-void TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
+bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
     std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::string last_res = "";
     while (true) {
@@ -161,7 +153,8 @@ void TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
             full_trace.push_back(trace_block_str);
         }
         std::string input = RenderTxtEntry(full_trace, "JumpTrace", last_res);
-        if (input == "exit" || input == "quit") return;
+        if (input == "exit" || input == "quit") return false;
+        if (input == "reanalyse") return true;
         else if (input == "help") {
             // Show help
             std::vector<ftxui::Element> lines;
@@ -174,7 +167,9 @@ void TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
                 ftxui::text("    view [source|ir] [block num]"),
                 ftxui::text("        Show instructions / approxmiate source and analysis information for block"),
                 ftxui::text("    exit"),
-                ftxui::text("        Leave debug menu"),
+                ftxui::text("        Leave debugging interface"),
+                ftxui::text("    reanalyse"),
+                ftxui::text("        Re-run all analyses after adding instrumentation"),
             };
             ShowLines(lines);
         } else if (input.starts_with("jump ")) {
