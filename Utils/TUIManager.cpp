@@ -7,7 +7,6 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
-#include <iostream>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include <string>
@@ -89,6 +88,7 @@ std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title,
             ftxui::separator(),
             ftxui::yframe(ftxui::vbox(full_lines)),
             ftxui::separator(),
+            ftxui::filler(),
             ftxui::text(last_res),
             ftxui::hbox(ftxui::text(">>> "), input_comp->Render())
            });
@@ -212,26 +212,39 @@ void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus
 
 void ShowLines(std::vector<ftxui::Element> lines) {
     int selected = 0;
+    int page_size = screen.dimy() - 10; // Size of output box
+    int pages = lines.size() / page_size;
+    std::map<int, std::vector<ftxui::Element>>  lines_per_page;
+    for (size_t i = 0; i <= pages; i++) {
+        auto end = std::min((i+1)*page_size, lines.size());
+        lines_per_page[i] = std::vector<ftxui::Element>(lines.begin() + i*page_size, lines.begin() + end);
+    }
     ftxui::MenuOption menu_options = {
-        .entries = std::vector<std::string>{"Exit view"},
+        .entries = std::vector<std::string>{"Exit view", "Previous Page", "Next Page"},
         .selected = &selected,
         .on_enter = [&]() { screen.Exit(); }
     };
     ftxui::Component menu = ftxui::Menu(menu_options);
-    ftxui::Component render = ftxui::Renderer(
-        menu, [&] {
-           return ftxui::vbox({
-            header,
-            ftxui::text("Source Context") | ftxui::center,
-            ftxui::separator(),
-            ftxui::yframe(ftxui::vbox(lines)) | ftxui::size(ftxui::HEIGHT, ftxui::Constraint::LESS_THAN, 10),
-            ftxui::separator(),
-            menu->Render(),
-            ftxui::separator()
-           });
-        }
-    );
-    screen.Loop(render);
+    int cur_page = 0;
+    do {
+        if (selected == 1) cur_page = std::max(0, cur_page - 1);
+        else if (selected == 2) cur_page = std::min(pages, cur_page + 1);
+        ftxui::Component render = ftxui::Renderer(
+            menu, [&] {
+            return ftxui::vbox({
+                header,
+                ftxui::text("Source Context (Page " + std::to_string(cur_page) + "/" + std::to_string(pages) + ")") | ftxui::center,
+                ftxui::separator(),
+                ftxui::vbox(lines_per_page[cur_page]),
+                ftxui::filler(),
+                ftxui::separator(),
+                menu->Render(),
+                ftxui::separator()
+            });
+            }
+        );
+        screen.Loop(render);
+    } while (selected != 0);
 }
 
 bool ShowMessageDetails(Json::Value msg) {
