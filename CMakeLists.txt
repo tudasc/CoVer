@@ -45,7 +45,7 @@ else()
 endif(NOT antlr4-generator_FOUND)
 
 ##
-## Configure main project
+## Configure static analysis project
 ##
 
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
@@ -187,13 +187,13 @@ string(REPLACE ";" "\", \"" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_PAT
 set(COMPILER_WRAP_TARGET "mpicc")
 set(COMPILE_SRC_FILE_ENDINGS ".*\\\\.c$")
 set(EXECUTABLE_WRAPPER_NAME "clangContracts")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
 add_executable(clangContracts "clangContracts.cpp")
 
 set(COMPILER_WRAP_TARGET "mpicxx")
 set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
 set(EXECUTABLE_WRAPPER_NAME "clangContracts++")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
 add_executable(clangContracts++ "clangContracts++.cpp")
 
 install(
