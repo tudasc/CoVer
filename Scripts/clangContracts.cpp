@@ -168,7 +168,7 @@ int main(int argc, const char** argv) {
     // Generate IR for source files
     std::string bitcode_files;
     if (!source_file_paths.empty()) {
-        execSafe(wrap_target + " -g " + (cur_linkkind < ONLY_PREPROCESS ? "-c" : "-E") + " -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LINK ? dest_arg : ""));
+        execSafe(wrap_target + " -fPIC -g " + (cur_linkkind < ONLY_PREPROCESS ? "-c" : "-E") + " -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LINK ? dest_arg : ""));
 
         if (cur_linkkind == ONLY_COMPILE && dest_arg.empty()) {
             // No output dir, but want "object" files. Rename generated .ll to .o
@@ -205,6 +205,6 @@ int main(int argc, const char** argv) {
     execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess,instrumentContracts' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
     execSafe("llc -filetype=obj --relocation-model=pic" + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
-    execSafe(wrap_target + " -lm -ldl -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o" + dest_arg);
+    execSafe(wrap_target + " -fPIC -lm -ldl -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o" + dest_arg);
     return 0;
 }
