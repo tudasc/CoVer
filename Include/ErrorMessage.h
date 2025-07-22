@@ -3,7 +3,7 @@
 #include <list>
 #include <string>
 
-struct ErrorReference {
+struct FileReference {
     std::string file;
     unsigned int line;
     unsigned int column;
@@ -13,5 +13,5 @@ struct ErrorMessage {
     std::string type;
     std::string error_id;
     std::string text;
-    std::list<ErrorReference> references;
+    std::list<FileReference> references;
 };

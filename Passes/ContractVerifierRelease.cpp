@@ -89,8 +89,8 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err,
     err.push_back({
         .error_id = "Release",
         .text = str.str(),
-        .references = {ContractPassUtility::getErrorReference(Forbidden),
-                       ContractPassUtility::getErrorReference(CB),             
+        .references = {ContractPassUtility::getFileReference(Forbidden),
+                       ContractPassUtility::getFileReference(CB),             
         },
     });
 }

@@ -61,7 +61,7 @@ void ContractVerifierPostCallPass::appendDebugStr(std::string Target, bool isTag
         .error_id = "PostCall",
         .text = "[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
                     + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
-        .references = {ContractPassUtility::getErrorReference(Provider)},
+        .references = {ContractPassUtility::getFileReference(Provider)},
     });
     // err.push_back("[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
     //                 + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));

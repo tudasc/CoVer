@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ContractTree.hpp"
+#include "ErrorMessage.h"
 #include <functional>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Demangle/Demangle.h>
@@ -43,7 +44,7 @@ namespace ContractPassUtility {
     */
     std::optional<uint> getLineNumber(const Instruction* I);
     std::string getInstrLocStr(const Instruction* I);
-    ErrorReference getErrorReference(const Instruction* I);
+    FileReference getFileReference(const Instruction* I);
 
     /*
     * Check if call applies to target (which may be a tag or function name)
