@@ -12,6 +12,7 @@
 #include <llvm/Support/WithColor.h>
 #include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -28,22 +29,30 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const st
             if (reasons.contains(form))
                 errs() << "    --> Message: " << reasons[form].text << "\n";
             errs() << "    --> Error Info:\n";
+            Json::Value j;
+            j["type"] = reasons.contains(form) ? reasons[form].text : "Unspecified Error";
+            j["references"] = Json::arrayValue;
+            std::string err_ids;
+            std::string text;
+            std::set<FileReference> processed_locs;
             for (ErrorMessage errinfo : *form->ErrorInfo) {
                 errs() << "        " << errinfo.text << "\n";
-                Json::Value j;
-                j["type"] = reasons[form].text;
-                j["error_id"] = errinfo.error_id;
-                j["text"] = errinfo.text;
-                j["references"] = Json::arrayValue;
+                text += errinfo.text + "\n";
+                err_ids += errinfo.error_id.empty() ? "Composite " : errinfo.error_id + " ";
                 for (FileReference const& ref : errinfo.references) {
+                    if (processed_locs.contains(ref)) continue;
+                    processed_locs.insert(ref);
                     Json::Value json_ref;
                     json_ref["file"] = ref.file;
                     json_ref["line"] = ref.line;
                     json_ref["column"] = ref.column;
                     j["references"].append(json_ref);
                 }
-                json_messages["messages"].append(j);
             }
+            err_ids.pop_back();
+            j["error_id"] = err_ids;
+            j["text"] = text;
+            json_messages["messages"].append(j);
         }
     }
 }

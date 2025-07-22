@@ -7,6 +7,10 @@ struct FileReference {
     std::string file;
     unsigned int line;
     unsigned int column;
+
+    bool operator<(const FileReference other) const {
+        return file < other.file && line < other.line && column < other.column;
+    }
 };
 
 struct ErrorMessage {
