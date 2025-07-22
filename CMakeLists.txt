@@ -88,9 +88,6 @@ add_llvm_pass_plugin(CoVerPlugin
 target_include_directories(CoVerPlugin
   PUBLIC
     Include/
-    ${ANTLR4_INCLUDE_DIR_ContractLex}
-    ${ANTLR4_INCLUDE_DIR_ContractPars}
-    ${ANTLR4_INCLUDE_DIR}
 )
 
 target_link_libraries(ContractLanguage PRIVATE "${ANTLR4_LIBRARY}")
