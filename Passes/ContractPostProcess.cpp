@@ -35,7 +35,7 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const st
                 j["error_id"] = errinfo.error_id;
                 j["text"] = errinfo.text;
                 j["references"] = Json::arrayValue;
-                for (ErrorReference const& ref : errinfo.references) {
+                for (FileReference const& ref : errinfo.references) {
                     Json::Value json_ref;
                     json_ref["file"] = ref.file;
                     json_ref["line"] = ref.line;
@@ -43,10 +43,6 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const st
                     j["references"].append(json_ref);
                 }
                 json_messages["messages"].append(j);
-                std::string type;
-                std::string error_id;
-                std::string text;
-                std::list<ErrorReference> references;
             }
         }
     }

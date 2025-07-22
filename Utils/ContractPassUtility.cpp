@@ -124,8 +124,8 @@ std::string getInstrLocStr(const Instruction* I) {
     return "UNKNOWN";
 }
 
-ErrorReference getErrorReference(const Instruction* I) {
-    return ErrorReference{
+FileReference getFileReference(const Instruction* I) {
+    return {
         .file = getFile(I),
         .line = I->getDebugLoc()->getLine(),
         .column = I->getDebugLoc()->getColumn()
