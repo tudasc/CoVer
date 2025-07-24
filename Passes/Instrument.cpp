@@ -1,7 +1,6 @@
 #include "Instrument.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include <functional>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Analysis.h>
@@ -56,10 +55,8 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     // Create initialization routine for tool
     FunctionCallee initFuncCallee = M.getOrInsertFunction("PPDCV_Initialize", Void_Type, Ptr_Type);
     Function* initFunc = dyn_cast<Function>(initFuncCallee.getCallee());
-    initFunc->setLinkage(GlobalValue::WeakAnyLinkage);
+    initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
     CallInst* initFuncCI = CallInst::Create(initFuncCallee, GlobalDB);
-    BasicBlock* NoopBB = BasicBlock::Create(M.getContext(), "", initFunc);
-    ReturnInst::Create(M.getContext(), nullptr, NoopBB->begin());
     initFuncCI->insertBefore(mainF->getEntryBlock().getFirstNonPHIOrDbg());
 
     // Create callback function for rel func call
@@ -67,17 +64,13 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     FunctionType* FunctionCBType = FunctionType::get(Void_Type, {Ptr_Type, Int_Type}, true);
     callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType);
     Function* callbackFunc = dyn_cast<Function>(callbackFuncCallee.getCallee());
-    callbackFunc->setLinkage(GlobalValue::WeakAnyLinkage);
-    NoopBB = BasicBlock::Create(M.getContext(), "", callbackFunc);
-    ReturnInst::Create(M.getContext(), nullptr, NoopBB->begin());
+    callbackFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create callback function for RW
     // Call sig: int64-as-bool isWrite, mem ptr
     callbackRWCallee = M.getOrInsertFunction("PPDCV_MemCallback", Void_Type, Int_Type, Ptr_Type);
     Function* callbackRW = dyn_cast<Function>(callbackRWCallee.getCallee());
-    callbackRW->setLinkage(GlobalValue::WeakAnyLinkage);
-    NoopBB = BasicBlock::Create(M.getContext(), "", callbackRW);
-    ReturnInst::Create(M.getContext(), nullptr, NoopBB->begin());
+    callbackRW->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create callbacks
     instrumentFunctions(M);
@@ -185,10 +178,10 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         case OperationType::CALL: {
             std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(op);
             Function* F = M.getFunction(cOP->Function);
-            if (!F) errs() << "Specified function \"" << cOP->Function << "\" does not exist! Instrumentation failed!\n";
-            Constant* funcStr = ConstantDataArray::getString(M.getContext(), F->getName());
+            if (!F) errs() << "Warning: Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module\nThis may cause issues for instrumentation.";
+            Constant* funcStr = ConstantDataArray::getString(M.getContext(), cOP->Function);
             std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
-            data = ConstantStruct::get(CallOp_Type, {F, createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + F->getName().str()), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
+            data = ConstantStruct::get(CallOp_Type, {F ? F : Null_Const, createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + cOP->Function), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
             name = "CONTR_CALLOP";
             break;
         }
@@ -246,7 +239,7 @@ void InstrumentPass::createTypes(Module& M) {
     ReleaseOp_Type->setBody({Ptr_Type, Int_Type, Ptr_Type, Int_Type}); // void* release op, relop type, void* forbidden op, forbop type
 
     RWOp_Type = StructType::create(M.getContext(), "RWOp_t");
-    RWOp_Type->setBody({Int_Type, Int_Type, Ptr_Type, Int_Type}); // idx, paramaccess, isWrite
+    RWOp_Type->setBody({Int_Type, Int_Type, Int_Type}); // idx, paramaccess, isWrite
 
     // Composite Types
     Tag_Type = StructType::create(M.getContext(), "Tag_t");
