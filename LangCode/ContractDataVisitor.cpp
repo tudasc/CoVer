@@ -74,7 +74,7 @@ std::any ContractDataVisitor::visitReadOp(ContractParser::ReadOpContext *ctx) {
             acc = ParamAccess::DEREF;
         if (ctx->AddrOf())
             acc = ParamAccess::ADDROF;
-    std::shared_ptr<const Operation> op = std::make_shared<const ReadOperation>(ReadOperation(std::stoi(ctx->NatNum()->getText()), acc));
+    std::shared_ptr<const Operation> op = std::make_shared<const ReadOperation>(std::stoi(ctx->NatNum()->getText()), acc);
     return op;
 }
 std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) {
@@ -83,7 +83,7 @@ std::any ContractDataVisitor::visitWriteOp(ContractParser::WriteOpContext *ctx) 
             acc = ParamAccess::DEREF;
         if (ctx->AddrOf())
             acc = ParamAccess::ADDROF;
-    std::shared_ptr<const Operation> op = std::make_shared<const WriteOperation>(WriteOperation(std::stoi(ctx->NatNum()->getText()), acc));
+    std::shared_ptr<const Operation> op = std::make_shared<const WriteOperation>(std::stoi(ctx->NatNum()->getText()), acc);
     return op;
 }
 std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {
@@ -112,6 +112,6 @@ std::any ContractDataVisitor::visitReleaseOp(ContractParser::ReleaseOpContext *c
     std::shared_ptr<const Operation> opForbidden = std::any_cast<std::shared_ptr<const Operation>>(this->visit(ctx->forbidden));
     std::shared_ptr<const Operation> opUntil = std::any_cast<std::shared_ptr<const Operation>>(this->visit(ctx->until));
 
-    std::shared_ptr<const Operation> op = std::make_shared<const ReleaseOperation>(ReleaseOperation(opForbidden, opUntil));
+    std::shared_ptr<const Operation> op = std::make_shared<const ReleaseOperation>(opForbidden, opUntil);
     return op;
 }
