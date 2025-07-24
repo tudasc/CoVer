@@ -134,6 +134,12 @@ install(
 )
 
 ##
+## Dynamic project
+##
+
+add_subdirectory(Dynamic)
+
+##
 ## Premade MPI header for convenience and quick testing
 ##
 
