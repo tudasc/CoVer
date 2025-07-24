@@ -177,12 +177,15 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
         fs.push_back(children.first);
     }
     switch (contrF->type) {
+        case FormulaType::AND:
         case FormulaType::OR:
-            *contrF->Status = *std::min_element(fs.begin(), fs.end());
+            if (contrF->type == FormulaType::AND) *contrF->Status = *std::max_element(fs.begin(), fs.end());
+            else *contrF->Status = *std::min_element(fs.begin(), fs.end());
             if (*contrF->Status != Fulfillment::FULFILLED) {
-                // Add error info from children. As its an OR: All must not be fulfilled, so concat all
-                contrF->ErrorInfo->push_back({.text = "No children satisfied for subformula: " + contrF->ExprStr});
+                // Add error info from unfulfilled children
+                contrF->ErrorInfo->push_back({ .text = (contrF->type == FormulaType::OR ? "No children" : "At least one child not") + (" satisfied for subformula: " + contrF->ExprStr)});
                 for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
+                    if (*Form->Status == Fulfillment::FULFILLED) continue;
                     contrF->ErrorInfo->push_back({.text = "Error Info for child: " + Form->ExprStr});
                     contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
                 }
