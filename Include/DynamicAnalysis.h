@@ -1,6 +1,6 @@
 #pragma once
 
-#include "stdint.h"
+#include <stdint.h>
 
 /*
  * This is a simplified version of the ContractTree,
@@ -12,6 +12,7 @@
 struct Tag_t {
     const char* tag;
     int64_t param;
+    bool operator<(const Tag_t other) const { return tag < other.tag && param < other.param;}
 };
 
 struct TagsMap_t {
@@ -74,3 +75,16 @@ struct ContractDB_t {
     int64_t num_contracts;
     TagsMap_t tags;
 };
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Callback function declarations
+void PPDCV_Initialize(ContractDB_t* DB);
+void PPDCV_FunctionCallback(void* function, int64_t num_params, ...); // Funcptr, num params, then: param type (0=int,1=ptr) and param in loop
+void PPDCV_MemCallback(int64_t isWrite, void* buf);
+
+#ifdef __cplusplus
+}
+#endif
