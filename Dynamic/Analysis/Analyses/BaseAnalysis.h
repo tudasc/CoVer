@@ -16,4 +16,5 @@ class BaseAnalysis {
 
         // Event handlers. Return true if analysis is resolved and no longer needs to be analysed.
         virtual Fulfillment onFunctionCall(void* location, void* func, CallsiteParams params) { return Fulfillment::FULFILLED; };
+        virtual Fulfillment onProgramExit(void* location) { return Fulfillment::FULFILLED; };
 };
