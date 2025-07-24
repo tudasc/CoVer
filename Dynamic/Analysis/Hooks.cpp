@@ -8,6 +8,7 @@
 #include "DynamicAnalysis.h"
 #include "Analyses/BaseAnalysis.h"
 #include "Analyses/PreCallAnalysis.h"
+#include "Analyses/PostCallAnalysis.h"
 #include "DynamicUtils.h"
 
 ContractDB_t* DB = nullptr;
@@ -24,17 +25,11 @@ void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_suppl
         switch (form->conn) {
             case UNARY_CALL:
                 if (isPre) analyses.push_back(std::make_shared<PreCallAnalysis>(func_supplier, (CallOp_t*)form->data));
-                else {
-                    #warning todo
-                    return;
-                }
+                else analyses.push_back(std::make_shared<PostCallAnalysis>(func_supplier, (CallOp_t*)form->data));
                 break;
             case UNARY_CALLTAG:
                 if (isPre) analyses.push_back(std::make_shared<PreCallAnalysis>(func_supplier, (CallTagOp_t*)form->data));
-                else {
-                    #warning todo
-                    return;
-                }
+                else analyses.push_back(std::make_shared<PostCallAnalysis>(func_supplier, (CallTagOp_t*)form->data));
                 break;
             default: 
                 #warning TODO
@@ -127,4 +122,12 @@ void PPDCV_MemCallback(int64_t isWrite, void* buf) {
     //         forbidden_release[buf].erase(relOp);
     //     }
     // }
+}
+
+extern "C" __attribute__((destructor)) void PPDCV_destructor() {
+    #warning todo find better way for postprocessing
+    std::cout << "CoVer-Dynamic: Analysis finished.\n";
+    for (std::shared_ptr<BaseAnalysis> analysis : analyses) {
+        analysis->onProgramExit(__builtin_return_address(0));
+    }
 }
