@@ -33,28 +33,15 @@ Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, Callsit
         }
 
         // Check which callsites are satisfied, remove from unchecked
-        for (CallParam_t* param : params) {
-            for (auto callsite_iter = uncheckedCallsites.begin(); callsite_iter != uncheckedCallsites.end();) {
-                for (CallsiteParams supplier_params : callsite_iter->second) {
-                    if (param->callPisTagVar) {
-                        std::set<Tag_t> tags = DynamicUtils::getTagsForFunction(func);
-                        for (Tag_t tag : tags) {
-                            if (tag.tag != target_str) continue;
-                            if (DynamicUtils::checkParamMatch(param->accType, supplier_params[param->contrP].val, callsite_params[tag.param].val)) {
-                                callsite_iter = uncheckedCallsites.erase(callsite_iter);
-                                goto callsite_clear;
-                            }
-                        }
-                    } else {
-                        if (DynamicUtils::checkParamMatch(param->accType, supplier_params[param->contrP].val, callsite_params[param->callP].val)) {
-                            callsite_iter = uncheckedCallsites.erase(callsite_iter);
-                            goto callsite_clear;
-                        }
-                    }
+        for (auto callsite_iter = uncheckedCallsites.begin(); callsite_iter != uncheckedCallsites.end();) {
+            for (CallsiteParams supplier_params : callsite_iter->second) {
+                if (DynamicUtils::checkFuncCallMatch(func, params, callsite_params, supplier_params, target_str)) {
+                    callsite_iter = uncheckedCallsites.erase(callsite_iter);
+                    goto callsite_clear;
                 }
-                callsite_iter++;
-                callsite_clear:;
             }
+            callsite_iter++;
+            callsite_clear:;
         }
         // For the rest: Maybe actual fulfillment comes later
         return Fulfillment::UNKNOWN;

@@ -89,4 +89,21 @@ namespace DynamicUtils {
         std::cerr << "CoVer-Dynamic: " << msg << "\n";
         std::flush(std::cerr);
     }
+
+    bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteParams callParams, CallsiteParams contrParams, std::string target_str) {
+        for (CallParam_t* param : params_expect) {
+            if (param->callPisTagVar) {
+                std::set<Tag_t> tags = DynamicUtils::getTagsForFunction(callF);
+                for (Tag_t tag : tags) {
+                    if (tag.tag != target_str) continue;
+                    if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP].val, callParams[tag.param].val))
+                        return true;
+                }
+            } else {
+                if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP].val, callParams[param->callP].val))
+                    return true;
+            }
+        }
+        return false;
+    }
 }
