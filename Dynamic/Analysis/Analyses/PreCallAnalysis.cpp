@@ -38,21 +38,10 @@ Fulfillment PreCallAnalysis::onFunctionCall(void* location, void* func, Callsite
 
         // Check params if needed
         if (params.empty()) return Fulfillment::FULFILLED;
-        for (CallParam_t* param : params) {
-            for (std::pair<void*,std::vector<CallsiteParams>> possible_match : possible_matches) {
-                for (CallsiteParams match_params : possible_match.second) {
-                    if (param->callPisTagVar) {
-                        std::set<Tag_t> tags = DynamicUtils::getTagsForFunction(possible_match.first);
-                        for (Tag_t tag : tags) {
-                            if (tag.tag != target_str) continue;
-                            if (DynamicUtils::checkParamMatch(param->accType, callsite_params[param->contrP].val, match_params[tag.param].val))
-                                return Fulfillment::FULFILLED;
-                        }
-                    } else {
-                        if (DynamicUtils::checkParamMatch(param->accType, callsite_params[param->contrP].val, match_params[param->callP].val))
-                            return Fulfillment::FULFILLED;
-                    }
-                }
+        for (std::pair<void*,std::vector<CallsiteParams>> possible_match : possible_matches) {
+            for (CallsiteParams match_params : possible_match.second) {
+                if (DynamicUtils::checkFuncCallMatch(possible_match.first, params, match_params, callsite_params, target_str))
+                    return Fulfillment::FULFILLED;
             }
         }
         DynamicUtils::createMessage("Precall");

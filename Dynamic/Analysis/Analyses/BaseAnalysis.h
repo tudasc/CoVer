@@ -1,12 +1,7 @@
 #pragma once
 
 #include <vector>
-
-struct ConcreteParam {
-    void* val;
-    bool isPtr;
-};
-using CallsiteParams = std::vector<ConcreteParam>;
+#include "../DynamicUtils.h"
 
 enum struct Fulfillment { FULFILLED, UNKNOWN, VIOLATED };
 
