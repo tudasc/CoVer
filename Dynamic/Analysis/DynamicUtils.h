@@ -6,6 +6,12 @@
 #include <string>
 #include <vector>
 
+struct ConcreteParam {
+    void* val;
+    bool isPtr;
+};
+using CallsiteParams = std::vector<ConcreteParam>;
+
 namespace DynamicUtils {
     // Initialize Utils
     void Initialize(ContractDB_t* DB);
@@ -15,6 +21,9 @@ namespace DynamicUtils {
 
     // Check if two parameters match
     bool checkParamMatch(ParamAccess acc, void* contrP, void* callP);
+
+    // Check if function call matches
+    bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteParams callParams, CallsiteParams contrParams, std::string target_str);
 
     // Resolve tag to possible functions
     std::set<void*> getFunctionsForTag(std::string tag);
