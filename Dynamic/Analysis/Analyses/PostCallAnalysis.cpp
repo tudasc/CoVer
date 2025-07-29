@@ -54,9 +54,5 @@ Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, Callsit
 }
 
 Fulfillment PostCallAnalysis::onProgramExit(void* location) {
-    if (!uncheckedCallsites.empty()) {
-        DynamicUtils::createMessage("Postcall");
-        return Fulfillment::VIOLATED;
-    }
-    return Fulfillment::FULFILLED;
+    return uncheckedCallsites.empty() ? Fulfillment::FULFILLED : Fulfillment::VIOLATED;
 }

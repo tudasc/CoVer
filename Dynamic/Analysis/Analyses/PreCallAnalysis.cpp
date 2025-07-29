@@ -31,8 +31,6 @@ Fulfillment PreCallAnalysis::onFunctionCall(void* location, void* func, Callsite
         // Contract supplier found, need to resolve now
         if (possible_matches.empty()) {
             // No matches, verification failed
-            #warning todo wait until formula resolved
-            DynamicUtils::createMessage("Precall");
             return Fulfillment::VIOLATED;
         }
 
@@ -44,7 +42,6 @@ Fulfillment PreCallAnalysis::onFunctionCall(void* location, void* func, Callsite
                     return Fulfillment::FULFILLED;
             }
         }
-        DynamicUtils::createMessage("Precall");
         return Fulfillment::VIOLATED;
     }
 
