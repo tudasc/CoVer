@@ -36,10 +36,10 @@ struct RWOp_t {
     int64_t isWrite;
 };
 struct CallOp_t {
-    void* target_function;
     const char* function_name;
     CallParam_t* params;
     int64_t num_params;
+    void* target_function;
 };
 struct CallTagOp_t {
     const char* target_tag;
@@ -73,7 +73,7 @@ struct Contract_t {
 struct ContractDB_t {
     Contract_t* contracts;
     int64_t num_contracts;
-    TagsMap_t tags;
+    TagsMap_t tagMap;
 };
 
 #ifdef __cplusplus

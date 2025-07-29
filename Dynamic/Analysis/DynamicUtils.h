@@ -29,7 +29,7 @@ namespace DynamicUtils {
     std::set<void*> getFunctionsForTag(std::string tag);
 
     // Resolve function to possible tags
-    std::set<Tag_t> getTagsForFunction(void* func);
+    std::set<Tag_t*> getTagsForFunction(void* func);
 
     // Report something
     void createMessage(std::string msg);

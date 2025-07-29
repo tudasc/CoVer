@@ -178,10 +178,10 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         case OperationType::CALL: {
             std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(op);
             Function* F = M.getFunction(cOP->Function);
-            if (!F) errs() << "Warning: Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module\nThis may cause issues for instrumentation.";
+            if (!F) errs() << "Warning: Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module\nThis may cause issues for instrumentation.\n";
             Constant* funcStr = ConstantDataArray::getString(M.getContext(), cOP->Function);
             std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
-            data = ConstantStruct::get(CallOp_Type, {F ? F : Null_Const, createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + cOP->Function), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
+            data = ConstantStruct::get(CallOp_Type, {createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + cOP->Function), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second), F ? F : Null_Const});
             name = "CONTR_CALLOP";
             break;
         }
@@ -230,7 +230,7 @@ void InstrumentPass::createTypes(Module& M) {
     Param_Type->setBody({Int_Type, Int_Type, Int_Type, Int_Type}); // call param, bool param is tag ref, contr param, acc type
 
     CallOp_Type = StructType::create(M.getContext(), "CallOp_t");
-    CallOp_Type->setBody({Ptr_Type, Ptr_Type, Ptr_Type, Int_Type}); // Function Pointer, char* Function Name, list of params, num of params
+    CallOp_Type->setBody({Ptr_Type, Ptr_Type, Int_Type, Ptr_Type}); // char* Function Name, list of params, num of params, Function Pointer
 
     CallTagOp_Type = StructType::create(M.getContext(), "CallTagOp_t");
     CallTagOp_Type->setBody({Ptr_Type, Ptr_Type, Int_Type}); // char* Tag name, list of params, num of params

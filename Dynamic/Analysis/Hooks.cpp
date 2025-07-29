@@ -2,6 +2,7 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 #include <cstdarg>
 
@@ -9,6 +10,7 @@
 #include "Analyses/BaseAnalysis.h"
 #include "Analyses/PreCallAnalysis.h"
 #include "Analyses/PostCallAnalysis.h"
+#include "Analyses/ReleaseAnalysis.h"
 #include "DynamicUtils.h"
 
 ContractDB_t* DB = nullptr;
@@ -18,21 +20,25 @@ ContractDB_t* DB = nullptr;
 std::map<void*, std::vector<Contract_t>> contrs;
 std::map<void*, std::string> interesting_funcs;
 
-std::vector<std::shared_ptr<BaseAnalysis>> analyses;
+std::map<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analyses;
 
 void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_supplier) {
     if (form->num_children == 0) {
         switch (form->conn) {
             case UNARY_CALL:
-                if (isPre) analyses.push_back(std::make_shared<PreCallAnalysis>(func_supplier, (CallOp_t*)form->data));
-                else analyses.push_back(std::make_shared<PostCallAnalysis>(func_supplier, (CallOp_t*)form->data));
+                if (isPre) analyses.insert({std::make_shared<PreCallAnalysis>(func_supplier, (CallOp_t*)form->data), form});
+                else analyses.insert({std::make_shared<PostCallAnalysis>(func_supplier, (CallOp_t*)form->data), form});
                 break;
             case UNARY_CALLTAG:
-                if (isPre) analyses.push_back(std::make_shared<PreCallAnalysis>(func_supplier, (CallTagOp_t*)form->data));
-                else analyses.push_back(std::make_shared<PostCallAnalysis>(func_supplier, (CallTagOp_t*)form->data));
+                if (isPre) analyses.insert({std::make_shared<PreCallAnalysis>(func_supplier, (CallTagOp_t*)form->data), form});
+                else analyses.insert({std::make_shared<PostCallAnalysis>(func_supplier, (CallTagOp_t*)form->data), form});
+                break;
+            case UNARY_RELEASE:
+                if (isPre) DynamicUtils::createMessage("Did not expect releaseop in precond!");
+                else analyses.insert({std::make_shared<ReleaseAnalysis>(func_supplier, (ReleaseOp_t*)form->data), form});
                 break;
             default: 
-                #warning TODO
+                DynamicUtils::createMessage("Unknown top-level operation!");
                 break;
         }
     } else {
@@ -41,7 +47,7 @@ void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_suppl
 }
 
 void PPDCV_Initialize(ContractDB_t* _DB) {
-    std::cerr << "[MUST-CV] Initializing...\n";
+    DynamicUtils::createMessage("Initializing...");
     DB = _DB;
 
     DynamicUtils::Initialize(DB);
@@ -66,7 +72,7 @@ void PPDCV_Initialize(ContractDB_t* _DB) {
         interesting_funcs[function] = DB->contracts[i].function_name;
     }
 
-    std::cerr << "[MUST-CV] Finished initializing!\n";
+    DynamicUtils::createMessage("Finished Initializing!");
     return;
 }
 
@@ -97,37 +103,31 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
     // Run event handlers and remove analysis if done
     std::erase_if(
         analyses,
-        [&](std::shared_ptr<BaseAnalysis> analysis) {
-            return analysis->onFunctionCall(__builtin_return_address(0), function, callsite_params) != Fulfillment::UNKNOWN;
+        [&](std::pair<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analysis) {
+            Fulfillment f = analysis.first->onFunctionCall(__builtin_return_address(0), function, callsite_params);
+            if (f == Fulfillment::VIOLATED) DynamicUtils::createMessage("Error for: " + std::string(analysis.second->msg));
+            return f != Fulfillment::UNKNOWN;
         }
     );
 }
 
 void PPDCV_MemCallback(int64_t isWrite, void* buf) {
-    // if (forbidden_release.contains(buf)) {
-    //     int i = 0;
-    //     std::set<ReleaseOp_t*> to_remove;
-    //     for (ReleaseOp_t* relOp : forbidden_release[buf]) {
-    //         if (release_processed.contains(relOp)) {
-    //             to_remove.insert(relOp); // Already released. Just cleanup needed
-    //         } else {
-    //             if (relOp->forbidden_op_kind == UNARY_READ && !isWrite || relOp->forbidden_op_kind == UNARY_WRITE && isWrite) {
-    //                 std::cerr << "Error!\n"; // Requirement violated
-    //                 release_processed[relOp] = VIOLATED;
-    //                 to_remove.insert(relOp);
-    //             }
-    //         }
-    //     }
-    //     for (ReleaseOp_t* relOp : to_remove) {
-    //         forbidden_release[buf].erase(relOp);
-    //     }
-    // }
+    std::erase_if(
+        analyses,
+        [&](std::pair<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analysis) {
+            Fulfillment f = analysis.first->onMemoryAccess(__builtin_return_address(0), buf, isWrite);
+            if (f == Fulfillment::VIOLATED) DynamicUtils::createMessage("Error for: " + std::string(analysis.second->msg));
+            return f != Fulfillment::UNKNOWN;
+        }
+    );
 }
 
 extern "C" __attribute__((destructor)) void PPDCV_destructor() {
     #warning todo find better way for postprocessing
     std::cout << "CoVer-Dynamic: Analysis finished.\n";
-    for (std::shared_ptr<BaseAnalysis> analysis : analyses) {
-        analysis->onProgramExit(__builtin_return_address(0));
+    for (std::pair<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analysis : analyses) {
+        Fulfillment f = analysis.first->onProgramExit(__builtin_return_address(0));
+        if (f == Fulfillment::VIOLATED)
+            DynamicUtils::createMessage("Error on program exit: " + std::string(analysis.second->msg));
     }
 }

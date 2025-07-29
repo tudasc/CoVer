@@ -146,7 +146,7 @@ void sanityCheckCompiler() {
     std::smatch matches;
     std::regex_search(res, matches, llvm_version_regex);
     if (matches.size() < 2) {
-        std::cerr << "Unknown LLVM Version! This may cause issues!";
+        std::cerr << "Unknown LLVM Version! This may cause issues!\n";
     } else if (std::stoi(matches[1]) < std::stoi("@LLVM_VERSION_MIN@")) { // Ugly, but avoids linter error and is compiled away in O3 anyway
         std::cerr << "Unsupported LLVM Version " << matches[1] << "! Expect issues!\n";
     }
