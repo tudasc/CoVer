@@ -125,10 +125,12 @@ std::string getInstrLocStr(const Instruction* I) {
 }
 
 FileReference getFileReference(const Instruction* I) {
+    if (!I->getDebugLoc())
+        errs() << "Warning: Attempting to get file reference of instruction without debug information (most likely caused by outdated LLVM version)!\nThis may have adverse effects on report quality!";
     return {
         .file = getFile(I),
-        .line = I->getDebugLoc()->getLine(),
-        .column = I->getDebugLoc()->getColumn()
+        .line = I->getDebugLoc() ? I->getDebugLoc()->getLine() : 0,
+        .column = I->getDebugLoc() ? I->getDebugLoc()->getColumn() : 0
     };
 }
 
