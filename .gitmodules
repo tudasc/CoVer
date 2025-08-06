@@ -3,4 +3,4 @@
 	url = https://github.com/open-source-parsers/jsoncpp
 [submodule "Externals/llvm-dsa"]
 	path = Externals/llvm-dsa
-	url = git@github.com:N00byKing/llvm-dsa
+	url = https://github.com/N00byKing/llvm-dsa
