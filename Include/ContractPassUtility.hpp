@@ -12,6 +12,7 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
@@ -54,12 +55,12 @@ namespace ContractPassUtility {
     /*
     * Check if contract and call parameter fit
     */
-    bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc);
+    bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM);
 
     /*
     * Check if two calls match by contract definition
     */
-    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags, ModuleAnalysisManager* MAM);
 };
 
 template<typename T>

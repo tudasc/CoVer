@@ -30,6 +30,7 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
+    MAM = &AM;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
         for (const std::shared_ptr<ContractExpression> Expr : C.Pre) {
@@ -116,7 +117,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
             }
             for (CallParam param : Data->reqParams) {
                 for (const CallBase* Candidate : cur.candidate) {
-                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags)) {
+                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags, MAM)) {
                         // Success!
                         cur.CurVal = CallStatusVal::CALLED;
                         return cur;
