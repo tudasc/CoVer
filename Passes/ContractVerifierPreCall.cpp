@@ -30,6 +30,7 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
+    MAM = &AM;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
         for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
@@ -116,7 +117,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
             }
             for (CallParam param : Data->reqParams) {
                 for (const CallBase* Candidate : cur.candidate) {
-                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags)) {
+                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags, MAM)) {
                         // Success!
                         cur.CurVal = CallStatusVal::CALLED;
                         return cur;
@@ -138,7 +139,7 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallP
     std::set<const CallBase*> intersect;
     std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
                  std::inserter(intersect, intersect.begin()));
-    ContractVerifierPreCallPass::CallStatus cs;
+    CallStatus cs;
     cs.candidate = intersect;
     cs.CurVal = std::max(prev.CurVal, cur.CurVal);
     if ((prev.CurVal == CallStatusVal::CALLED || cur.CurVal == CallStatusVal::CALLED) &&

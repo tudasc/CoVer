@@ -89,7 +89,10 @@ add_llvm_pass_plugin(CoVerPlugin
 target_include_directories(CoVerPlugin
   PUBLIC
     Include/
+    Externals/llvm-dsa/include
 )
+
+add_subdirectory(Externals/llvm-dsa)
 
 ##
 ## Runtime Dependencies
@@ -191,6 +194,7 @@ endif(MPI_C_FOUND AND Python_FOUND)
 
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
 set(COVER_DYNAMIC_ANALYSER_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerDynamicAnalyzer.a)
+set(DSA_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/DSA.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include")
 
 # Replace build folder with install folder
