@@ -13,6 +13,7 @@
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
+#include <llvm/Support/CommandLine.h>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,8 +36,6 @@ static std::optional<std::string> getFuncName(CallBase* FuncCall) {
     }
     return FuncCall->getCalledFunction()->getName().data();
 }
-
-AnalysisKey ContractManagerAnalysis::Key;
 
 ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
     curDatabase.start_time = std::chrono::system_clock::now();

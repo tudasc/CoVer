@@ -15,7 +15,7 @@ namespace llvm {
 
 class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis> {
     public:
-        static llvm::AnalysisKey Key;
+        static inline llvm::AnalysisKey Key;
 
         struct Contract {
             const Function* const F;
@@ -41,7 +41,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
 
         // Run Pass
         ContractDatabase run(Module &M, ModuleAnalysisManager &AM);
-    
+
     private:
         ContractDatabase curDatabase;
         const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF);
