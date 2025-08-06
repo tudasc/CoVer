@@ -21,6 +21,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
         std::pair<ReleaseStatus,bool> mergeRelease(ReleaseStatus prev, ReleaseStatus cur, const Instruction* I, void* data);
         ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, const Module& M, std::string& error);
         std::map<const Function*, std::vector<TagUnit>> Tags;
+        ModuleAnalysisManager* MAM;
 };
 
 } // namespace llvm

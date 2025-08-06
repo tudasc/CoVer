@@ -30,6 +30,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
+    MAM = &AM;
     printMultiReports = DB.allowMultiReports;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
@@ -99,7 +100,7 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err,
     const int forbidParam = std::any_cast<const int>(Data->param[0]); \
     const ParamAccess accType = std::any_cast<const ParamAccess>(Data->param[1]); \
     const Value* contrP = Data->callsite->getArgOperand(forbidParam); \
-    if (ContractPassUtility::checkParamMatch(contrP, instr, accType)) { \
+    if (ContractPassUtility::checkParamMatch(contrP, instr, accType, MAM)) { \
         appendDebugStr(Data->err, instr, Data->callsite); \
         return ReleaseStatus::ERROR_UNFULFILLED; \
     } \
@@ -115,7 +116,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
         if (ContractPassUtility::checkCalledApplies(CB, Data->releaseFunc, Data->isTagRel, Data->Tags)) {
             if (Data->releaseParam.empty()) return ReleaseStatus::FULFILLED;
             for (CallParam P : Data->releaseParam) {
-                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags))
+                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags, MAM))
                     return cur == ReleaseStatus::ERROR_UNFULFILLED ? ReleaseStatus::ERROR : ReleaseStatus::FULFILLED;
             }
             // Wrong parameters, continue
@@ -132,7 +133,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
                     const std::vector<CallParam> forbidParams = std::any_cast<const std::vector<CallParam>>(Data->param[1]);
                     if (forbidParams.empty()) return ReleaseStatus::ERROR_UNFULFILLED;
                     for (CallParam forbidParam : forbidParams) {
-                        if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags)) {
+                        if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags, MAM)) {
                             appendDebugStr(Data->err, CB, Data->callsite);
                             return ReleaseStatus::ERROR_UNFULFILLED;
                         }
