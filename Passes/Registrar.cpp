@@ -11,41 +11,35 @@
 
 using namespace llvm;
 
-bool FPMHook(StringRef Name, FunctionPassManager &FPM,
-             ArrayRef<PassBuilder::PipelineElement>) {
-    // Maybe future analyses can work on function level?
-    return false;
-};
+namespace {
+    bool MPMHook(StringRef Name, ModulePassManager &MPM, ArrayRef<PassBuilder::PipelineElement>) {
+        if (Name == "contractVerifierPreCall") {
+            MPM.addPass(ContractVerifierPreCallPass());
+            return true;
+        }
+        if (Name == "contractVerifierPostCall") {
+            MPM.addPass(ContractVerifierPostCallPass());
+            return true;
+        }
+        if (Name == "contractVerifierRelease") {
+            MPM.addPass(ContractVerifierReleasePass());
+            return true;
+        }
+        if (Name == "contractPostProcess") {
+            MPM.addPass(ContractPostProcessingPass());
+            return true;
+        }
+        return false;
+    };
 
-bool MPMHook(StringRef Name, ModulePassManager &MPM,
-             ArrayRef<PassBuilder::PipelineElement>) {
-    if (Name == "contractVerifierPreCall") {
-        MPM.addPass(ContractVerifierPreCallPass());
-        return true;
-    }
-    if (Name == "contractVerifierPostCall") {
-        MPM.addPass(ContractVerifierPostCallPass());
-        return true;
-    }
-    if (Name == "contractVerifierRelease") {
-        MPM.addPass(ContractVerifierReleasePass());
-        return true;
-    }
-    if (Name == "contractPostProcess") {
-        MPM.addPass(ContractPostProcessingPass());
-        return true;
-    }
-    return false;
-};
+    void MAMHook(ModuleAnalysisManager &MAM) {
+        MAM.registerPass([&] { return ContractManagerAnalysis(); });
+    };
 
-void MAMHook(ModuleAnalysisManager &MAM) {
-    MAM.registerPass([&] { return ContractManagerAnalysis(); });
-};
-
-void PBHook(PassBuilder &PB) {
-    PB.registerPipelineParsingCallback(FPMHook);
-    PB.registerPipelineParsingCallback(MPMHook);
-    PB.registerAnalysisRegistrationCallback(MAMHook);
+    void PBHook(PassBuilder &PB) {
+        PB.registerPipelineParsingCallback(MPMHook);
+        PB.registerAnalysisRegistrationCallback(MAMHook);
+    }
 }
 
 llvm::PassPluginLibraryInfo getCoVerInfo() {

@@ -29,6 +29,7 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
+    MAM = &AM;
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
         for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
@@ -85,22 +86,22 @@ struct IterTypePostCall {
     std::map<const Function*, std::vector<TagUnit>> Tags;
 };
 
-ContractVerifierPostCallPass::CallStatus transferPostCallStat(ContractVerifierPostCallPass::CallStatus cur, const Instruction* I, void* data) {
+ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::transferPostCallStat(CallStatus cur, const Instruction* I, void* data) {
     if (cur == ContractVerifierPostCallPass::CallStatus::CALLED) return cur;
 
     IterTypePostCall* Data = static_cast<IterTypePostCall*>(data);
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
         if (ContractPassUtility::checkCalledApplies(CB, Data->Target, Data->isTag, Data->Tags)) {
             if (Data->reqParams.empty()) {
-                cur = ContractVerifierPostCallPass::CallStatus::CALLED;
+                cur = CallStatus::CALLED;
                 return cur;
             }
             // Target function was called, need to check the parameters
             // Paramcheck is resolved once target found
             for (CallParam P : Data->reqParams) {
-                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->Target, P, Data->Tags)) {
+                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->Target, P, Data->Tags, MAM)) {
                     // Success!
-                    return ContractVerifierPostCallPass::CallStatus::CALLED;
+                    return CallStatus::CALLED;
                 }
             }
             // Missing required parameter... Add to debuginfo
@@ -111,10 +112,10 @@ ContractVerifierPostCallPass::CallStatus transferPostCallStat(ContractVerifierPo
     return cur;
 }
 
-std::pair<ContractVerifierPostCallPass::CallStatus,bool> mergePostCallStat(ContractVerifierPostCallPass::CallStatus prev, ContractVerifierPostCallPass::CallStatus cur, const Instruction* I, void* data) {
-    ContractVerifierPostCallPass::CallStatus cs = std::max(prev, cur);
-    if ((prev == ContractVerifierPostCallPass::CallStatus::CALLED || cur == ContractVerifierPostCallPass::CallStatus::CALLED) &&
-         cs != ContractVerifierPostCallPass::CallStatus::CALLED) {
+std::pair<ContractVerifierPostCallPass::CallStatus,bool> ContractVerifierPostCallPass::mergePostCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data) {
+    CallStatus cs = std::max(prev, cur);
+    if ((prev == CallStatus::CALLED || cur == CallStatus::CALLED) &&
+         cs != CallStatus::CALLED) {
         IterTypePostCall* Data = static_cast<IterTypePostCall*>(data);
         Data->dbg.push_back("[ContractVerifierPostCall] NOTE: Successful fulfillment was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
     }
@@ -124,11 +125,14 @@ std::pair<ContractVerifierPostCallPass::CallStatus,bool> mergePostCallStat(Contr
 ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error) {
     IterTypePostCall data = { {}, {}, cOP->Function, nullptr, cOP->Params, isTag, Tags };
 
+    ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPostCallPass::transferPostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPostCallPass::mergePostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+
     for (const User* U : C.F->users()) {
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledFunction() == C.F) {
                 data.callsite = CB;
-                std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transferPostCallStat, mergePostCallStat, &data, CallStatus::NOTCALLED);
+                std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transfer, merge, &data, CallStatus::NOTCALLED);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 for (std::pair<const Instruction *, CallStatus> x : AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getParent()->getParent()->getName() == "main" && x.second == CallStatus::NOTCALLED) {

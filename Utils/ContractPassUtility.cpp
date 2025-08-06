@@ -11,14 +11,20 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <optional>
 #include <sys/types.h>
 #include <vector>
+
+#include "dsa/DSSupport.h"
+#include "dsa/Steensgaard.hh"
+#include "dsa/DSGraph.h"
 
 using namespace llvm;
 
@@ -155,21 +161,14 @@ bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag
     }
 }
 
-bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc) {
+bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM) {
     const Value* source = contrP;
     const Value* target = callP;
+    Module* M = dyn_cast<Instruction>((Value*)contrP)->getModule();
+    std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*M);
+    //steens->writeGraphToFile(errs(), "graph");
     int diff = 0;
-    // Resolve function differences.
-    // If one is a global, this does not matter, so check if they are instructions first
-    if (isa<Instruction>(source) && isa<Instruction>(target)) {
-        const Function* Fs = {dyn_cast<Instruction>(source)->getParent()->getParent()};
-        const Function* Ft = {dyn_cast<Instruction>(target)->getParent()->getParent()};
-        if (Fs != Ft) {
-            // Definitely different functions
-            diff = resolveFunctionDifference(&source, &target);
-            if (diff == INT_MAX) return false;
-        }
-    }
+
     switch (acc) {
         case ContractTree::ParamAccess::NORMAL:
             if (diff != 0) return false; // Interproc with load inside
@@ -189,26 +188,18 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
             else if (diff != 1) return false;
             break;
     }
-    // Now, need to check if they are equal / aliases
-    while (true) {
-        // If either is null, paramerror or if one does not have a pointer operand, then they can not match
-        if (!source || !target) return false;
-        // If equal, success
-        if (source == target) return true;
-        // If one is a GEP, resolve "for free"
-        if (isa<GetElementPtrInst>(source))
-            source = getPointerOperand(source);
-        if (isa<GetElementPtrInst>(target))
-            target = getPointerOperand(target);
-        // Check again, may be equal if synchronized already (i.e. stack array)
-        if (source == target) return true;
-        // Get their ptr operands if they exist and check again
-        source = getPointerOperand(source);
-        target = getPointerOperand(target);
+
+    if (source == target) return true;
+
+    if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
+        DSNodeHandle sourceNode = steens->getNodeForValue(source);
+        DSNodeHandle targetNode = steens->getNodeForValue(target);
+        return sourceNode == targetNode;
     }
+    return false;
 }
 
-bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags, ModuleAnalysisManager* MAM) {
     std::vector<const Value*> candidateParams;
     const Value* sourceParam = Source->getArgOperand(P.contrP);
 
@@ -225,7 +216,7 @@ bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const
     }
 
     for (const Value* candidateParam : candidateParams) {
-        return checkParamMatch(sourceParam, candidateParam, P.contrParamAccess);
+        return checkParamMatch(sourceParam, candidateParam, P.contrParamAccess, MAM);
     }
     return false;
 }
