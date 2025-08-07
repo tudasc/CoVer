@@ -44,3 +44,11 @@ Some possible methods in order of recommendation:
 ## Adding Analyses
 
 TODO
+
+## Runtime Analysis
+
+To perform runtime analysis, the code must be instrumented.
+This can be done by passing the option `--instrument-contracts` to the CoVer compile wrapper.
+
+Then, launch the program using the `CoVerDynamicLauncher` executable, for example: `CoVerDynamicLauncher -- ./a.out`.
+To prefix a launch wrapper such as `mpiexec`, use `CoVerDynamicLauncher --launcher "mpiexec -np 2" -- ./a.out`.
