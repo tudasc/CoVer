@@ -2,7 +2,7 @@
 
 #include "BaseAnalysis.h"
 #include "DynamicAnalysis.h"
-#include <map>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -19,12 +19,12 @@ struct ReleaseAnalysis : BaseAnalysis {
         void* forbiddenOp;
         int64_t forbidden_kind;
         std::string target_str_forb; // Either tag str or func str
-        std::set<void*> forb_funcs;
+        std::unordered_set<void*> forb_funcs;
         std::vector<CallParam_t*> params_forb;
         std::string target_str_rel; // Either tag str or func str
-        std::set<void*> rel_funcs;
+        std::unordered_set<void*> rel_funcs;
         std::vector<CallParam_t*> params_release; // Required parameters
 
         // Analysis temporaries
-        std::map<void*, std::vector<CallsiteParams>> forbiddenCallsites;
+        std::unordered_map<void*, std::vector<CallsiteParams>> forbiddenCallsites;
 };
