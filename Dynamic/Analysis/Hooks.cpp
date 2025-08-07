@@ -1,8 +1,9 @@
 #include <algorithm>
 #include <iostream>
-#include <map>
 #include <memory>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <cstdarg>
 
@@ -15,12 +16,16 @@
 
 ContractDB_t* DB = nullptr;
 
+struct ErrorMessage {
+    std::vector<std::string> msg;
+    std::vector<ErrorMessage> child_msg;
+};
 
+std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
-std::map<void*, std::vector<Contract_t>> contrs;
-std::map<void*, std::string> interesting_funcs;
-
-std::map<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analyses;
+std::unordered_map<ContractFormula_t*,Fulfillment> contract_status;
+std::unordered_map<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analyses;
+std::unordered_set<void*> called_funcs;
 
 void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_supplier) {
     if (form->num_children == 0) {
@@ -43,6 +48,84 @@ void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_suppl
         }
     } else {
         for (int i = 0; i < form->num_children; i++) recurseCreateAnalyses(&form->children[i], isPre, func_supplier);
+    }
+}
+
+ErrorMessage recurseResolveFormula(ContractFormula_t* form) {
+    if (form->num_children == 0) {
+        if (contract_status[form] == Fulfillment::FULFILLED) return {};
+        switch (form->conn) {
+            case UNARY_CALL:
+            case UNARY_CALLTAG: {
+                CallTagOp_t* cOP = (CallTagOp_t*)form->data;
+                return {{std::string("Operation Message (if defined): ") + form->msg,
+                              std::string("Did not find call to ") + cOP->target_tag}, {}};
+            }
+            case UNARY_RELEASE: {
+                ReleaseOp_t* rOP = (ReleaseOp_t*)form->data;
+                return {{std::string("Operation Message (if defined): ") + form->msg,
+                              std::string("Found forbidden operation!")}, {}};
+            }
+            default: return {{"UNEXPECTED OPERATION IN RESOLVE STEP"}, {}};
+        }
+    }
+    std::vector<ErrorMessage> child_msg;
+    for (int i = 0; i < form->num_children; i++) {
+        child_msg.push_back(recurseResolveFormula(&form->children[i]));
+    }
+    switch (form->conn) {
+        case AND: {
+            bool all_success = std::all_of(child_msg.begin(), child_msg.end(), [](ErrorMessage const& err) { return err.msg.empty(); });
+            if (all_success) return {{}, child_msg};
+            else return {{std::string("A child is not satisfied for Formula: ") + form->msg}, child_msg};
+        }
+        case OR: {
+            bool any_success = std::any_of(child_msg.begin(), child_msg.end(), [](ErrorMessage const& err) { return err.msg.empty(); });
+            if (any_success) return {{}, child_msg};
+            else return {{std::string("No child satisfied for Formula: ") + form->msg}, child_msg};
+        }
+        case XOR: {
+            bool found = false;
+            for (ErrorMessage const& cmsg : child_msg) {
+                if (cmsg.msg.empty()) {
+                    if (found) return {{std::string("More than one child satisfied for Formula: ") + form->msg}, child_msg};
+                    found = true;
+                }
+            }
+            if (!found) return {{std::string("No child satisfied for Formula: ") + form->msg}, child_msg};
+            return {{}, child_msg};
+        }
+        default: return {{"UNEXPECTED CONNECTIVE IN RESOLVE STEP"}, {}};
+    }
+}
+
+void formatError(ErrorMessage msg, int indent = 2) {
+    if (msg.msg.empty()) return;
+    std::string indent_s(indent, ' ');
+    for (std::string const& line : msg.msg)
+        DynamicUtils::out() << indent_s << "- " << line << "\n";
+    for (ErrorMessage child : msg.child_msg) {
+        formatError(child, indent + 2);
+    }
+}
+
+void resolveContracts() {
+    for (std::pair<void*, std::vector<Contract_t>> contract : contrs) {
+        if (!called_funcs.contains(contract.first)) continue;
+        for (Contract_t C : contract.second) {
+            ErrorMessage errors_precond = C.precondition ? recurseResolveFormula(C.precondition) : ErrorMessage{};
+            ErrorMessage errors_postcond = C.postcondition ? recurseResolveFormula(C.postcondition) : ErrorMessage{};
+            if (errors_precond.msg.empty() && errors_postcond.msg.empty()) continue;
+            DynamicUtils::out() << "Error in contract for function \"" << C.function_name << "\":\n";
+            if (!errors_precond.msg.empty()) {
+                DynamicUtils::out() << "  Precondition:\n";
+                formatError(errors_precond);
+            }
+            if (!errors_postcond.msg.empty()) {
+                DynamicUtils::out() << "  Precondition:\n";
+                formatError(errors_postcond);
+            }
+        }
     }
 }
 
@@ -70,6 +153,8 @@ void PPDCV_Initialize(ContractDB_t* _DB) {
 }
 
 void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
+    called_funcs.insert(function);
+
     CallsiteParams callsite_params;
     std::va_list list;
     va_start(list, num_params);
@@ -88,17 +173,13 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
         }
     }
     va_end(list);
-    if (!interesting_funcs.contains(function)) {
-        std::cerr << "[MUST-CV] Instrumentation exists for unknown function!\n";
-        return;
-    }
 
     // Run event handlers and remove analysis if done
     std::erase_if(
         analyses,
         [&](std::pair<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analysis) {
             Fulfillment f = analysis.first->onFunctionCall(__builtin_return_address(0), function, callsite_params);
-            if (f == Fulfillment::VIOLATED) DynamicUtils::createMessage("Error for: " + std::string(analysis.second->msg));
+            if (f != Fulfillment::UNKNOWN) contract_status[analysis.second] = f;
             return f != Fulfillment::UNKNOWN;
         }
     );
@@ -109,7 +190,7 @@ void PPDCV_MemCallback(int64_t isWrite, void* buf) {
         analyses,
         [&](std::pair<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analysis) {
             Fulfillment f = analysis.first->onMemoryAccess(__builtin_return_address(0), buf, isWrite);
-            if (f == Fulfillment::VIOLATED) DynamicUtils::createMessage("Error for: " + std::string(analysis.second->msg));
+            if (f != Fulfillment::UNKNOWN) contract_status[analysis.second] = f;
             return f != Fulfillment::UNKNOWN;
         }
     );
@@ -120,7 +201,7 @@ extern "C" __attribute__((destructor)) void PPDCV_destructor() {
     std::cout << "CoVer-Dynamic: Analysis finished.\n";
     for (std::pair<std::shared_ptr<BaseAnalysis>,ContractFormula_t*> analysis : analyses) {
         Fulfillment f = analysis.first->onProgramExit(__builtin_return_address(0));
-        if (f == Fulfillment::VIOLATED)
-            DynamicUtils::createMessage("Error on program exit: " + std::string(analysis.second->msg));
+        contract_status[analysis.second] = f;
     }
+    resolveContracts();
 }

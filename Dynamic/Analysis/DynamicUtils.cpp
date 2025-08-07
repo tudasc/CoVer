@@ -1,16 +1,16 @@
 #include "DynamicUtils.h"
 
 #include <iostream>
-#include <map>
 #include <ostream>
-#include <set>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 
 #include "DynamicAnalysis.h"
 
 namespace DynamicUtils {
-    std::map<void*, std::set<Tag_t*>> func_to_tags;
-    std::map<std::string, std::set<void*>> tags_to_func;
+    std::unordered_map<void*, std::unordered_set<Tag_t*>> func_to_tags;
+    std::unordered_map<std::string, std::unordered_set<void*>> tags_to_func;
 
     void Initialize(ContractDB_t* DB) {
         // Initialize Tags
@@ -35,27 +35,30 @@ namespace DynamicUtils {
         }
     }
 
-    std::set<void*> getFunctionsForTag(std::string tag) {
+    std::unordered_set<void*> getFunctionsForTag(std::string tag) {
         if (tags_to_func.contains(tag))
             return tags_to_func[tag];
         return {};
     }
 
-    std::set<Tag_t*> getTagsForFunction(void* func) {
+    std::unordered_set<Tag_t*> getTagsForFunction(void* func) {
         if (func_to_tags.contains(func))
             return func_to_tags[func];
         return {};
     }
 
     void createMessage(std::string msg) {
-        std::cerr << "CoVer-Dynamic: " << msg << "\n";
+        out() << msg << "\n";
         std::flush(std::cerr);
+    }
+    std::ostream& out() {
+        return std::cerr << "CoVer-Dynamic: ";
     }
 
     bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteParams callParams, CallsiteParams contrParams, std::string target_str) {
         for (CallParam_t* param : params_expect) {
             if (param->callPisTagVar) {
-                std::set<Tag_t*> tags = DynamicUtils::getTagsForFunction(callF);
+                std::unordered_set<Tag_t*> tags = DynamicUtils::getTagsForFunction(callF);
                 for (Tag_t* tag : tags) {
                     if (tag->tag != target_str) continue;
                     if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP].val, callParams[tag->param].val))

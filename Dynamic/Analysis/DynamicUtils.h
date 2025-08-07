@@ -1,8 +1,8 @@
 #pragma once
 
 #include "DynamicAnalysis.h"
-#include <map>
-#include <set>
+#include <ostream>
+#include <unordered_set>
 #include <string>
 #include <vector>
 
@@ -23,11 +23,14 @@ namespace DynamicUtils {
     bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteParams callParams, CallsiteParams contrParams, std::string target_str);
 
     // Resolve tag to possible functions
-    std::set<void*> getFunctionsForTag(std::string tag);
+    std::unordered_set<void*> getFunctionsForTag(std::string tag);
 
     // Resolve function to possible tags
-    std::set<Tag_t*> getTagsForFunction(void* func);
+    std::unordered_set<Tag_t*> getTagsForFunction(void* func);
 
     // Report something
     void createMessage(std::string msg);
+
+    // Report something (ostream)
+    std::ostream& out();
 }

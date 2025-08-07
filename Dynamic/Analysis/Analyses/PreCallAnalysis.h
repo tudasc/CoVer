@@ -2,8 +2,8 @@
 
 #include "BaseAnalysis.h"
 #include "DynamicAnalysis.h"
-#include <map>
-#include <set>
+#include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <vector>
 
@@ -20,8 +20,8 @@ struct PreCallAnalysis : BaseAnalysis {
         void* func_supplier;
         std::string target_str; // Either tag str or func str
         std::vector<CallParam_t*> params; // Required parameters
-        std::set<void*> target_funcs;
+        std::unordered_set<void*> target_funcs;
 
         // Analysis temporaries
-        std::map<void*, std::vector<CallsiteParams>> possible_matches;
+        std::unordered_map<void*, std::vector<CallsiteParams>> possible_matches;
 };
