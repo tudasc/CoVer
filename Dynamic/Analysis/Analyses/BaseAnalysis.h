@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../DynamicUtils.h"
+#include <unordered_set>
 
 enum struct Fulfillment { FULFILLED, UNKNOWN, VIOLATED };
 
@@ -13,4 +14,7 @@ class BaseAnalysis {
         virtual Fulfillment onFunctionCall(void* location, void* func, CallsiteParams params) { return Fulfillment::UNKNOWN; };
         virtual Fulfillment onMemoryAccess(void* location, void* memory, bool isWrite) { return Fulfillment::UNKNOWN; };
         virtual Fulfillment onProgramExit(void* location) { return Fulfillment::FULFILLED; };
+
+        // For debugging and error output
+        virtual std::unordered_set<void*> getReferences() { return {}; };
 };

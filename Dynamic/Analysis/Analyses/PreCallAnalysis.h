@@ -12,6 +12,7 @@ struct PreCallAnalysis : BaseAnalysis {
         PreCallAnalysis(void* func_supplier, CallOp_t* callop);
         PreCallAnalysis(void* func_supplier, CallTagOp_t* callop);
         virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteParams params) override;
+        virtual std::unordered_set<void*> getReferences() override { return references; };
 
     private:
         void SharedInit(void* _func_supplier, const char* target_str, CallParam_t *params, int64_t num_params);
@@ -24,4 +25,6 @@ struct PreCallAnalysis : BaseAnalysis {
 
         // Analysis temporaries
         std::unordered_map<void*, std::vector<CallsiteParams>> possible_matches;
+
+        std::unordered_set<void*> references;
 };

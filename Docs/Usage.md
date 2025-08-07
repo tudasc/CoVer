@@ -52,3 +52,4 @@ This can be done by passing the option `--instrument-contracts` to the CoVer com
 
 Then, launch the program using the `CoVerDynamicLauncher` executable, for example: `CoVerDynamicLauncher -- ./a.out`.
 To prefix a launch wrapper such as `mpiexec`, use `CoVerDynamicLauncher --launcher "mpiexec -np 2" -- ./a.out`.
+This is required as otherwise the `addr2line` functionality fails, and file references are unable to be reported.

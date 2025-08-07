@@ -1,12 +1,37 @@
 #include "DynamicUtils.h"
 
+#include <cstdint>
+#include <cstdlib>
+#include <dlfcn.h>
+#include <ios>
 #include <iostream>
 #include <ostream>
+#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <array>
 
 #include "DynamicAnalysis.h"
+
+namespace {
+    std::string exec(std::string const& cmd) {
+        std::array<char, 128> buffer;
+        std::string result;
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) {
+            DynamicUtils::createMessage("popen() failed! File references will be broken");
+        }
+        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+            result += buffer.data();
+        }
+        int ret = WEXITSTATUS(pclose(pipe));
+        if (ret != 0) {
+            exit(ret);
+        }
+        return result;
+    }
+}
 
 namespace DynamicUtils {
     std::unordered_map<void*, std::unordered_set<Tag_t*>> func_to_tags;
@@ -24,7 +49,7 @@ namespace DynamicUtils {
         }
     }
 
-    bool checkParamMatch(ParamAccess acc, void* contrP, void* callP) {
+    bool checkParamMatch(ParamAccess acc, void const* contrP, void const* callP) {
         switch (acc) {
             case ParamAccess::NORMAL:
                 return contrP == callP;
@@ -70,5 +95,30 @@ namespace DynamicUtils {
             }
         }
         return false;
+    }
+
+    std::string getFileReference(void const* location) {
+        std::string filename = std::getenv("COVER_DYNAMIC_FILENAME");
+        std::stringstream exec_cmd;
+        Dl_info info;
+        if (!dladdr(location, &info)) {
+            return "dladdr failure!";
+        }
+        intptr_t resolvedLocation = (intptr_t)location;
+        if ((intptr_t)info.dli_fbase != (intptr_t)0x400000) {
+            // if the filebase is not 0x400000, we have an VMA offset that we have to subtract
+            // otherwise, it is a PIE so we can just use the codePtr
+            // Additionally, subtract 1 to get from return address to call
+            location = (void*)((intptr_t)location - (intptr_t)info.dli_fbase);
+        }
+#ifdef CMAKE_ADDR2LINE
+        exec_cmd << CMAKE_ADDR2LINE " -e " << filename << " " << std::hex << location;
+        std::string result = exec(exec_cmd.str());
+        result.pop_back();
+#else
+        exec_cmd << filename << std::hex << "[" << location << "] (Cannot resolve: No addr2line support configured)\n";
+        std::string result = exec_cmd.str();
+#endif
+        return result;
     }
 }
