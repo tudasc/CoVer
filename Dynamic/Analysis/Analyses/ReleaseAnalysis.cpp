@@ -49,8 +49,10 @@ Fulfillment ReleaseAnalysis::onMemoryAccess(void* location, void* memory, bool i
 
     if (rwOp->isWrite == isWrite) {
         for (std::pair<void *, std::vector<CallsiteParams>> callsite : forbiddenCallsites) {
-            for (CallsiteParams sup_params : callsite.second) {
+            for (CallsiteParams const& sup_params : callsite.second) {
                 if (DynamicUtils::checkParamMatch(rwOp->accType, &sup_params[rwOp->idx].val, memory)) {
+                    references.insert(location);
+                    references.insert(callsite.first);
                     return Fulfillment::VIOLATED;
                 }
             }
@@ -85,13 +87,17 @@ Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, Callsite
     // Check if forbidden
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
+            references.insert(location);
+            for (std::pair<void *, std::vector<CallsiteParams>>  const& callsite : forbiddenCallsites) references.insert(callsite.first);
             return Fulfillment::VIOLATED;
         }
 
         // Check if a callsite is violated
-        for (auto callsite_iter = forbiddenCallsites.begin(); callsite_iter != forbiddenCallsites.end(); callsite_iter++) {
-            for (CallsiteParams supplier_params : callsite_iter->second) {
+        for (std::pair<void *, std::vector<CallsiteParams>> const& callsite : forbiddenCallsites) {
+            for (CallsiteParams supplier_params : callsite.second) {
                 if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite_params, supplier_params, target_str_forb)) {
+                    references.insert(location);
+                    references.insert(callsite.first);
                     return Fulfillment::VIOLATED;
                 }
             }
@@ -101,7 +107,7 @@ Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, Callsite
     // Finally, check if supplier.
     // Needs to be done after check for forbidden, so that new supplier is not accidentally checked against itself
     if (func == func_supplier) {
-        forbiddenCallsites[func].push_back(callsite_params);
+        forbiddenCallsites[location].push_back(callsite_params);
     }
 
     // Irrelevant function

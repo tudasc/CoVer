@@ -4,6 +4,7 @@
 #include <string>
 
 std::string launcher;
+std::string executable;
 std::string exec_str;
 
 void printHelp() {
@@ -29,13 +30,15 @@ int main(int argc, const char** argv) {
         } else if (arg == "--launcher") {
             launcher = all_args[++i];
         } else if (arg == "--") {
-            for (i++; i < all_args.size(); i++) {
+            executable = all_args[++i];
+            for (; i < all_args.size(); i++) {
                 exec_str += all_args[i] + " ";
             }
         }
     }
 
     setenv("LD_PRELOAD", "@COVER_DYNAMIC_ANALYSER_PATH@", 1);
+    setenv("COVER_DYNAMIC_FILENAME", executable.c_str(), 1);
     std::system((launcher + " " + exec_str).c_str());
 
 

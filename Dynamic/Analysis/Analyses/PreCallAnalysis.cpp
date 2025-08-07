@@ -31,6 +31,7 @@ Fulfillment PreCallAnalysis::onFunctionCall(void* location, void* func, Callsite
         // Contract supplier found, need to resolve now
         if (possible_matches.empty()) {
             // No matches, verification failed
+            references.insert(location);
             return Fulfillment::VIOLATED;
         }
 
@@ -38,10 +39,15 @@ Fulfillment PreCallAnalysis::onFunctionCall(void* location, void* func, Callsite
         if (params.empty()) return Fulfillment::FULFILLED;
         for (std::pair<void*,std::vector<CallsiteParams>> possible_match : possible_matches) {
             for (CallsiteParams match_params : possible_match.second) {
-                if (DynamicUtils::checkFuncCallMatch(possible_match.first, params, match_params, callsite_params, target_str))
+                if (DynamicUtils::checkFuncCallMatch(possible_match.first, params, match_params, callsite_params, target_str)) {
+                    // Success!
                     return Fulfillment::FULFILLED;
+                }
             }
         }
+
+        // Nothing matched
+        references.insert(location);
         return Fulfillment::VIOLATED;
     }
 
