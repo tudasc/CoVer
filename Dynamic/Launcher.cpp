@@ -1,6 +1,5 @@
 #include <cstdio>
 #include <cstdlib>
-#include <iostream>
 #include <vector>
 #include <string>
 
@@ -8,8 +7,8 @@ std::string launcher;
 std::string exec_str;
 
 void printHelp() {
-    printf("CoVerDynamic is a dynamic contract verifier for CoVer contracts");
-    printf("\n\nUsage: CoVerDynamic [--launcher <arg>] -- <CoVer-instrumented executable>");
+    printf("CoVerDynamicLauncher is a dynamic contract verifier for CoVer contracts");
+    printf("\n\nUsage: CoVerDynamicLauncher [--launcher <arg>] -- <CoVer-instrumented executable>");
     printf("\n\t--help: Print this help text and exit");
     printf("\n\t--launcher: Specify a program launcher such as mpiexec, oshrun");
     printf("\n\n");
