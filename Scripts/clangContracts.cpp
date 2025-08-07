@@ -9,10 +9,10 @@
 #include <utility>
 #include <vector>
 
-enum ExecKind { NORMAL, VERBOSE, DRY };
-ExecKind cur_execkind = NORMAL;
-enum LinkKind { LINK, ONLY_COMPILE, ONLY_PREPROCESS };
-LinkKind cur_linkkind = LINK;
+enum struct ExecKind { NORMAL, VERBOSE, DRY };
+ExecKind cur_execkind = ExecKind::NORMAL;
+enum struct LinkKind { LINK, ONLY_COMPILE, ONLY_PREPROCESS };
+LinkKind cur_linkkind = LinkKind::LINK;
 
 std::string dest_arg;
 std::string opt_level;
@@ -33,6 +33,9 @@ std::vector<std::string> source_file_names;
 
 std::string opt_flags = "";
 
+enum struct Instrumentation { NONE, FULL };
+Instrumentation instr_level;
+
 std::string exec(std::string const& cmd) {
     std::array<char, 128> buffer;
     std::string result;
@@ -52,11 +55,11 @@ std::string exec(std::string const& cmd) {
 
 void execSafe(std::string const& cmd) {
     switch (cur_execkind) {
-        case VERBOSE:
-        case DRY:
-            std::cout << "Wrapper " << (cur_execkind == VERBOSE ? "is executing: " : "would execute: ") << cmd << "\n";
-            if (cur_execkind == DRY) break;
-        case NORMAL:
+        case ExecKind::VERBOSE:
+        case ExecKind::DRY:
+            std::cout << "Wrapper " << (cur_execkind == ExecKind::VERBOSE ? "is executing: " : "would execute: ") << cmd << "\n";
+            if (cur_execkind == ExecKind::DRY) break;
+        case ExecKind::NORMAL:
             std::cout << exec(cmd);
             break;
     }
@@ -65,9 +68,10 @@ void execSafe(std::string const& cmd) {
 void printHelp() {
     printf("@EXECUTABLE_WRAPPER_NAME@ is a compiler wrapper to utilize CoVer");
     printf("\nRequires LLVM >= @LLVM_VERSION_MIN@.");
-    printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] [--predefined-contracts] [--allow-multireports] <compiler-params>");
+    printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] [--predefined-contracts] [--allow-multireports] [--instrument-contracts] <compiler-params>");
     printf("\n\t--help: Print this help text and exit");
     printf("\n\t--dry-run: Only show the commands that would be run, but do not perform any");
+    printf("\n\t--instrument-contracts: Perform instrumentation for runtime analysis");
     printf("\n\t--verbose: Print commands to be executed");
     printf("\n\t--wrap-target: Set the compiler to wrap around");
     printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions using the -include flag");
@@ -85,11 +89,13 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             printHelp();
             exit(0);
         } else if (arg == "--dry-run") {
-            cur_execkind = DRY;
+            cur_execkind = ExecKind::DRY;
         } else if (arg == "--verbose") {
-            cur_execkind = VERBOSE;
+            cur_execkind = ExecKind::VERBOSE;
         } else if (arg == "--wrap-target") {
             wrap_target = all_args[++i];
+        } else if (arg == "--instrument-contracts") {
+            instr_level = Instrumentation::FULL;
         } else if (arg == "--allow-multireports") {
             opt_flags += " -cover-allow-multireports=1";
         } else if (arg.starts_with("--generate-json-report")) {
@@ -108,9 +114,9 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
         } else if (arg == "-o") {
             dest_arg = " " + arg + " " + all_args[++i];
         } else if (arg == "-c") {
-            cur_linkkind = ONLY_COMPILE;
+            cur_linkkind = LinkKind::ONLY_COMPILE;
         } else if (arg == "-E") {
-            cur_linkkind = ONLY_PREPROCESS;
+            cur_linkkind = LinkKind::ONLY_PREPROCESS;
         } else if (std::regex_match(arg, link_file_ending)) {
             rem_args_link += " " + arg;
         } else if (std::regex_match(arg, obj_file_ending)) {
@@ -168,23 +174,24 @@ int main(int argc, const char** argv) {
     // Generate IR for source files
     std::string bitcode_files;
     if (!source_file_paths.empty()) {
-        execSafe(wrap_target + " -fPIC -g " + (cur_linkkind < ONLY_PREPROCESS ? "-c" : "-E") + " -emit-llvm -Xclang -disable-O0-optnone -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LINK ? dest_arg : ""));
+        std::string common_options = " -fPIC -g -emit-llvm -Xclang -disable-O0-optnone ";
+        execSafe(wrap_target + common_options + (cur_linkkind < LinkKind::ONLY_PREPROCESS ? "-c" : "-E") + " -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LinkKind::LINK ? dest_arg : ""));
 
-        if (cur_linkkind == ONLY_COMPILE && dest_arg.empty()) {
+        if (cur_linkkind == LinkKind::ONLY_COMPILE && dest_arg.empty()) {
             // No output dir, but want "object" files. Rename generated .ll to .o
             for (std::string file : source_file_names) {
                 std::filesystem::rename(file + ".bc", file + ".o");
             }
-        } else if (cur_linkkind == LINK) {
+        } else if (cur_linkkind == LinkKind::LINK) {
             // Linking, so move bitcode files to tmp dir
             for (std::string file : source_file_names) {
                 std::string source = file + ".bc";
                 std::string destination = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
                 int fd = mkstemp(destination.data());
-                if (cur_execkind == DRY) [[unlikely]] {
+                if (cur_execkind == ExecKind::DRY) [[unlikely]] {
                     std::cout << "Would move: " << source << " to " << destination << "\n";
                 } else {
-                    if (cur_execkind == VERBOSE) std::cout << "Moving: " << source << " to " << destination << "\n";
+                    if (cur_execkind == ExecKind::VERBOSE) std::cout << "Moving: " << source << " to " << destination << "\n";
                     // Cannot use rename, because it is on other fs. Copy-delete instead
                     std::filesystem::copy_file(source, destination, std::filesystem::copy_options::overwrite_existing);
                     std::filesystem::remove(source);
@@ -196,14 +203,20 @@ int main(int argc, const char** argv) {
     }
 
     // If not linking, return early
-    if (cur_linkkind != LINK) return 0;
+    if (cur_linkkind != LinkKind::LINK) return 0;
 
     // Perform link and analysis steps
     std::string tmpfile = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
     int fd = mkstemp(tmpfile.data());
     execSafe("llvm-link" + bitcode_files + llvmlink_obj_files + " -o " + tmpfile);
-    execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess,instrumentContracts' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
+
+    // Call LLVM passes
+    std::string passlist = "contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
+    if (instr_level > Instrumentation::NONE) passlist += ",instrumentContracts";
+    execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
+
+    // Finalize executable
     execSafe("llc -filetype=obj --relocation-model=pic" + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
     execSafe(wrap_target + " -fPIC -lm -ldl -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o" + dest_arg);
     return 0;
