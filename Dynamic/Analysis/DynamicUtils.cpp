@@ -24,45 +24,6 @@ namespace DynamicUtils {
         }
     }
 
-    std::map<void*,std::string> recurseGetFunctions(ContractFormula_t contr) {
-        std::map<void*,std::string> ret;
-        for (int i = 0; i < contr.num_children; i++) {
-            std::map<void*,std::string> new_funcs = recurseGetFunctions(contr.children[i]);
-            ret.insert(new_funcs.begin(), new_funcs.end());
-        }
-        if (contr.num_children == 0) {
-            switch (contr.conn) {
-                case UNARY_CALL: {
-                    CallOp_t* op = (CallOp_t*)contr.data;
-                    ret[op->target_function] = op->function_name;
-                    break;
-                }
-                case UNARY_CALLTAG: {
-                    #warning TODO
-                    break;
-                }
-                case UNARY_RELEASE: {
-                    ReleaseOp_t* op = (ReleaseOp_t*)contr.data;
-                    ContractFormula_t forbidden = {NULL, 0, (ContractConnective)op->forbidden_op_kind, NULL, op->forbidden_op};
-                    std::map<void*, std::string> forbidden_res = recurseGetFunctions(forbidden);
-                    ContractFormula_t until = {NULL, 0, (ContractConnective)op->release_op_kind, NULL, op->release_op};
-                    std::map<void*, std::string> until_res = recurseGetFunctions(until);
-                    ret.insert(forbidden_res.begin(), forbidden_res.end());
-                    ret.insert(until_res.begin(), until_res.end());
-                    break;
-                }
-                case UNARY_READ:
-                case UNARY_WRITE:
-                    // No additional functions
-                    break;
-                default:
-                    std::cerr << "Unhandled expression type: " << contr.conn << "\n";
-                    break;
-            }
-        }
-        return ret;
-    }
-
     bool checkParamMatch(ParamAccess acc, void* contrP, void* callP) {
         switch (acc) {
             case ParamAccess::NORMAL:

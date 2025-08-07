@@ -57,19 +57,12 @@ void PPDCV_Initialize(ContractDB_t* _DB) {
         void* function = DB->contracts[i].function;
         if (!contrs.contains(function)) contrs[function] = {};
         contrs[function].push_back(DB->contracts[i]);
-        std::map<void*,std::string> new_funcs_pre;
-        std::map<void*,std::string> new_funcs_post;
         if (DB->contracts[i].precondition) {
-            new_funcs_pre = DynamicUtils::recurseGetFunctions(*DB->contracts[i].precondition);
             recurseCreateAnalyses(DB->contracts[i].precondition, true, function);
         }
         if (DB->contracts[i].postcondition) {
-            new_funcs_post = DynamicUtils::recurseGetFunctions(*DB->contracts[i].postcondition);
             recurseCreateAnalyses(DB->contracts[i].postcondition, false, function);
         }
-        interesting_funcs.insert(new_funcs_pre.begin(), new_funcs_pre.end());
-        interesting_funcs.insert(new_funcs_post.begin(), new_funcs_post.end());
-        interesting_funcs[function] = DB->contracts[i].function_name;
     }
 
     DynamicUtils::createMessage("Finished Initializing!");
