@@ -54,5 +54,8 @@ Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, Callsit
 }
 
 Fulfillment PostCallAnalysis::onProgramExit(void* location) {
+    for (std::pair<void *, std::vector<CallsiteParams>> callsite : uncheckedCallsites) {
+        references.insert(callsite.first);
+    }
     return uncheckedCallsites.empty() ? Fulfillment::FULFILLED : Fulfillment::VIOLATED;
 }

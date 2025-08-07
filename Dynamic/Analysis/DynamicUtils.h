@@ -17,7 +17,7 @@ namespace DynamicUtils {
     void Initialize(ContractDB_t* DB);
 
     // Check if two parameters match
-    bool checkParamMatch(ParamAccess acc, void* contrP, void* callP);
+    bool checkParamMatch(ParamAccess acc, void const* contrP, void const* callP);
 
     // Check if function call matches
     bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteParams callParams, CallsiteParams contrParams, std::string target_str);
@@ -33,4 +33,7 @@ namespace DynamicUtils {
 
     // Report something (ostream)
     std::ostream& out();
+
+    // Resolve loc ptr to printable string
+    std::string getFileReference(void* location);
 }

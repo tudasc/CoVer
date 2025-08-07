@@ -3,6 +3,7 @@
 #include "BaseAnalysis.h"
 #include "DynamicAnalysis.h"
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <vector>
 
@@ -11,6 +12,7 @@ struct ReleaseAnalysis : BaseAnalysis {
         ReleaseAnalysis(void* func_supplier, ReleaseOp_t* rOP);
         virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteParams params) override;
         virtual Fulfillment onMemoryAccess(void* location, void* memory, bool isWrite) override;
+        virtual std::unordered_set<void*> getReferences() override { return references; };
 
     private:
         // Configuration
@@ -27,4 +29,6 @@ struct ReleaseAnalysis : BaseAnalysis {
 
         // Analysis temporaries
         std::unordered_map<void*, std::vector<CallsiteParams>> forbiddenCallsites;
+
+        std::unordered_set<void*> references;
 };
