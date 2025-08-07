@@ -15,9 +15,6 @@ using CallsiteParams = std::vector<ConcreteParam>;
 namespace DynamicUtils {
     // Initialize Utils
     void Initialize(ContractDB_t* DB);
-    
-    // Get all functions referenced in a contract
-    std::map<void*,std::string> recurseGetFunctions(ContractFormula_t contr);
 
     // Check if two parameters match
     bool checkParamMatch(ParamAccess acc, void* contrP, void* callP);
