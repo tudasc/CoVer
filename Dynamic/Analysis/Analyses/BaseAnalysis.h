@@ -1,6 +1,5 @@
 #pragma once
 
-#include <vector>
 #include "../DynamicUtils.h"
 
 enum struct Fulfillment { FULFILLED, UNKNOWN, VIOLATED };
