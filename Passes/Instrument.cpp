@@ -3,7 +3,6 @@
 #include "ContractTree.hpp"
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/ArrayRef.h>
-#include <llvm/IR/Analysis.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constant.h>
