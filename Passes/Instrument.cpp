@@ -145,7 +145,7 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
     int64_t connective;
     if (form->Children.empty()) {
         // Expression
-        std::shared_ptr<const Operation> OP = dynamic_pointer_cast<ContractExpression>(form)->OP;
+        std::shared_ptr<const Operation> OP = static_pointer_cast<ContractExpression>(form)->OP;
         op_const = createOperationGlobal(M, OP);
         connective = (int64_t)OP->type();
     } else {
@@ -166,7 +166,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
     switch (op->type()) {
         case OperationType::READ:
         case OperationType::WRITE: {
-            std::shared_ptr<const RWOperation> rwOP = dynamic_pointer_cast<const RWOperation>(op);
+            std::shared_ptr<const RWOperation> rwOP = static_pointer_cast<const RWOperation>(op);
             ConstantInt* isWrite = ConstantInt::get(Int_Type, op->type() == OperationType::WRITE);
             ConstantInt* const_paramacc = ConstantInt::get(Int_Type, (int)rwOP->contrParamAccess);
             ConstantInt* const_idx = ConstantInt::get(Int_Type, (int)rwOP->contrP);
@@ -175,7 +175,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             break;
         }
         case OperationType::CALL: {
-            std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(op);
+            std::shared_ptr<const CallOperation> cOP = static_pointer_cast<const CallOperation>(op);
             Function* F = M.getFunction(cOP->Function);
             if (!F) errs() << "Warning: Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module\nThis may cause issues for instrumentation.\n";
             Constant* funcStr = ConstantDataArray::getString(M.getContext(), cOP->Function);
@@ -185,7 +185,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             break;
         }
         case OperationType::CALLTAG: {
-            std::shared_ptr<const CallOperation> cOP = dynamic_pointer_cast<const CallOperation>(op);
+            std::shared_ptr<const CallOperation> cOP = static_pointer_cast<const CallOperation>(op);
             data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), cOP->Function), "CONTR_TAG_STR_" + cOP->Function);
             std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
             data = ConstantStruct::get(CallTagOp_Type, {data, paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
@@ -193,7 +193,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             break;
         }
         case OperationType::RELEASE:
-            std::shared_ptr<const ReleaseOperation> rOP = dynamic_pointer_cast<const ReleaseOperation>(op);
+            std::shared_ptr<const ReleaseOperation> rOP = static_pointer_cast<const ReleaseOperation>(op);
             Constant* forbidden_op = createOperationGlobal(M, rOP->Forbidden);
             Constant* forb_type = ConstantInt::get(Int_Type, (int64_t)rOP->Forbidden->type());
             Constant* release_op = createOperationGlobal(M, rOP->Until);
