@@ -19,6 +19,11 @@
 using namespace llvm;
 using namespace ContractTree;
 
+static cl::opt<std::string> ClPrintJsonReports(
+    "cover-generate-json-report", cl::init(""),
+    cl::desc("Generate JSON report to specified file"),
+    cl::Hidden);
+
 void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const std::vector<std::shared_ptr<ContractFormula>> set, std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons) {
     for (std::shared_ptr<ContractFormula> form : set) {
         if (*form->Status == Fulfillment::FULFILLED) continue;
@@ -147,9 +152,11 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     errs() << s.str();
 
     // Write json to file
-    std::ofstream file("contract_messages.json");
-    file << json_writer.write(json_messages);
-    file.close();
+    if (!ClPrintJsonReports.empty()) {
+        std::ofstream file(ClPrintJsonReports);
+        file << json_writer.write(json_messages);
+        file.close();
+    }
 
     return PreservedAnalyses::all();
 }
