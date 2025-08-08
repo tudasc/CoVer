@@ -61,14 +61,14 @@ ErrorMessage recurseResolveFormula(ContractFormula_t* form) {
             case UNARY_CALL:
             case UNARY_CALLTAG: {
                 CallTagOp_t* cOP = (CallTagOp_t*)form->data;
-                msg.msg = {std::string("Operation Message (if defined): ") + form->msg,
-                              std::string("Did not find call to ") + cOP->target_tag};
+                msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg,
+                           std::string("Did not find call to ") + cOP->target_tag};
                 break;
             }
             case UNARY_RELEASE: {
                 ReleaseOp_t* rOP = (ReleaseOp_t*)form->data;
-                msg.msg = {std::string("Operation Message (if defined): ") + form->msg,
-                              std::string("Found forbidden operation!")};
+                msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg,
+                           std::string("Found forbidden operation!")};
                 break;
             }
             default: return {{"UNEXPECTED OPERATION IN RESOLVE STEP"}, {}};
@@ -86,22 +86,22 @@ ErrorMessage recurseResolveFormula(ContractFormula_t* form) {
         case AND: {
             bool all_success = std::all_of(child_msg.begin(), child_msg.end(), [](ErrorMessage const& err) { return err.msg.empty(); });
             if (all_success) return {{}, child_msg};
-            else return {{std::string("A child is not satisfied for Formula: ") + form->msg}, child_msg};
+            else return {{std::string("A child is not satisfied for Formula (message or contract string): ") + form->msg}, child_msg};
         }
         case OR: {
             bool any_success = std::any_of(child_msg.begin(), child_msg.end(), [](ErrorMessage const& err) { return err.msg.empty(); });
             if (any_success) return {{}, child_msg};
-            else return {{std::string("No child satisfied for Formula: ") + form->msg}, child_msg};
+            else return {{std::string("No child satisfied for Formula (message or contract string): ") + form->msg}, child_msg};
         }
         case XOR: {
             bool found = false;
             for (ErrorMessage const& cmsg : child_msg) {
                 if (cmsg.msg.empty()) {
-                    if (found) return {{std::string("More than one child satisfied for Formula: ") + form->msg}, child_msg};
+                    if (found) return {{std::string("More than one child satisfied for Formula (message or contract string): ") + form->msg}, child_msg};
                     found = true;
                 }
             }
-            if (!found) return {{std::string("No child satisfied for Formula: ") + form->msg}, child_msg};
+            if (!found) return {{std::string("No child satisfied for Formula (message or contract string): ") + form->msg}, child_msg};;
             return {{}, child_msg};
         }
         default: return {{"UNEXPECTED CONNECTIVE IN RESOLVE STEP"}, {}};

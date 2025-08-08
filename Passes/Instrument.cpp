@@ -141,8 +141,8 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
     Constant* op_const = Null_Const;
     Constant* children = Null_Const;
     Constant* msg = Null_Const;
-    if (form->Message)
-        msg = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), form->Message->text), "CONTR_MSG_" + form->Message->text);
+    std::string descriptor = form->Message ? form->Message->text : form->ExprStr;
+    msg = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), descriptor), "CONTR_MSG_" + descriptor);
     int64_t connective;
     if (form->Children.empty()) {
         // Expression
