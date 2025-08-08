@@ -264,6 +264,22 @@ void InstrumentPass::instrumentFunctions(Module &M) {
         insertFunctionInstrCallback(C.F);
     }
 
+    // All functions referenced by name
+    for (ContractManagerAnalysis::LinearizedContract C : DB->LinearizedContracts) {
+        for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
+            if (Expr->OP->type() == OperationType::CALL) {
+                std::shared_ptr<const CallOperation> cOP = std::static_pointer_cast<const CallOperation>(Expr->OP);
+                if (M.getFunction(cOP->Function)) insertFunctionInstrCallback(M.getFunction(cOP->Function));
+            }
+        }
+        for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
+            if (Expr->OP->type() == OperationType::CALL) {
+                std::shared_ptr<const CallOperation> cOP = std::static_pointer_cast<const CallOperation>(Expr->OP);
+                if (M.getFunction(cOP->Function)) insertFunctionInstrCallback(M.getFunction(cOP->Function));
+            }
+        }
+    }
+
     // All functions referenced in tags
     for (std::pair<Function*, std::vector<TagUnit>> tag : DB->Tags) {
         insertFunctionInstrCallback(tag.first);
