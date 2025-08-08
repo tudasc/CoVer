@@ -32,7 +32,7 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     Tags = DB.Tags;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
-        for (const std::shared_ptr<ContractExpression> Expr : C.Pre) {
+        for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a precondition
             std::string err;
