@@ -35,5 +35,5 @@ namespace DynamicUtils {
     std::ostream& out();
 
     // Resolve loc ptr to printable string
-    std::string getFileReference(void* location);
+    std::string getFileReference(void const* location);
 }
