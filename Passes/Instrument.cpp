@@ -294,6 +294,7 @@ void InstrumentPass::instrumentRW(Module &M) {
                 if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
                     Value* V = getLoadStorePointerOperand(&I);
                     CallInst* callbackCI = CallInst::Create(callbackRWCallee, { ConstantInt::get(Int_Type, isa<StoreInst>(I) ? 1 : 0), V});
+                    callbackCI->setDebugLoc(I.getDebugLoc());
                     callbackCI->insertBefore(I.getIterator());
                 }
             }
@@ -331,6 +332,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             params.push_back(U);
         }
         CallInst* callbackCI = CallInst::Create(callbackFuncCallee, params);
+        callbackCI->setDebugLoc(callsite->getDebugLoc());
         callbackCI->insertBefore(callsite->getIterator());
     }
     already_instrumented.insert(F);

@@ -109,7 +109,7 @@ namespace DynamicUtils {
             // if the filebase is not 0x400000, we have an VMA offset that we have to subtract
             // otherwise, it is a PIE so we can just use the codePtr
             // Additionally, subtract 1 to get from return address to call
-            location = (void*)((intptr_t)location - (intptr_t)info.dli_fbase);
+            location = (void*)((intptr_t)location - (intptr_t)info.dli_fbase - 1);
         }
 #ifdef CMAKE_ADDR2LINE
         exec_cmd << CMAKE_ADDR2LINE " -e " << filename << " " << std::hex << location;
