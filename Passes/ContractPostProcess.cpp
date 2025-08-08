@@ -56,12 +56,12 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const st
 Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
     Fulfillment s = Fulfillment::FULFILLED;
     std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons;
-    for (const std::shared_ptr<ContractFormula> Expr : C.Data.Pre) {
+    for (std::shared_ptr<ContractFormula> const& Expr : C.Data.Pre) {
         std::pair<Fulfillment,std::optional<ErrorMessage>> result = resolveFormula(Expr);
         if (result.second) reasons[Expr] = *result.second;
         s = std::max(s, result.first);
     }
-    for (const std::shared_ptr<ContractFormula> Expr : C.Data.Post) {
+    for (std::shared_ptr<ContractFormula> const& Expr : C.Data.Post) {
         std::pair<Fulfillment,std::optional<ErrorMessage>> result = resolveFormula(Expr);
         if (result.second) reasons[Expr] = *result.second;
         s = std::max(s, result.first);
