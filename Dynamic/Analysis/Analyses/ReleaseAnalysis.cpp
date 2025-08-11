@@ -42,15 +42,19 @@ ReleaseAnalysis::ReleaseAnalysis(void* _func_supplier, ReleaseOp_t* rOP) {
     func_supplier = _func_supplier;
 }
 
+CallBacks ReleaseAnalysis::requiredCallbacks() {
+    return {true, forbIsRW};
+}
+
 Fulfillment ReleaseAnalysis::onMemoryAccess(void* location, void* memory, bool isWrite) {
     if (!forbIsRW || forbiddenCallsites.empty()) return Fulfillment::UNKNOWN;
 
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
 
     if (rwOp->isWrite == isWrite) {
-        for (std::pair<void *, std::vector<CallsiteParams>> const& callsite : forbiddenCallsites) {
+        for (std::pair<void *, std::unordered_set<CallsiteParams>> const& callsite : forbiddenCallsites) {
             for (CallsiteParams const& sup_params : callsite.second) {
-                if (DynamicUtils::checkParamMatch(rwOp->accType, &sup_params[rwOp->idx].val, memory)) {
+                if (DynamicUtils::checkParamMatch(rwOp->accType, &sup_params[rwOp->idx], memory)) {
                     references.insert(location);
                     references.insert(callsite.first);
                     return Fulfillment::VIOLATED;
@@ -88,12 +92,12 @@ Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, Callsite
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
             references.insert(location);
-            for (std::pair<void *, std::vector<CallsiteParams>> const& callsite : forbiddenCallsites) references.insert(callsite.first);
+            for (std::pair<void *, std::unordered_set<CallsiteParams>> const& callsite : forbiddenCallsites) references.insert(callsite.first);
             return Fulfillment::VIOLATED;
         }
 
         // Check if a callsite is violated
-        for (std::pair<void *, std::vector<CallsiteParams>> const& callsite : forbiddenCallsites) {
+        for (std::pair<void *, std::unordered_set<CallsiteParams>> const& callsite : forbiddenCallsites) {
             for (CallsiteParams supplier_params : callsite.second) {
                 if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite_params, supplier_params, target_str_forb)) {
                     references.insert(location);
@@ -107,7 +111,7 @@ Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, Callsite
     // Finally, check if supplier.
     // Needs to be done after check for forbidden, so that new supplier is not accidentally checked against itself
     if (func == func_supplier) {
-        forbiddenCallsites[location].push_back(callsite_params);
+        forbiddenCallsites[location].insert(callsite_params);
     }
 
     // Irrelevant function

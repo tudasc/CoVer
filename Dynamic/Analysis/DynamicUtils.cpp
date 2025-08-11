@@ -86,11 +86,11 @@ namespace DynamicUtils {
                 std::unordered_set<Tag_t*> tags = DynamicUtils::getTagsForFunction(callF);
                 for (Tag_t* tag : tags) {
                     if (tag->tag != target_str) continue;
-                    if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP].val, callParams[tag->param].val))
+                    if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP], callParams[tag->param]))
                         return true;
                 }
             } else {
-                if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP].val, callParams[param->callP].val))
+                if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP], callParams[param->callP]))
                     return true;
             }
         }

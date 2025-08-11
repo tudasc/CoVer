@@ -14,6 +14,8 @@ struct ReleaseAnalysis : BaseAnalysis {
         virtual Fulfillment onMemoryAccess(void* location, void* memory, bool isWrite) override;
         virtual std::unordered_set<void*> getReferences() override { return references; };
 
+        CallBacks requiredCallbacks() override;
+
     private:
         // Configuration
         void* func_supplier;
@@ -28,7 +30,7 @@ struct ReleaseAnalysis : BaseAnalysis {
         std::vector<CallParam_t*> params_release; // Required parameters
 
         // Analysis temporaries
-        std::unordered_map<void*, std::vector<CallsiteParams>> forbiddenCallsites;
+        std::unordered_map<void*, std::unordered_set<CallsiteParams>> forbiddenCallsites;
 
         std::unordered_set<void*> references;
 };

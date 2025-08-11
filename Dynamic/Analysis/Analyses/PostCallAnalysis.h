@@ -11,9 +11,13 @@ struct PostCallAnalysis : BaseAnalysis {
     public:
         PostCallAnalysis(void* func_supplier, CallOp_t* callop);
         PostCallAnalysis(void* func_supplier, CallTagOp_t* callop);
+
         virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteParams params) override;
         virtual Fulfillment onProgramExit(void* location) override;
+
         virtual std::unordered_set<void*> getReferences() override { return references; };
+
+        CallBacks requiredCallbacks() override { return {true, false}; }
 
     private:
         void SharedInit(void* _func_supplier, const char* target_str, CallParam_t *params, int64_t num_params);
