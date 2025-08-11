@@ -187,7 +187,7 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
     // Run event handlers and remove analysis if done
     std::erase_if(
         analyses,
-        [&](std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> analysis) {
+        [&](std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> const& analysis) {
             Fulfillment f = analysis.second->onFunctionCall(location, function, callsite_params);
             if (f != Fulfillment::UNKNOWN) contract_status[analysis.first] = f;
             analysis_references[analysis.first] = analysis.second->getReferences();
@@ -200,7 +200,7 @@ void PPDCV_MemCallback(int64_t isWrite, void* buf) {
     void* location = __builtin_return_address(0);
     std::erase_if(
         analyses,
-        [&](std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> analysis) {
+        [&](std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> const& analysis) {
             Fulfillment f = analysis.second->onMemoryAccess(location, buf, isWrite);
             if (f != Fulfillment::UNKNOWN) contract_status[analysis.first] = f;
             analysis_references[analysis.first] = analysis.second->getReferences();
@@ -213,7 +213,7 @@ extern "C" __attribute__((destructor)) void PPDCV_destructor() {
     void* location = __builtin_return_address(0);
     #warning todo find better way for postprocessing
     std::cout << "CoVer-Dynamic: Analysis finished.\n";
-    for (std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> analysis : analyses) {
+    for (std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> const& analysis : analyses) {
         Fulfillment f = analysis.second->onProgramExit(location);
         analysis_references[analysis.first] = analysis.second->getReferences();
         contract_status[analysis.first] = f;
