@@ -48,7 +48,7 @@ Fulfillment ReleaseAnalysis::onMemoryAccess(void* location, void* memory, bool i
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
 
     if (rwOp->isWrite == isWrite) {
-        for (std::pair<void *, std::vector<CallsiteParams>> callsite : forbiddenCallsites) {
+        for (std::pair<void *, std::vector<CallsiteParams>> const& callsite : forbiddenCallsites) {
             for (CallsiteParams const& sup_params : callsite.second) {
                 if (DynamicUtils::checkParamMatch(rwOp->accType, &sup_params[rwOp->idx].val, memory)) {
                     references.insert(location);
@@ -88,7 +88,7 @@ Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, Callsite
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
             references.insert(location);
-            for (std::pair<void *, std::vector<CallsiteParams>>  const& callsite : forbiddenCallsites) references.insert(callsite.first);
+            for (std::pair<void *, std::vector<CallsiteParams>> const& callsite : forbiddenCallsites) references.insert(callsite.first);
             return Fulfillment::VIOLATED;
         }
 
