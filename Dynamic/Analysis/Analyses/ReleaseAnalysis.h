@@ -10,7 +10,7 @@
 struct ReleaseAnalysis : BaseAnalysis {
     public:
         ReleaseAnalysis(void* func_supplier, ReleaseOp_t* rOP);
-        virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteParams params) override;
+        virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteInfo callsite) override;
         virtual Fulfillment onMemoryAccess(void* location, void* memory, bool isWrite) override;
         virtual std::unordered_set<void*> getReferences() override { return references; };
 
@@ -30,7 +30,7 @@ struct ReleaseAnalysis : BaseAnalysis {
         std::vector<CallParam_t*> params_release; // Required parameters
 
         // Analysis temporaries
-        std::unordered_map<void*, std::unordered_set<CallsiteParams>> forbiddenCallsites;
+        std::vector<CallsiteInfo> forbiddenCallsites;
 
         std::unordered_set<void*> references;
 };

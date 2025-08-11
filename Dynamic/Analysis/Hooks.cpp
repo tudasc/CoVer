@@ -171,19 +171,19 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
     void* location = __builtin_return_address(0);
     called_funcs.insert(function);
 
-    CallsiteParams callsite_params;
+    CallsiteInfo callsite_params;
     std::va_list list;
     va_start(list, num_params);
     for (int i = 0; i < num_params; i++) {
         bool isPtr = va_arg(list, int64_t);
         int64_t param_size = va_arg(list, int64_t);
         if (isPtr) {
-            callsite_params.push_back({va_arg(list,void*)});
+            callsite_params.params.push_back({va_arg(list,void*)});
         } else {
             if (param_size == 64)
-                callsite_params.push_back({(void*)va_arg(list, int64_t)});
+                callsite_params.params.push_back({(void*)va_arg(list, int64_t)});
             else if (param_size == 32)
-                callsite_params.push_back({(void*)va_arg(list, int32_t)});
+                callsite_params.params.push_back({(void*)va_arg(list, int32_t)});
             else
                 throw "Unkown parameter size!";
         }

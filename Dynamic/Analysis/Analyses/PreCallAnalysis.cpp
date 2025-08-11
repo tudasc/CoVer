@@ -22,10 +22,10 @@ PreCallAnalysis::PreCallAnalysis(void* _func_supplier, CallTagOp_t* callop) {
     target_funcs = DynamicUtils::getFunctionsForTag(callop->target_tag);
 }
 
-Fulfillment PreCallAnalysis::onFunctionCall(void* location, void* func, CallsiteParams callsite_params) {
+Fulfillment PreCallAnalysis::onFunctionCall(void* location, void* func, CallsiteInfo callsite) {
     if (target_funcs.contains(func)) {
         // Possible match for precall
-        possible_matches[func].push_back(callsite_params);
+        possible_matches[func].push_back(callsite);
         return Fulfillment::UNKNOWN;
     } else if (func == func_supplier) {
         // Contract supplier found, need to resolve now
@@ -37,9 +37,9 @@ Fulfillment PreCallAnalysis::onFunctionCall(void* location, void* func, Callsite
 
         // Check params if needed
         if (params.empty()) return Fulfillment::FULFILLED;
-        for (std::pair<void*,std::vector<CallsiteParams>> possible_match : possible_matches) {
-            for (CallsiteParams match_params : possible_match.second) {
-                if (DynamicUtils::checkFuncCallMatch(possible_match.first, params, match_params, callsite_params, target_str)) {
+        for (std::pair<void*,std::vector<CallsiteInfo>> possible_match : possible_matches) {
+            for (CallsiteInfo match_params : possible_match.second) {
+                if (DynamicUtils::checkFuncCallMatch(possible_match.first, params, match_params, callsite, target_str)) {
                     // Success!
                     return Fulfillment::FULFILLED;
                 }

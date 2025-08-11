@@ -80,17 +80,17 @@ namespace DynamicUtils {
         return std::cerr << "CoVer-Dynamic: ";
     }
 
-    bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteParams callParams, CallsiteParams contrParams, std::string target_str) {
+    bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteInfo callParams, CallsiteInfo contrParams, std::string target_str) {
         for (CallParam_t* param : params_expect) {
             if (param->callPisTagVar) {
                 std::unordered_set<Tag_t*> tags = DynamicUtils::getTagsForFunction(callF);
                 for (Tag_t* tag : tags) {
                     if (tag->tag != target_str) continue;
-                    if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP], callParams[tag->param]))
+                    if (DynamicUtils::checkParamMatch(param->accType, contrParams.params[param->contrP], callParams.params[tag->param]))
                         return true;
                 }
             } else {
-                if (DynamicUtils::checkParamMatch(param->accType, contrParams[param->contrP], callParams[param->callP]))
+                if (DynamicUtils::checkParamMatch(param->accType, contrParams.params[param->contrP], callParams.params[param->callP]))
                     return true;
             }
         }

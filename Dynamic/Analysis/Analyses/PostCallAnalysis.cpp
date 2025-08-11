@@ -22,7 +22,7 @@ PostCallAnalysis::PostCallAnalysis(void* _func_supplier, CallTagOp_t* callop) {
     target_funcs = DynamicUtils::getFunctionsForTag(callop->target_tag);
 }
 
-Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, CallsiteParams callsite_params) {
+Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, CallsiteInfo callsite) {
     if (target_funcs.contains(func)) {
         // Target function found, maybe analysis success
 
@@ -34,19 +34,16 @@ Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, Callsit
 
         // Check which callsites are satisfied, remove from unchecked
         for (auto callsite_iter = uncheckedCallsites.begin(); callsite_iter != uncheckedCallsites.end();) {
-            for (CallsiteParams supplier_params : callsite_iter->second) {
-                if (DynamicUtils::checkFuncCallMatch(func, params, callsite_params, supplier_params, target_str)) {
-                    callsite_iter = uncheckedCallsites.erase(callsite_iter);
-                    goto callsite_clear;
-                }
+            if (DynamicUtils::checkFuncCallMatch(func, params, callsite, *callsite_iter, target_str)) {
+                callsite_iter = uncheckedCallsites.erase(callsite_iter);
+            } else {
+                callsite_iter++;
             }
-            callsite_iter++;
-            callsite_clear:;
         }
         // For the rest: Maybe actual fulfillment comes later
         return Fulfillment::UNKNOWN;
     } else if (func == func_supplier) {
-        uncheckedCallsites[location].push_back(callsite_params);
+        uncheckedCallsites.push_back(callsite);
     }
 
     // Irrelevant function
@@ -54,8 +51,8 @@ Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, Callsit
 }
 
 Fulfillment PostCallAnalysis::onProgramExit(void* location) {
-    for (std::pair<void *, std::vector<CallsiteParams>> callsite : uncheckedCallsites) {
-        references.insert(callsite.first);
+    for (CallsiteInfo callsite : uncheckedCallsites) {
+        references.insert(callsite.location);
     }
     return uncheckedCallsites.empty() ? Fulfillment::FULFILLED : Fulfillment::VIOLATED;
 }

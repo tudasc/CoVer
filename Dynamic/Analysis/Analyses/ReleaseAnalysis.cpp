@@ -47,26 +47,22 @@ CallBacks ReleaseAnalysis::requiredCallbacks() {
 }
 
 Fulfillment ReleaseAnalysis::onMemoryAccess(void* location, void* memory, bool isWrite) {
-    if (!forbIsRW || forbiddenCallsites.empty()) return Fulfillment::UNKNOWN;
-
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
 
-    if (rwOp->isWrite == isWrite) {
-        for (std::pair<void *, std::unordered_set<CallsiteParams>> const& callsite : forbiddenCallsites) {
-            for (CallsiteParams const& sup_params : callsite.second) {
-                if (DynamicUtils::checkParamMatch(rwOp->accType, &sup_params[rwOp->idx], memory)) {
-                    references.insert(location);
-                    references.insert(callsite.first);
-                    return Fulfillment::VIOLATED;
-                }
-            }
+    if (rwOp->isWrite != isWrite || forbiddenCallsites.empty()) return Fulfillment::UNKNOWN;
+
+    for (CallsiteInfo const& callsite : forbiddenCallsites) {
+        if (DynamicUtils::checkParamMatch(rwOp->accType, &callsite.params[rwOp->idx], memory)) {
+            references.insert(location);
+            references.insert(callsite.location);
+            return Fulfillment::VIOLATED;
         }
     }
 
     return Fulfillment::UNKNOWN;
 }
 
-Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, CallsiteParams callsite_params) {
+Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, CallsiteInfo callsite) {
     // First, check if release
     if (rel_funcs.contains(func)) {
         if (params_release.empty()) {
@@ -75,14 +71,11 @@ Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, Callsite
         }
         // Check which callsites are satisfied, remove from unchecked
         for (auto callsite_iter = forbiddenCallsites.begin(); callsite_iter != forbiddenCallsites.end();) {
-            for (CallsiteParams supplier_params : callsite_iter->second) {
-                if (DynamicUtils::checkFuncCallMatch(func, params_release, callsite_params, supplier_params, target_str_rel)) {
-                    callsite_iter = forbiddenCallsites.erase(callsite_iter);
-                    goto callsite_clear;
-                }
+            if (DynamicUtils::checkFuncCallMatch(func, params_release, callsite, *callsite_iter, target_str_rel)) {
+                callsite_iter = forbiddenCallsites.erase(callsite_iter);
+            } else {
+                callsite_iter++;
             }
-            callsite_iter++;
-            callsite_clear:;
         }
         // For the rest: Maybe actual fulfillment comes later
         return Fulfillment::UNKNOWN;
@@ -92,18 +85,16 @@ Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, Callsite
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
             references.insert(location);
-            for (std::pair<void *, std::unordered_set<CallsiteParams>> const& callsite : forbiddenCallsites) references.insert(callsite.first);
+            for (CallsiteInfo const& callsite : forbiddenCallsites) references.insert(callsite.location);
             return Fulfillment::VIOLATED;
         }
 
         // Check if a callsite is violated
-        for (std::pair<void *, std::unordered_set<CallsiteParams>> const& callsite : forbiddenCallsites) {
-            for (CallsiteParams supplier_params : callsite.second) {
-                if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite_params, supplier_params, target_str_forb)) {
-                    references.insert(location);
-                    references.insert(callsite.first);
-                    return Fulfillment::VIOLATED;
-                }
+        for (CallsiteInfo const& callsite : forbiddenCallsites) {
+            if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite, callsite, target_str_forb)) {
+                references.insert(location);
+                references.insert(callsite.location);
+                return Fulfillment::VIOLATED;
             }
         }
     }
@@ -111,7 +102,7 @@ Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, Callsite
     // Finally, check if supplier.
     // Needs to be done after check for forbidden, so that new supplier is not accidentally checked against itself
     if (func == func_supplier) {
-        forbiddenCallsites[location].insert(callsite_params);
+        forbiddenCallsites.push_back(callsite);
     }
 
     // Irrelevant function
