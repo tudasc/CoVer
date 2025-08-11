@@ -1,7 +1,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
-#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -25,27 +24,27 @@ struct ErrorMessage {
 std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
 std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
-std::unordered_map<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> all_analyses;
-std::unordered_map<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> analyses_with_funcCB;
-std::unordered_map<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> analyses_with_memCB;
+std::unordered_map<ContractFormula_t*, BaseAnalysis*> all_analyses;
+std::unordered_map<ContractFormula_t*, BaseAnalysis*> analyses_with_funcCB;
+std::unordered_map<ContractFormula_t*, BaseAnalysis*> analyses_with_memCB;
 std::unordered_map<ContractFormula_t*, std::unordered_set<void*>> analysis_references;
 std::unordered_set<void*> called_funcs;
 
 void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_supplier) {
     if (form->num_children == 0) {
-        std::shared_ptr<BaseAnalysis> new_analysis;
+        BaseAnalysis* new_analysis;
         switch (form->conn) {
             case UNARY_CALL:
-                if (isPre) new_analysis = std::make_shared<PreCallAnalysis>(func_supplier, (CallOp_t*)form->data);
-                else new_analysis = std::make_shared<PostCallAnalysis>(func_supplier, (CallOp_t*)form->data);
+                if (isPre) new_analysis = new PreCallAnalysis(func_supplier, (CallOp_t*)form->data);
+                else new_analysis = new PostCallAnalysis(func_supplier, (CallOp_t*)form->data);
                 break;
             case UNARY_CALLTAG:
-                if (isPre) new_analysis = std::make_shared<PreCallAnalysis>(func_supplier, (CallTagOp_t*)form->data);
-                else new_analysis = std::make_shared<PostCallAnalysis>(func_supplier, (CallTagOp_t*)form->data);
+                if (isPre) new_analysis = new PreCallAnalysis(func_supplier, (CallTagOp_t*)form->data);
+                else new_analysis = new PostCallAnalysis(func_supplier, (CallTagOp_t*)form->data);
                 break;
             case UNARY_RELEASE:
                 if (isPre) DynamicUtils::createMessage("Did not expect releaseop in precond!");
-                else new_analysis = std::make_shared<ReleaseAnalysis>(func_supplier, (ReleaseOp_t*)form->data);
+                else new_analysis = new ReleaseAnalysis(func_supplier, (ReleaseOp_t*)form->data);
                 break;
             default: 
                 DynamicUtils::createMessage("Unknown top-level operation!");
@@ -194,13 +193,14 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
     // Run event handlers and remove analysis if done
     std::erase_if(
         analyses_with_funcCB,
-        [&](std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> const& analysis) {
+        [&](std::pair<ContractFormula_t*, BaseAnalysis*> const& analysis) {
             Fulfillment f = analysis.second->onFunctionCall(location, function, callsite_params);
             if (f != Fulfillment::UNKNOWN) {
                 contract_status[analysis.first] = f;
                 analysis_references[analysis.first] = analysis.second->getReferences();
+                return true;
             }
-            return f != Fulfillment::UNKNOWN;
+            return false;
         }
     );
 }
@@ -209,13 +209,14 @@ void PPDCV_MemCallback(int64_t isWrite, void* buf) {
     void* location = __builtin_return_address(0);
     std::erase_if(
         analyses_with_memCB,
-        [&](std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> const& analysis) {
+        [&](std::pair<ContractFormula_t*, BaseAnalysis*> const& analysis) {
             Fulfillment f = analysis.second->onMemoryAccess(location, buf, isWrite);
             if (f != Fulfillment::UNKNOWN) {
                 contract_status[analysis.first] = f;
                 analysis_references[analysis.first] = analysis.second->getReferences();
+                return true;
             }
-            return f != Fulfillment::UNKNOWN;
+            return false;
         }
     );
 }
@@ -224,10 +225,11 @@ extern "C" __attribute__((destructor)) void PPDCV_destructor() {
     void* location = __builtin_return_address(0);
     #warning todo find better way for postprocessing
     std::cout << "CoVer-Dynamic: Analysis finished.\n";
-    for (std::pair<ContractFormula_t*, std::shared_ptr<BaseAnalysis>> const& analysis : all_analyses) {
+    for (std::pair<ContractFormula_t*, BaseAnalysis*> const& analysis : all_analyses) {
         if (contract_status.contains(analysis.first)) continue;
         contract_status[analysis.first] = analysis.second->onProgramExit(location);
         analysis_references[analysis.first] = analysis.second->getReferences();
+        delete analysis.second;
     }
     resolveContracts();
 }
