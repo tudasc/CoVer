@@ -12,7 +12,7 @@ struct PreCallAnalysis : BaseAnalysis {
         PreCallAnalysis(void* func_supplier, CallOp_t* callop);
         PreCallAnalysis(void* func_supplier, CallTagOp_t* callop);
 
-        virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteParams params) override;
+        virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteInfo callsite) override;
 
         virtual std::unordered_set<void*> getReferences() override { return references; };
 
@@ -28,7 +28,7 @@ struct PreCallAnalysis : BaseAnalysis {
         std::unordered_set<void*> target_funcs;
 
         // Analysis temporaries
-        std::unordered_map<void*, std::vector<CallsiteParams>> possible_matches;
+        std::unordered_map<void*, std::vector<CallsiteInfo>> possible_matches;
 
         std::unordered_set<void*> references;
 };

@@ -12,7 +12,7 @@ struct PostCallAnalysis : BaseAnalysis {
         PostCallAnalysis(void* func_supplier, CallOp_t* callop);
         PostCallAnalysis(void* func_supplier, CallTagOp_t* callop);
 
-        virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteParams params) override;
+        virtual Fulfillment onFunctionCall(void* location, void* func, CallsiteInfo callsite) override;
         virtual Fulfillment onProgramExit(void* location) override;
 
         virtual std::unordered_set<void*> getReferences() override { return references; };
@@ -29,7 +29,7 @@ struct PostCallAnalysis : BaseAnalysis {
         std::unordered_set<void*> target_funcs;
 
         // Analysis temporaries
-        std::unordered_map<void*, std::vector<CallsiteParams>> uncheckedCallsites;
+        std::vector<CallsiteInfo> uncheckedCallsites;
 
         std::unordered_set<void*> references;
 };

@@ -15,7 +15,7 @@ class BaseAnalysis {
         virtual ~BaseAnalysis() = default;
 
         // Event handlers. Return non-unknown if analysis is resolved and no longer needs to be analysed.
-        virtual Fulfillment onFunctionCall(void* location, void* func, CallsiteParams params) { return Fulfillment::UNKNOWN; };
+        virtual Fulfillment onFunctionCall(void* location, void* func, CallsiteInfo callsite) { return Fulfillment::UNKNOWN; };
         virtual Fulfillment onMemoryAccess(void* location, void* memory, bool isWrite) { return Fulfillment::UNKNOWN; };
         virtual Fulfillment onProgramExit(void* location) { return Fulfillment::FULFILLED; };
 
