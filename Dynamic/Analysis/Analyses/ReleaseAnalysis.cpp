@@ -42,27 +42,11 @@ ReleaseAnalysis::ReleaseAnalysis(void* _func_supplier, ReleaseOp_t* rOP) {
     func_supplier = _func_supplier;
 }
 
-CallBacks ReleaseAnalysis::requiredCallbacks() {
+CallBacks ReleaseAnalysis::requiredCallbacksImpl() {
     return {true, forbIsRW};
 }
 
-Fulfillment ReleaseAnalysis::onMemoryAccess(void* location, void* memory, bool isWrite) {
-    RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
-
-    if (rwOp->isWrite != isWrite || forbiddenCallsites.empty()) return Fulfillment::UNKNOWN;
-
-    for (CallsiteInfo const& callsite : forbiddenCallsites) {
-        if (DynamicUtils::checkParamMatch(rwOp->accType, &callsite.params[rwOp->idx], memory)) {
-            references.insert(location);
-            references.insert(callsite.location);
-            return Fulfillment::VIOLATED;
-        }
-    }
-
-    return Fulfillment::UNKNOWN;
-}
-
-Fulfillment ReleaseAnalysis::onFunctionCall(void* location, void* func, CallsiteInfo callsite) {
+Fulfillment ReleaseAnalysis::functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite) {
     // First, check if release
     if (rel_funcs.contains(func)) {
         if (params_release.empty()) {

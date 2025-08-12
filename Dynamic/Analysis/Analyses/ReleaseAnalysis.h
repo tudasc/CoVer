@@ -2,7 +2,6 @@
 
 #include "BaseAnalysis.h"
 #include "DynamicAnalysis.h"
-#include <unordered_map>
 #include <unordered_set>
 #include <string>
 #include <vector>
@@ -10,11 +9,12 @@
 struct ReleaseAnalysis : BaseAnalysis {
     public:
         ReleaseAnalysis(void* func_supplier, ReleaseOp_t* rOP);
-        virtual Fulfillment onFunctionCall(void* location, void* func,  CallsiteInfo callsite) override;
-        virtual Fulfillment onMemoryAccess(void* location, void* memory, bool isWrite) override;
-        virtual std::unordered_set<void*> getReferences() override { return references; };
+        Fulfillment functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite);
+        Fulfillment memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite);
+        Fulfillment exitCBImpl(void* const&& location) { return Fulfillment::FULFILLED; };
+        inline std::unordered_set<void*> getReferenceImpl() { return references; };
 
-        CallBacks requiredCallbacks() override;
+        CallBacks requiredCallbacksImpl();
 
     private:
         // Configuration
@@ -34,3 +34,19 @@ struct ReleaseAnalysis : BaseAnalysis {
 
         std::unordered_set<void*> references;
 };
+
+inline Fulfillment ReleaseAnalysis::memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite) {
+    RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
+
+    if (rwOp->isWrite != isWrite || forbiddenCallsites.empty()) return Fulfillment::UNKNOWN;
+
+    for (CallsiteInfo const& callsite : forbiddenCallsites) {
+        if (DynamicUtils::checkParamMatch(rwOp->accType, &callsite.params[rwOp->idx], memory)) {
+            references.insert(location);
+            references.insert(callsite.location);
+            return Fulfillment::VIOLATED;
+        }
+    }
+
+    return Fulfillment::UNKNOWN;
+}

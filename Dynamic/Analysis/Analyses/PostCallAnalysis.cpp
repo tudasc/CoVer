@@ -22,7 +22,7 @@ PostCallAnalysis::PostCallAnalysis(void* _func_supplier, CallTagOp_t* callop) {
     target_funcs = DynamicUtils::getFunctionsForTag(callop->target_tag);
 }
 
-Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, CallsiteInfo callsite) {
+Fulfillment PostCallAnalysis::functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite) {
     if (target_funcs.contains(func)) {
         // Target function found, maybe analysis success
 
@@ -50,7 +50,7 @@ Fulfillment PostCallAnalysis::onFunctionCall(void* location, void* func, Callsit
     return Fulfillment::UNKNOWN;
 }
 
-Fulfillment PostCallAnalysis::onProgramExit(void* location) {
+Fulfillment PostCallAnalysis::exitCBImpl(void* const&& location) {
     for (CallsiteInfo callsite : uncheckedCallsites) {
         references.insert(callsite.location);
     }

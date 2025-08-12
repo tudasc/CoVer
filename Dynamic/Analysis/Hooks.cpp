@@ -4,6 +4,8 @@
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
+#include <variant>
 #include <vector>
 #include <cstdarg>
 
@@ -23,37 +25,59 @@ struct ErrorMessage {
 
 std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
+struct AnalysisPair {
+    ContractFormula_t* formula;
+    std::variant<PreCallAnalysis,PostCallAnalysis,ReleaseAnalysis> analysis;
+};
+
 std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
-std::unordered_map<ContractFormula_t*, BaseAnalysis*> all_analyses;
-std::unordered_map<ContractFormula_t*, BaseAnalysis*> analyses_with_funcCB;
-std::unordered_map<ContractFormula_t*, BaseAnalysis*> analyses_with_memCB;
+std::vector<AnalysisPair> all_analyses;
+std::vector<AnalysisPair> analyses_with_funcCB;
+std::vector<AnalysisPair> analyses_with_memCB;
 std::unordered_map<ContractFormula_t*, std::unordered_set<void*>> analysis_references;
 std::unordered_set<void*> called_funcs;
 
+template<typename Analysis, typename... Arguments>
+inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
+    Analysis A = Analysis(args...);
+    AnalysisPair new_pair = {form, A};
+    all_analyses.push_back(new_pair);
+    
+    CallBacks reqCB = A.requiredCallbacks();
+    if (reqCB.FUNCTION) analyses_with_funcCB.push_back(new_pair);
+    if (reqCB.MEMORY) analyses_with_memCB.push_back(new_pair);
+}
+
+#define HANDLE_CALLBACK(pairs, CB, ...) \
+    for (AnalysisPair& pair : pairs) { \
+        std::visit([&](auto& analysis) { \
+            Fulfillment f = analysis.CB(std::move(__builtin_return_address(0)), __VA_ARGS__); \
+            if (f != Fulfillment::UNKNOWN) [[unlikely]] { \
+                contract_status[pair.formula] = f; \
+                analysis_references[pair.formula] = analysis.getReferences(); \
+            } \
+        }, pair.analysis); \
+    }
+
 void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_supplier) {
     if (form->num_children == 0) {
-        BaseAnalysis* new_analysis;
         switch (form->conn) {
             case UNARY_CALL:
-                if (isPre) new_analysis = new PreCallAnalysis(func_supplier, (CallOp_t*)form->data);
-                else new_analysis = new PostCallAnalysis(func_supplier, (CallOp_t*)form->data);
+                if (isPre) addAnalysis<PreCallAnalysis>(form, func_supplier, (CallOp_t*)form->data);
+                else addAnalysis<PostCallAnalysis>(form, func_supplier, (CallOp_t*)form->data);
                 break;
             case UNARY_CALLTAG:
-                if (isPre) new_analysis = new PreCallAnalysis(func_supplier, (CallTagOp_t*)form->data);
-                else new_analysis = new PostCallAnalysis(func_supplier, (CallTagOp_t*)form->data);
+                if (isPre) addAnalysis<PreCallAnalysis>(form, func_supplier, (CallTagOp_t*)form->data);
+                else addAnalysis<PostCallAnalysis>(form, func_supplier, (CallTagOp_t*)form->data);
                 break;
             case UNARY_RELEASE:
                 if (isPre) DynamicUtils::createMessage("Did not expect releaseop in precond!");
-                else new_analysis = new ReleaseAnalysis(func_supplier, (ReleaseOp_t*)form->data);
+                else addAnalysis<ReleaseAnalysis>(form, func_supplier, (ReleaseOp_t*)form->data);
                 break;
             default: 
                 DynamicUtils::createMessage("Unknown top-level operation!");
                 break;
         }
-        all_analyses[form] = new_analysis;
-        CallBacks reqCB = new_analysis->requiredCallbacks();
-        if (reqCB.FUNCTION) analyses_with_funcCB[form] = new_analysis;
-        if (reqCB.MEMORY) analyses_with_memCB[form] = new_analysis;
     } else {
         for (int i = 0; i < form->num_children; i++) recurseCreateAnalyses(&form->children[i], isPre, func_supplier);
     }
@@ -185,51 +209,28 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
             else if (param_size == 32)
                 callsite_params.params.push_back({(void*)va_arg(list, int32_t)});
             else
-                throw "Unkown parameter size!";
+                DynamicUtils::createMessage("Unkown Parameter size!");
         }
     }
     va_end(list);
 
     // Run event handlers and remove analysis if done
-    std::erase_if(
-        analyses_with_funcCB,
-        [&](std::pair<ContractFormula_t*, BaseAnalysis*> const& analysis) {
-            Fulfillment f = analysis.second->onFunctionCall(location, function, callsite_params);
-            if (f != Fulfillment::UNKNOWN) {
-                contract_status[analysis.first] = f;
-                analysis_references[analysis.first] = analysis.second->getReferences();
-                return true;
-            }
-            return false;
-        }
-    );
+    HANDLE_CALLBACK(analyses_with_funcCB, onFunctionCall, function, callsite_params);
 }
 
 void PPDCV_MemCallback(int64_t isWrite, void* buf) {
-    void* location = __builtin_return_address(0);
-    std::erase_if(
-        analyses_with_memCB,
-        [&](std::pair<ContractFormula_t*, BaseAnalysis*> const& analysis) {
-            Fulfillment f = analysis.second->onMemoryAccess(location, buf, isWrite);
-            if (f != Fulfillment::UNKNOWN) {
-                contract_status[analysis.first] = f;
-                analysis_references[analysis.first] = analysis.second->getReferences();
-                return true;
-            }
-            return false;
-        }
-    );
+    HANDLE_CALLBACK(analyses_with_memCB, onMemoryAccess, buf, isWrite);
 }
 
 extern "C" __attribute__((destructor)) void PPDCV_destructor() {
-    void* location = __builtin_return_address(0);
     #warning todo find better way for postprocessing
     std::cout << "CoVer-Dynamic: Analysis finished.\n";
-    for (std::pair<ContractFormula_t*, BaseAnalysis*> const& analysis : all_analyses) {
-        if (contract_status.contains(analysis.first)) continue;
-        contract_status[analysis.first] = analysis.second->onProgramExit(location);
-        analysis_references[analysis.first] = analysis.second->getReferences();
-        delete analysis.second;
+    for (AnalysisPair& pair : all_analyses) {
+        std::visit([&](auto&& analysis) {
+            if (contract_status.contains(pair.formula)) return;
+            contract_status[pair.formula] = analysis.onProgramExit(std::move(__builtin_return_address(0)));
+            analysis_references[pair.formula] = analysis.getReferences();
+        }, pair.analysis);
     }
     resolveContracts();
 }
