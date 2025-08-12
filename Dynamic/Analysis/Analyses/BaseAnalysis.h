@@ -2,26 +2,27 @@
 
 #include "../DynamicUtils.h"
 #include <unordered_set>
+#include <utility>
 
 enum struct Fulfillment { FULFILLED, UNKNOWN, VIOLATED };
 
 struct CallBacks {
-    bool const FUNCTION: 1;
-    bool const MEMORY: 1;
+    bool const FUNCTION;
+    bool const MEMORY;
 };
 
 class BaseAnalysis {
+    protected:
+        BaseAnalysis() = default;
     public:
-        virtual ~BaseAnalysis() = default;
-
         // Event handlers. Return non-unknown if analysis is resolved and no longer needs to be analysed.
-        virtual Fulfillment onFunctionCall(void* location, void* func, CallsiteInfo callsite) { return Fulfillment::UNKNOWN; };
-        virtual Fulfillment onMemoryAccess(void* location, void* memory, bool isWrite) { return Fulfillment::UNKNOWN; };
-        virtual Fulfillment onProgramExit(void* location) { return Fulfillment::FULFILLED; };
+        inline Fulfillment onFunctionCall(this auto& self, void* const&& location, void* const& func, CallsiteInfo const& callsite) { return self.functionCBImpl(std::move(location), func, callsite); };
+        inline Fulfillment onMemoryAccess(this auto& self, void* const&& location, void* const& memory, bool const& isWrite) { return self.memoryCBImpl(std::move(location), memory, isWrite); };
+        inline Fulfillment onProgramExit(this auto& self, void* const&& location) { return self.exitCBImpl(std::move(location)); };
 
         // For debugging and error output
-        virtual std::unordered_set<void*> getReferences() { return {}; };
+        inline std::unordered_set<void*> getReferences(this auto& self) { return self.getReferenceImpl(); };
 
         // Return which callbacks are needed for this analysis
-        virtual CallBacks requiredCallbacks() { return {false, false}; }
+        CallBacks requiredCallbacks(this auto& self) { return self.requiredCallbacksImpl(); }
 };
