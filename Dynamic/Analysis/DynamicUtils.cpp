@@ -37,7 +37,7 @@ namespace DynamicUtils {
     std::unordered_map<void*, std::unordered_set<Tag_t*>> func_to_tags;
     std::unordered_map<std::string, std::unordered_set<void*>> tags_to_func;
 
-    void Initialize(ContractDB_t* DB) {
+    void Initialize(ContractDB_t const* DB) {
         // Initialize Tags
         for (int i = 0; i < DB->tagMap.count; i++) {
             void* function = DB->tagMap.functions[i];

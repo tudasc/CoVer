@@ -29,7 +29,7 @@ struct std::hash<CallsiteInfo> {
 
 namespace DynamicUtils {
     // Initialize Utils
-    void Initialize(ContractDB_t* DB);
+    void Initialize(ContractDB_t const* DB);
 
     // Check if two parameters match
     bool checkParamMatch(ParamAccess acc, void const* contrP, void const* callP);
