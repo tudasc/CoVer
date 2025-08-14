@@ -188,7 +188,6 @@ void PPDCV_Initialize(ContractDB_t const* DB) {
     }
 
     DynamicUtils::createMessage("Finished Initializing!");
-    return;
 }
 
 void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
