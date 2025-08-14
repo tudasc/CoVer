@@ -68,10 +68,12 @@ void execSafe(std::string const& cmd) {
 void printHelp() {
     printf("@EXECUTABLE_WRAPPER_NAME@ is a compiler wrapper to utilize CoVer");
     printf("\nRequires LLVM >= @LLVM_VERSION_MIN@.");
-    printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] [--predefined-contracts] [--allow-multireports] [--instrument-contracts] <compiler-params>");
+    printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] [--predefined-contracts] [--allow-multireports] [--instrument-contracts[=(safe|full|none)]] <compiler-params>");
     printf("\n\t--help: Print this help text and exit");
     printf("\n\t--dry-run: Only show the commands that would be run, but do not perform any");
-    printf("\n\t--instrument-contracts: Perform instrumentation for runtime analysis");
+    printf("\n\t--instrument-contracts: Perform instrumentation for runtime analysis, defaults to \"safe\"");
+    printf("\n\t\t\"safe\": Full instrumentation with checks to preserve ability to run without analysis");
+    printf("\n\t\t\"full\": Full instrumentation without safety checks, may be faster");
     printf("\n\t--verbose: Print commands to be executed");
     printf("\n\t--wrap-target: Set the compiler to wrap around");
     printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions using the -include flag");
