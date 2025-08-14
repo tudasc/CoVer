@@ -8,7 +8,8 @@ enum struct Fulfillment { FULFILLED, UNKNOWN, VIOLATED };
 
 struct CallBacks {
     bool const FUNCTION;
-    bool const MEMORY;
+    bool const MEMORY_R;
+    bool const MEMORY_W;
 };
 
 class BaseAnalysis {

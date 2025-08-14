@@ -18,7 +18,7 @@ struct PreCallAnalysis : BaseAnalysis {
 
         std::unordered_set<void*> getReferenceImpl() { return references; };
 
-        CallBacks requiredCallbacksImpl() { return {true, false}; }
+        CallBacks requiredCallbacksImpl() { return {true, false, false}; }
 
     private:
         void SharedInit(void* _func_supplier, const char* target_str, CallParam_t *params, int64_t num_params);

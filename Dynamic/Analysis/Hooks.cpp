@@ -33,7 +33,8 @@ struct AnalysisPair {
 std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
 std::vector<AnalysisPair> all_analyses;
 std::vector<AnalysisPair> analyses_with_funcCB;
-std::vector<AnalysisPair> analyses_with_memCB;
+std::vector<AnalysisPair> analyses_with_memRCB;
+std::vector<AnalysisPair> analyses_with_memWCB;
 std::unordered_map<ContractFormula_t*, std::unordered_set<void*>> analysis_references;
 std::unordered_set<void*> called_funcs;
 
@@ -45,14 +46,15 @@ inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
     
     CallBacks reqCB = A.requiredCallbacks();
     if (reqCB.FUNCTION) analyses_with_funcCB.push_back(new_pair);
-    if (reqCB.MEMORY) analyses_with_memCB.push_back(new_pair);
+    if (reqCB.MEMORY_R) analyses_with_memRCB.push_back(new_pair);
+    if (reqCB.MEMORY_W) analyses_with_memWCB.push_back(new_pair);
 }
 
 #define HANDLE_CALLBACK(pairs, CB, ...) \
     for (AnalysisPair& pair : pairs) { \
         std::visit([&](auto& analysis) { \
             Fulfillment f = analysis.CB(std::move(__builtin_return_address(0)), __VA_ARGS__); \
-            if (f != Fulfillment::UNKNOWN) [[unlikely]] { \
+            if (f != Fulfillment::UNKNOWN) { \
                 contract_status[pair.formula] = f; \
                 analysis_references[pair.formula] = analysis.getReferences(); \
             } \
@@ -219,7 +221,11 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
 }
 
 void PPDCV_MemCallback(int64_t isWrite, void* buf) {
-    HANDLE_CALLBACK(analyses_with_memCB, onMemoryAccess, buf, isWrite);
+    if (!isWrite) {
+        HANDLE_CALLBACK(analyses_with_memRCB, onMemoryAccess, buf, false);
+    } else {
+        HANDLE_CALLBACK(analyses_with_memWCB, onMemoryAccess, buf, true);
+    }
 }
 
 extern "C" __attribute__((destructor)) void PPDCV_destructor() {
