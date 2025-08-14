@@ -51,15 +51,15 @@ inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
 }
 
 #define HANDLE_CALLBACK(pairs, CB, ...) \
-    for (AnalysisPair& pair : pairs) { \
+    for (auto it = pairs.begin(); it != pairs.end();) { \
         std::visit([&](auto& analysis) { \
-            if (contract_status.contains(pair.formula)) return; \
             Fulfillment f = analysis->CB(std::move(__builtin_return_address(0)), __VA_ARGS__); \
             if (f != Fulfillment::UNKNOWN) { \
-                contract_status[pair.formula] = f; \
-                analysis_references[pair.formula] = analysis->getReferences(); \
-            } \
-        }, pair.analysis); \
+                contract_status[it->formula] = f; \
+                analysis_references[it->formula] = analysis->getReferences(); \
+                it = pairs.erase(it); \
+            } else it++; \
+        }, it->analysis); \
     }
 
 void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_supplier) {
