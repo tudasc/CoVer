@@ -208,9 +208,9 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
             callsite_params.params.push_back({va_arg(list,void*)});
         } else {
             if (param_size == 64)
-                callsite_params.params.push_back({(void*)va_arg(list, int64_t)});
+                callsite_params.params.push_back({reinterpret_cast<void*>(va_arg(list, int64_t))});
             else if (param_size == 32)
-                callsite_params.params.push_back({(void*)va_arg(list, int32_t)});
+                callsite_params.params.push_back({reinterpret_cast<void*>(va_arg(list, int32_t))});
             else
                 DynamicUtils::createMessage("Unkown Parameter size!");
         }
