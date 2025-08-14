@@ -6,7 +6,8 @@ add_library(CoVerDynamicAnalyzer SHARED
   DynamicUtils.cpp
 )
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 23)
-target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions)
+target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions -flto)
+target_link_options(CoVerDynamicAnalyzer PUBLIC -fuse-ld=lld)
 
 if (CMAKE_ADDR2LINE)
   target_compile_definitions(CoVerDynamicAnalyzer PUBLIC CMAKE_ADDR2LINE="${CMAKE_ADDR2LINE}")
