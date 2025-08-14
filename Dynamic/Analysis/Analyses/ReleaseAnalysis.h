@@ -34,19 +34,3 @@ struct ReleaseAnalysis : BaseAnalysis {
 
         std::unordered_set<void*> references;
 };
-
-inline Fulfillment ReleaseAnalysis::memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite) {
-    RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
-
-    if (rwOp->isWrite != isWrite || forbiddenCallsites.empty()) return Fulfillment::UNKNOWN;
-
-    for (CallsiteInfo const& callsite : forbiddenCallsites) {
-        if (DynamicUtils::checkParamMatch(rwOp->accType, &callsite.params[rwOp->idx], memory)) {
-            references.insert(location);
-            references.insert(callsite.location);
-            return Fulfillment::VIOLATED;
-        }
-    }
-
-    return Fulfillment::UNKNOWN;
-}

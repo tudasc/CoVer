@@ -43,7 +43,9 @@ ReleaseAnalysis::ReleaseAnalysis(void* _func_supplier, ReleaseOp_t* rOP) {
 }
 
 CallBacks ReleaseAnalysis::requiredCallbacksImpl() {
-    return {true, forbIsRW};
+    if (!forbIsRW) return {true, false, false};
+    RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
+    return {true, !rwOp->isWrite, (bool)rwOp->isWrite};
 }
 
 Fulfillment ReleaseAnalysis::functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite) {
@@ -90,5 +92,19 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const&& location, void* const&
     }
 
     // Irrelevant function
+    return Fulfillment::UNKNOWN;
+}
+
+Fulfillment ReleaseAnalysis::memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite) {
+    RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
+
+    for (CallsiteInfo const& callsite : forbiddenCallsites) {
+        if (DynamicUtils::checkParamMatch(rwOp->accType, &callsite.params[rwOp->idx], memory)) {
+            references.insert(location);
+            references.insert(callsite.location);
+            return Fulfillment::VIOLATED;
+        }
+    }
+
     return Fulfillment::UNKNOWN;
 }
