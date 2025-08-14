@@ -16,8 +16,6 @@
 #include "Analyses/ReleaseAnalysis.h"
 #include "DynamicUtils.h"
 
-ContractDB_t* DB = nullptr;
-
 struct ErrorMessage {
     std::vector<std::string> msg;
     std::vector<ErrorMessage> child_msg;
@@ -171,9 +169,8 @@ void resolveContracts() {
     }
 }
 
-void PPDCV_Initialize(ContractDB_t* _DB) {
+void PPDCV_Initialize(ContractDB_t const* DB) {
     DynamicUtils::createMessage("Initializing...");
-    DB = _DB;
 
     DynamicUtils::Initialize(DB);
 
