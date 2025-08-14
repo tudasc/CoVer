@@ -5,6 +5,7 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
+#include <llvm/IR/CmpPredicate.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -18,14 +19,21 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/ErrorHandling.h>
+#include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Support/WithColor.h>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
 using namespace llvm;
 using namespace ContractTree;
+
+static cl::opt<std::string> ClInstrumentType(
+    "cover-instrument-type", cl::init("safe"),
+    cl::desc("Kind of instrumentation to apply. Choices: safe, full"),
+    cl::Hidden);
 
 PreservedAnalyses InstrumentPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
@@ -57,6 +65,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
     CallInst* initFuncCI = CallInst::Create(initFuncCallee, GlobalDB);
     initFuncCI->insertBefore(mainF->getEntryBlock().getFirstNonPHIOrDbg());
+    isolateCallback(initFuncCI);
 
     // Create callback function for rel func call
     // Call sig: Function ptr, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
@@ -67,15 +76,18 @@ PreservedAnalyses InstrumentPass::run(Module &M,
 
     // Create callback function for RW
     // Call sig: int64-as-bool isWrite, mem ptr
-    callbackRWCallee = M.getOrInsertFunction("PPDCV_MemCallback", Void_Type, Int_Type, Ptr_Type);
-    Function* callbackRW = dyn_cast<Function>(callbackRWCallee.getCallee());
-    callbackRW->setLinkage(GlobalValue::ExternalWeakLinkage);
+    callbackRCallee = M.getOrInsertFunction("PPDCV_MemRCallback", Void_Type, Ptr_Type);
+    Function* callbackR = dyn_cast<Function>(callbackRCallee.getCallee());
+    callbackR->setLinkage(GlobalValue::ExternalWeakLinkage);
+    callbackWCallee = M.getOrInsertFunction("PPDCV_MemWCallback", Void_Type, Ptr_Type);
+    Function* callbackW = dyn_cast<Function>(callbackWCallee.getCallee());
+    callbackW->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create callbacks
     instrumentFunctions(M);
     instrumentRW(M);
 
-    return PreservedAnalyses::all();
+    return PreservedAnalyses::none();
 }
 
 Constant* InstrumentPass::createTagGlobal(Module& M) {
@@ -287,18 +299,22 @@ void InstrumentPass::instrumentFunctions(Module &M) {
 }
 
 void InstrumentPass::instrumentRW(Module &M) {
+    std::unordered_set<CallBase*> to_isolate;
     for (Function& F : M) {
         for (BasicBlock& BB : F) {
             for (Instruction& I : BB) {
                 if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
                     Value* V = getLoadStorePointerOperand(&I);
-                    CallInst* callbackCI = CallInst::Create(callbackRWCallee, { ConstantInt::get(Int_Type, isa<StoreInst>(I) ? 1 : 0), V});
+                    CallInst* callbackCI = CallInst::Create(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V});
                     callbackCI->setDebugLoc(I.getDebugLoc());
                     callbackCI->insertBefore(I.getIterator());
+                    to_isolate.insert(callbackCI);
                 }
             }
         }
     }
+    for (CallBase* CI : to_isolate)
+        isolateCallback(CI);
 }
 
 std::pair<Constant*,int64_t> InstrumentPass::createParamList(Module& M, std::vector<CallParam> params) {
@@ -333,6 +349,17 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         CallInst* callbackCI = CallInst::Create(callbackFuncCallee, params);
         callbackCI->setDebugLoc(callsite->getDebugLoc());
         callbackCI->insertBefore(callsite->getIterator());
+        isolateCallback(callbackCI);
     }
     already_instrumented.insert(F);
+}
+
+void InstrumentPass::isolateCallback(CallBase* callbackCI) {
+    if (ClInstrumentType != "safe") return;
+    BasicBlock* BeforeCI = callbackCI->getParent();
+    BasicBlock* CIBB = BeforeCI->splitBasicBlock(callbackCI);
+    BasicBlock* AfterCI = CIBB->splitBasicBlock(++callbackCI->getIterator());
+    ICmpInst* Cmp = new ICmpInst(BeforeCI->getTerminator()->getIterator(), CmpInst::ICMP_NE, callbackCI->getCalledOperand(), Null_Const);
+    BranchInst* NewBI = BranchInst::Create(CIBB, AfterCI, Cmp);
+    ReplaceInstWithInst(BeforeCI->getTerminator(), NewBI);
 }

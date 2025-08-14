@@ -35,8 +35,10 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         void instrumentFunctions(Module &M);
         void instrumentRW(Module &M);
         void insertFunctionInstrCallback(Function* CB);
+        void isolateCallback(CallBase* callbackCI);
         FunctionCallee callbackFuncCallee;
-        FunctionCallee callbackRWCallee;
+        FunctionCallee callbackRCallee;
+        FunctionCallee callbackWCallee;
         std::set<Function*> already_instrumented;
 
         // Types

@@ -33,7 +33,7 @@ std::vector<std::string> source_file_names;
 
 std::string opt_flags = "";
 
-enum struct Instrumentation { NONE, FULL };
+enum struct Instrumentation { NONE, FULL, SAFE };
 Instrumentation instr_level;
 
 std::string exec(std::string const& cmd) {
@@ -94,8 +94,14 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             cur_execkind = ExecKind::VERBOSE;
         } else if (arg == "--wrap-target") {
             wrap_target = all_args[++i];
-        } else if (arg == "--instrument-contracts") {
-            instr_level = Instrumentation::FULL;
+        } else if (arg.starts_with("--instrument-contracts")) {
+            instr_level = Instrumentation::SAFE;
+            if (arg.starts_with("--instrument-contracts=")) {
+                std::string kind = arg.substr(23, std::string::npos); // Cutoff arg and equal sign
+                if (kind == "safe") instr_level = Instrumentation::SAFE;
+                if (kind == "full") instr_level = Instrumentation::FULL;
+                if (kind == "none") instr_level = Instrumentation::NONE;
+            }
         } else if (arg == "--allow-multireports") {
             opt_flags += " -cover-allow-multireports=1";
         } else if (arg.starts_with("--generate-json-report")) {
@@ -213,6 +219,8 @@ int main(int argc, const char** argv) {
     // Call LLVM passes
     std::string passlist = "contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
     if (instr_level > Instrumentation::NONE) passlist += ",instrumentContracts";
+    if (instr_level == Instrumentation::SAFE) opt_flags += " -cover-instrument-type=safe";
+    if (instr_level == Instrumentation::FULL) opt_flags += " -cover-instrument-type=full";
     execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
 
