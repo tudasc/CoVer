@@ -59,8 +59,14 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     Constant* CDB = ConstantStruct::get(DB_Type, {ContractsVal, ConstantInt::get(Int_Type, num_contrs),  TagVal});
     GlobalDB->setInitializer(CDB);
 
+    AttributeList fnAttr;
+    fnAttr = fnAttr.addFnAttribute(M.getContext(), Attribute::NoUnwind);
+    fnAttr = fnAttr.addFnAttribute(M.getContext(), Attribute::WillReturn);
+    fnAttr = fnAttr.addFnAttribute(M.getContext(), Attribute::NoCallback);
+
     // Create initialization routine for tool
-    FunctionCallee initFuncCallee = M.getOrInsertFunction("PPDCV_Initialize", Void_Type, Ptr_Type);
+    FunctionType* InitCBType = FunctionType::get(Void_Type, {Ptr_Type}, false);
+    FunctionCallee initFuncCallee = M.getOrInsertFunction("PPDCV_Initialize", InitCBType, fnAttr);
     Function* initFunc = dyn_cast<Function>(initFuncCallee.getCallee());
     initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
     CallInst* initFuncCI = CallInst::Create(initFuncCallee, GlobalDB);
@@ -70,16 +76,17 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     // Create callback function for rel func call
     // Call sig: Function ptr, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
     FunctionType* FunctionCBType = FunctionType::get(Void_Type, {Ptr_Type, Int_Type}, true);
-    callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType);
+    callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType, fnAttr);
     Function* callbackFunc = dyn_cast<Function>(callbackFuncCallee.getCallee());
     callbackFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create callback function for RW
     // Call sig: int64-as-bool isWrite, mem ptr
-    callbackRCallee = M.getOrInsertFunction("PPDCV_MemRCallback", Void_Type, Ptr_Type);
+    FunctionType* FunctionRWType = FunctionType::get(Void_Type, {Ptr_Type}, false);
+    callbackRCallee = M.getOrInsertFunction("PPDCV_MemRCallback", FunctionRWType, fnAttr);
     Function* callbackR = dyn_cast<Function>(callbackRCallee.getCallee());
     callbackR->setLinkage(GlobalValue::ExternalWeakLinkage);
-    callbackWCallee = M.getOrInsertFunction("PPDCV_MemWCallback", Void_Type, Ptr_Type);
+    callbackWCallee = M.getOrInsertFunction("PPDCV_MemWCallback", FunctionRWType, fnAttr);
     Function* callbackW = dyn_cast<Function>(callbackWCallee.getCallee());
     callbackW->setLinkage(GlobalValue::ExternalWeakLinkage);
 

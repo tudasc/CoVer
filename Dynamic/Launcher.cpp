@@ -37,7 +37,6 @@ int main(int argc, const char** argv) {
         }
     }
 
-    setenv("LD_PRELOAD", "@COVER_DYNAMIC_ANALYSER_PATH@", 1);
     setenv("COVER_DYNAMIC_FILENAME", executable.c_str(), 1);
     std::system((launcher + " " + exec_str).c_str());
 

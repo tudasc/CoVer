@@ -15,8 +15,6 @@ struct PostCallAnalysis : public BaseAnalysis {
         Fulfillment memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite) { return Fulfillment::UNKNOWN; }
         Fulfillment exitCBImpl(void* const&& location);
 
-        std::unordered_set<void*> getReferenceImpl() { return references; };
-
         CallBacks requiredCallbacksImpl() { return {true, false, false}; }
 
     private:
@@ -30,6 +28,4 @@ struct PostCallAnalysis : public BaseAnalysis {
 
         // Analysis temporaries
         std::vector<CallsiteInfo> uncheckedCallsites;
-
-        std::unordered_set<void*> references;
 };

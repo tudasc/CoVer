@@ -16,6 +16,8 @@
 #include "Analyses/ReleaseAnalysis.h"
 #include "DynamicUtils.h"
 
+#include "FastVariant.h"
+
 struct ErrorMessage {
     std::vector<std::string> msg;
     std::vector<ErrorMessage> child_msg;
@@ -28,12 +30,14 @@ struct AnalysisPair {
     std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*> analysis;
 };
 
+void PPDCV_destructor();
+
 std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
 std::vector<AnalysisPair> all_analyses;
 std::vector<AnalysisPair> analyses_with_funcCB;
 std::vector<AnalysisPair> analyses_with_memRCB;
 std::vector<AnalysisPair> analyses_with_memWCB;
-std::unordered_map<ContractFormula_t*, std::unordered_set<void*>> analysis_references;
+std::unordered_map<ContractFormula_t*, std::vector<void const*>> analysis_references;
 std::unordered_set<void*> called_funcs;
 
 template<typename Analysis, typename... Arguments>
@@ -49,15 +53,13 @@ inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
 }
 
 #define HANDLE_CALLBACK(pairs, CB, ...) \
-    for (auto it = pairs.begin(); it != pairs.end();) { \
-        std::visit([&](auto& analysis) { \
-            Fulfillment f = analysis->CB(std::move(__builtin_return_address(0)), __VA_ARGS__); \
-            if (f != Fulfillment::UNKNOWN) { \
-                contract_status[it->formula] = f; \
-                analysis_references[it->formula] = analysis->getReferences(); \
-                it = pairs.erase(it); \
-            } else it++; \
-        }, it->analysis); \
+    _Pragma("unroll(5)") for (auto it = pairs.begin(); it < pairs.end();) { \
+        it = fastVisit([&](auto& analysis) { \
+            Fulfillment f = analysis->CB(std::move(__builtin_return_address(0)), __VA_ARGS__);\
+        if (f != Fulfillment::UNKNOWN) { \
+            contract_status[it->formula] = f; \
+            return pairs.erase(it); \
+        } return ++it;}, it->analysis);\
     }
 
 void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_supplier) {
@@ -104,8 +106,8 @@ ErrorMessage recurseResolveFormula(ContractFormula_t* form) {
             }
             default: return {{"UNEXPECTED OPERATION IN RESOLVE STEP"}, {}};
         }
-        std::unordered_set<void*> references = analysis_references[form];
-        for (void* loc : references)
+        std::vector<void const*> references = analysis_references[form];
+        for (void const* loc : references)
             msg.msg.push_back(std::string("Reference: ") + DynamicUtils::getFileReference(loc));
         return msg;
     }
@@ -187,6 +189,8 @@ void PPDCV_Initialize(ContractDB_t const* DB) {
         }
     }
 
+    atexit(PPDCV_destructor);
+
     DynamicUtils::createMessage("Finished Initializing!");
 }
 
@@ -224,13 +228,13 @@ void PPDCV_MemWCallback(void* buf) {
     HANDLE_CALLBACK(analyses_with_memWCB, onMemoryAccess, buf, true);
 }
 
-extern "C" __attribute__((destructor)) void PPDCV_destructor() {
+void PPDCV_destructor() {
     #warning todo find better way for postprocessing
     std::cout << "CoVer-Dynamic: Analysis finished.\n";
     for (AnalysisPair& pair : all_analyses) {
-        std::visit([&](auto&& analysis) {
-            if (contract_status.contains(pair.formula)) return;
-            contract_status[pair.formula] = analysis->onProgramExit(std::move(__builtin_return_address(0)));
+        fastVisit([&](auto&& analysis) {
+            if (!contract_status.contains(pair.formula))
+                contract_status[pair.formula] = analysis->onProgramExit(std::move(__builtin_return_address(0)));
             analysis_references[pair.formula] = analysis->getReferences();
             delete analysis;
         }, pair.analysis);

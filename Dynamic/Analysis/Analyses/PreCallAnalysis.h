@@ -16,8 +16,6 @@ struct PreCallAnalysis : BaseAnalysis {
         Fulfillment memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite) { return Fulfillment::UNKNOWN; }
         Fulfillment exitCBImpl(void* const&& location) { return Fulfillment::FULFILLED; };
 
-        std::unordered_set<void*> getReferenceImpl() { return references; };
-
         CallBacks requiredCallbacksImpl() { return {true, false, false}; }
 
     private:
@@ -31,6 +29,4 @@ struct PreCallAnalysis : BaseAnalysis {
 
         // Analysis temporaries
         std::unordered_map<void*, std::vector<CallsiteInfo>> possible_matches;
-
-        std::unordered_set<void*> references;
 };
