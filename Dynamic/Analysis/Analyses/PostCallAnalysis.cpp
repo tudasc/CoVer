@@ -52,7 +52,7 @@ Fulfillment PostCallAnalysis::functionCBImpl(void* const&& location, void* const
 
 Fulfillment PostCallAnalysis::exitCBImpl(void* const&& location) {
     for (CallsiteInfo callsite : uncheckedCallsites) {
-        references.insert(callsite.location);
+        references.push_back(callsite.location);
     }
     return uncheckedCallsites.empty() ? Fulfillment::FULFILLED : Fulfillment::VIOLATED;
 }

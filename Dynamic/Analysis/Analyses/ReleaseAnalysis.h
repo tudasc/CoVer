@@ -12,7 +12,6 @@ struct ReleaseAnalysis : BaseAnalysis {
         Fulfillment functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite);
         Fulfillment memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite);
         Fulfillment exitCBImpl(void* const&& location) { return Fulfillment::FULFILLED; };
-        inline std::unordered_set<void*> getReferenceImpl() { return references; };
 
         CallBacks requiredCallbacksImpl();
 
@@ -31,6 +30,4 @@ struct ReleaseAnalysis : BaseAnalysis {
 
         // Analysis temporaries
         std::vector<CallsiteInfo> forbiddenCallsites;
-
-        std::unordered_set<void*> references;
 };

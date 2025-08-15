@@ -1,13 +1,19 @@
-add_library(CoVerDynamicAnalyzer SHARED 
+set(DYNAMIC_ANALYSER_SOURCES
   Analyses/PostCallAnalysis.cpp
   Analyses/PreCallAnalysis.cpp
   Analyses/ReleaseAnalysis.cpp
   Hooks.cpp
   DynamicUtils.cpp
 )
+
+add_library(CoVerDynamicAnalyzerDUMMY STATIC ${DYNAMIC_ANALYSER_SOURCES})
+add_library(CoVerDynamicAnalyzer STATIC ${DYNAMIC_ANALYSER_SOURCES})
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 23)
-target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions -flto)
-target_link_options(CoVerDynamicAnalyzer PUBLIC -fuse-ld=lld)
+set_property(TARGET CoVerDynamicAnalyzerDUMMY PROPERTY CXX_STANDARD 23)
+target_include_directories(CoVerDynamicAnalyzer PUBLIC ../../Include/)
+target_include_directories(CoVerDynamicAnalyzerDUMMY PUBLIC ../../Include/)
+set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD ON)
+target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions)
 
 if (CMAKE_ADDR2LINE)
   target_compile_definitions(CoVerDynamicAnalyzer PUBLIC CMAKE_ADDR2LINE="${CMAKE_ADDR2LINE}")
@@ -17,5 +23,4 @@ else()
 endif(CMAKE_ADDR2LINE)
 
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_include_directories(CoVerDynamicAnalyzer PUBLIC ../../Include/)
 install(TARGETS CoVerDynamicAnalyzer DESTINATION lib)

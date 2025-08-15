@@ -40,6 +40,8 @@ ReleaseAnalysis::ReleaseAnalysis(void* _func_supplier, ReleaseOp_t* rOP) {
     }
 
     func_supplier = _func_supplier;
+
+    forbiddenCallsites.reserve(2 << 6);
 }
 
 CallBacks ReleaseAnalysis::requiredCallbacksImpl() {
@@ -70,16 +72,16 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const&& location, void* const&
     // Check if forbidden
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
-            references.insert(location);
-            for (CallsiteInfo const& callsite : forbiddenCallsites) references.insert(callsite.location);
+            references.push_back(location);
+            for (CallsiteInfo const& callsite : forbiddenCallsites) references.push_back(callsite.location);
             return Fulfillment::VIOLATED;
         }
 
         // Check if a callsite is violated
         for (CallsiteInfo const& callsite : forbiddenCallsites) {
             if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite, callsite, target_str_forb)) {
-                references.insert(location);
-                references.insert(callsite.location);
+                references.push_back(location);
+                references.push_back(callsite.location);
                 return Fulfillment::VIOLATED;
             }
         }
@@ -100,8 +102,7 @@ Fulfillment ReleaseAnalysis::memoryCBImpl(void* const&& location, void* const& m
 
     for (CallsiteInfo const& callsite : forbiddenCallsites) {
         if (DynamicUtils::checkParamMatch(rwOp->accType, &callsite.params[rwOp->idx], memory)) {
-            references.insert(location);
-            references.insert(callsite.location);
+            references.insert(references.end(), {location, callsite.location});
             return Fulfillment::VIOLATED;
         }
     }

@@ -31,7 +31,7 @@ Fulfillment PreCallAnalysis::functionCBImpl(void* const&& location, void* const&
         // Contract supplier found, need to resolve now
         if (possible_matches.empty()) {
             // No matches, verification failed
-            references.insert(location);
+            references.push_back(location);
             return Fulfillment::VIOLATED;
         }
 
@@ -47,7 +47,7 @@ Fulfillment PreCallAnalysis::functionCBImpl(void* const&& location, void* const&
         }
 
         // Nothing matched
-        references.insert(location);
+        references.push_back(location);
         return Fulfillment::VIOLATED;
     }
 
