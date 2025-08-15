@@ -71,9 +71,9 @@ void printHelp() {
     printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] [--predefined-contracts] [--allow-multireports] [--instrument-contracts[=(safe|full|none)]] <compiler-params>");
     printf("\n\t--help: Print this help text and exit");
     printf("\n\t--dry-run: Only show the commands that would be run, but do not perform any");
-    printf("\n\t--instrument-contracts: Perform instrumentation for runtime analysis, defaults to \"safe\"");
-    printf("\n\t\t\"safe\": Full instrumentation with checks to preserve ability to run without analysis");
-    printf("\n\t\t\"full\": Full instrumentation without safety checks, may be faster");
+    printf("\n\t--instrument-contracts: Perform instrumentation for runtime analysis. If set, defaults to \"full\"");
+    printf("\n\t\t\"full\": Full instrumentation (default)");
+    printf("\n\t\t\"filtered\": Only instrument potential issues from static analysis");
     printf("\n\t--verbose: Print commands to be executed");
     printf("\n\t--wrap-target: Set the compiler to wrap around");
     printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions using the -include flag");
@@ -97,7 +97,7 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
         } else if (arg == "--wrap-target") {
             wrap_target = all_args[++i];
         } else if (arg.starts_with("--instrument-contracts")) {
-            instr_level = Instrumentation::SAFE;
+            instr_level = Instrumentation::FULL;
             if (arg.starts_with("--instrument-contracts=")) {
                 std::string kind = arg.substr(23, std::string::npos); // Cutoff arg and equal sign
                 if (kind == "safe") instr_level = Instrumentation::SAFE;
