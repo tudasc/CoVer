@@ -5,7 +5,6 @@
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/CmpPredicate.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
