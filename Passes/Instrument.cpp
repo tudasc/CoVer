@@ -31,8 +31,8 @@ using namespace llvm;
 using namespace ContractTree;
 
 static cl::opt<std::string> ClInstrumentType(
-    "cover-instrument-type", cl::init("safe"),
-    cl::desc("Kind of instrumentation to apply. Choices: safe, full"),
+    "cover-instrument-type", cl::init("full"),
+    cl::desc("Kind of instrumentation to apply. Choices: full, filtered"),
     cl::Hidden);
 
 PreservedAnalyses InstrumentPass::run(Module &M,
