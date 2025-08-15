@@ -50,7 +50,7 @@ CallBacks ReleaseAnalysis::requiredCallbacksImpl() {
     return {true, !rwOp->isWrite, (bool)rwOp->isWrite};
 }
 
-Fulfillment ReleaseAnalysis::functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite) {
+Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo const& callsite) {
     // First, check if release
     if (rel_funcs.contains(func)) {
         if (params_release.empty()) {
@@ -72,7 +72,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const&& location, void* const&
     // Check if forbidden
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
-            references.push_back(location);
+            references.push_back(callsite.location);
             for (CallsiteInfo const& callsite : forbiddenCallsites) references.push_back(callsite.location);
             return Fulfillment::VIOLATED;
         }
@@ -80,7 +80,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const&& location, void* const&
         // Check if a callsite is violated
         for (CallsiteInfo const& callsite : forbiddenCallsites) {
             if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite, callsite, target_str_forb)) {
-                references.push_back(location);
+                references.push_back(callsite.location);
                 references.push_back(callsite.location);
                 return Fulfillment::VIOLATED;
             }
@@ -97,7 +97,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const&& location, void* const&
     return Fulfillment::UNKNOWN;
 }
 
-Fulfillment ReleaseAnalysis::memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite) {
+Fulfillment ReleaseAnalysis::memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite) {
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
 
     for (CallsiteInfo const& callsite : forbiddenCallsites) {

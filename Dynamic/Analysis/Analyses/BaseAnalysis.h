@@ -17,9 +17,10 @@ class BaseAnalysis {
         std::vector<void const*> references;
     public:
         // Event handlers. Return non-unknown if analysis is resolved and no longer needs to be analysed.
-        inline Fulfillment onFunctionCall(this auto& self, void* const&& location, void* const& func, CallsiteInfo const& callsite) { return self.functionCBImpl(std::forward<void* const>(location), func, callsite); };
-        inline Fulfillment onMemoryAccess(this auto& self, void* const&& location, void* const& memory, bool const& isWrite) { return self.memoryCBImpl(std::forward<void* const>(location), memory, isWrite); };
-        inline Fulfillment onProgramExit(this auto& self, void* const&& location) { return self.exitCBImpl(std::forward<void* const>(location)); };
+        // onFunctionCall does not forward return address, as it is included in callsiteinfo
+        inline Fulfillment onFunctionCall(this auto& self, void const* const&& location, void* const& func, CallsiteInfo const& callsite) { return self.functionCBImpl(func, callsite); };
+        inline Fulfillment onMemoryAccess(this auto& self, void const* const&& location, void* const& memory, bool const& isWrite) { return self.memoryCBImpl(std::forward<void const* const>(location), memory, isWrite); };
+        inline Fulfillment onProgramExit(this auto& self, void const* const&& location) { return self.exitCBImpl(std::forward<void const* const>(location)); };
 
         // For debugging and error output
         inline std::vector<void const*> const&& getReferences() { return std::move(references); };

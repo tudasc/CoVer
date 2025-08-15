@@ -9,9 +9,9 @@
 struct ReleaseAnalysis : BaseAnalysis {
     public:
         ReleaseAnalysis(void* func_supplier, ReleaseOp_t* rOP);
-        Fulfillment functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite);
-        Fulfillment memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite);
-        Fulfillment exitCBImpl(void* const&& location) { return Fulfillment::FULFILLED; };
+        Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
+        Fulfillment memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite);
+        Fulfillment exitCBImpl(void const* const&& location) { return Fulfillment::FULFILLED; };
 
         CallBacks requiredCallbacksImpl();
 

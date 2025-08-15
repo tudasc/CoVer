@@ -53,9 +53,10 @@ inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
 }
 
 #define HANDLE_CALLBACK(pairs, CB, ...) \
+    void const* location = __builtin_return_address(0);\
     _Pragma("unroll(5)") for (auto it = pairs.begin(); it < pairs.end();) { \
         it = fastVisit([&](auto& analysis) { \
-            Fulfillment f = analysis->CB(std::move(__builtin_return_address(0)), __VA_ARGS__);\
+            Fulfillment f = analysis->CB(std::move(location), __VA_ARGS__);\
         if (f != Fulfillment::UNKNOWN) { \
             contract_status[it->formula] = f; \
             return pairs.erase(it); \
@@ -90,23 +91,22 @@ ErrorMessage recurseResolveFormula(ContractFormula_t* form) {
     if (form->num_children == 0) {
         if (contract_status[form] == Fulfillment::FULFILLED) return {};
         ErrorMessage msg;
+        msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg};
         switch (form->conn) {
             case UNARY_CALL:
             case UNARY_CALLTAG: {
                 CallTagOp_t* cOP = (CallTagOp_t*)form->data;
-                msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg,
-                           std::string("Did not find call to ") + cOP->target_tag};
+                msg.msg.push_back(std::string("Did not find call to ") + cOP->target_tag);
                 break;
             }
             case UNARY_RELEASE: {
                 ReleaseOp_t* rOP = (ReleaseOp_t*)form->data;
-                msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg,
-                           std::string("Found forbidden operation!")};
+                msg.msg.push_back(std::string("Found forbidden operation!"));
                 break;
             }
             default: return {{"UNEXPECTED OPERATION IN RESOLVE STEP"}, {}};
         }
-        std::vector<void const*> references = analysis_references[form];
+        std::vector<void const*> const& references = analysis_references[form];
         for (void const* loc : references)
             msg.msg.push_back(std::string("Reference: ") + DynamicUtils::getFileReference(loc));
         return msg;
@@ -195,22 +195,21 @@ void PPDCV_Initialize(ContractDB_t const* DB) {
 }
 
 void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
-    void* location = __builtin_return_address(0);
     called_funcs.insert(function);
 
-    CallsiteInfo callsite_params;
+    CallsiteInfo callsite = { .location = __builtin_return_address(0) };
     std::va_list list;
     va_start(list, num_params);
     for (int i = 0; i < num_params; i++) {
         bool isPtr = va_arg(list, int64_t);
         int64_t param_size = va_arg(list, int64_t);
         if (isPtr) {
-            callsite_params.params.push_back({va_arg(list,void*)});
+            callsite.params.push_back({va_arg(list,void*)});
         } else {
             if (param_size == 64)
-                callsite_params.params.push_back({reinterpret_cast<void*>(va_arg(list, int64_t))});
+                callsite.params.push_back({reinterpret_cast<void*>(va_arg(list, int64_t))});
             else if (param_size == 32)
-                callsite_params.params.push_back({reinterpret_cast<void*>(va_arg(list, int32_t))});
+                callsite.params.push_back({reinterpret_cast<void*>(va_arg(list, int32_t))});
             else
                 DynamicUtils::createMessage("Unkown Parameter size!");
         }
@@ -218,7 +217,7 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
     va_end(list);
 
     // Run event handlers and remove analysis if done
-    HANDLE_CALLBACK(analyses_with_funcCB, onFunctionCall, function, callsite_params);
+    HANDLE_CALLBACK(analyses_with_funcCB, onFunctionCall, function, callsite);
 }
 
 void PPDCV_MemRCallback(void* buf) {
