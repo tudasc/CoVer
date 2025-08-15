@@ -22,7 +22,7 @@ PreCallAnalysis::PreCallAnalysis(void* _func_supplier, CallTagOp_t* callop) {
     target_funcs = DynamicUtils::getFunctionsForTag(callop->target_tag);
 }
 
-Fulfillment PreCallAnalysis::functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite) {
+Fulfillment PreCallAnalysis::functionCBImpl(void* const& func, CallsiteInfo const& callsite) {
     if (target_funcs.contains(func)) {
         // Possible match for precall
         possible_matches[func].push_back(callsite);
@@ -31,7 +31,7 @@ Fulfillment PreCallAnalysis::functionCBImpl(void* const&& location, void* const&
         // Contract supplier found, need to resolve now
         if (possible_matches.empty()) {
             // No matches, verification failed
-            references.push_back(location);
+            references.push_back(callsite.location);
             return Fulfillment::VIOLATED;
         }
 
@@ -47,7 +47,7 @@ Fulfillment PreCallAnalysis::functionCBImpl(void* const&& location, void* const&
         }
 
         // Nothing matched
-        references.push_back(location);
+        references.push_back(callsite.location);
         return Fulfillment::VIOLATED;
     }
 

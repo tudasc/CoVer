@@ -11,9 +11,9 @@ struct PostCallAnalysis : public BaseAnalysis {
         PostCallAnalysis(void* func_supplier, CallOp_t* callop);
         PostCallAnalysis(void* func_supplier, CallTagOp_t* callop);
 
-        Fulfillment functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite);
-        Fulfillment memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite) { return Fulfillment::UNKNOWN; }
-        Fulfillment exitCBImpl(void* const&& location);
+        Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
+        Fulfillment memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite) { return Fulfillment::UNKNOWN; }
+        Fulfillment exitCBImpl(void const* const&& location);
 
         CallBacks requiredCallbacksImpl() { return {true, false, false}; }
 

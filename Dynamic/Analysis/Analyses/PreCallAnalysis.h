@@ -12,9 +12,9 @@ struct PreCallAnalysis : BaseAnalysis {
         PreCallAnalysis(void* func_supplier, CallOp_t* callop);
         PreCallAnalysis(void* func_supplier, CallTagOp_t* callop);
 
-        Fulfillment functionCBImpl(void* const&& location, void* const& func, CallsiteInfo const& callsite);
-        Fulfillment memoryCBImpl(void* const&& location, void* const& memory, bool const& isWrite) { return Fulfillment::UNKNOWN; }
-        Fulfillment exitCBImpl(void* const&& location) { return Fulfillment::FULFILLED; };
+        Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
+        Fulfillment memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite) { return Fulfillment::UNKNOWN; }
+        Fulfillment exitCBImpl(void const* const&& location) { return Fulfillment::FULFILLED; };
 
         CallBacks requiredCallbacksImpl() { return {true, false, false}; }
 
