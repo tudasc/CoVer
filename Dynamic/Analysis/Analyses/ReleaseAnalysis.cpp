@@ -73,14 +73,14 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
             references.push_back(callsite.location);
-            for (CallsiteInfo const& callsite : forbiddenCallsites) references.push_back(callsite.location);
+            for (CallsiteInfo const& forbcallsite : forbiddenCallsites) references.push_back(forbcallsite.location);
             return Fulfillment::VIOLATED;
         }
 
         // Check if a callsite is violated
-        for (CallsiteInfo const& callsite : forbiddenCallsites) {
+        for (CallsiteInfo const& forbcallsite : forbiddenCallsites) {
             if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite, callsite, target_str_forb)) {
-                references.push_back(callsite.location);
+                references.push_back(forbcallsite.location);
                 references.push_back(callsite.location);
                 return Fulfillment::VIOLATED;
             }
