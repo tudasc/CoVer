@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-struct ReleaseAnalysis : BaseAnalysis {
+struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
     public:
         ReleaseAnalysis(void* func_supplier, ReleaseOp_t* rOP);
         Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);

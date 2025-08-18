@@ -11,6 +11,7 @@ struct CallBacks {
     bool const MEMORY_W;
 };
 
+template<typename T>
 class BaseAnalysis {
     protected:
         BaseAnalysis() { references.reserve(10); };
@@ -18,13 +19,13 @@ class BaseAnalysis {
     public:
         // Event handlers. Return non-unknown if analysis is resolved and no longer needs to be analysed.
         // onFunctionCall does not forward return address, as it is included in callsiteinfo
-        inline Fulfillment onFunctionCall(this auto& self, void const* const&& location, void* const& func, CallsiteInfo const& callsite) { return self.functionCBImpl(func, callsite); };
-        inline Fulfillment onMemoryAccess(this auto& self, void const* const&& location, void* const& memory, bool const& isWrite) { return self.memoryCBImpl(std::forward<void const* const>(location), memory, isWrite); };
-        inline Fulfillment onProgramExit(this auto& self, void const* const&& location) { return self.exitCBImpl(std::forward<void const* const>(location)); };
+        inline Fulfillment onFunctionCall(void const* const&& location, void* const& func, CallsiteInfo const& callsite) { return static_cast<T*>(this)->functionCBImpl(func, callsite); };
+        inline Fulfillment onMemoryAccess(void const* const&& location, void* const& memory, bool const& isWrite) { return static_cast<T*>(this)->memoryCBImpl(std::forward<void const* const>(location), memory, isWrite); };
+        inline Fulfillment onProgramExit(void const* const&& location) { return static_cast<T*>(this)->exitCBImpl(std::forward<void const* const>(location)); };
 
         // For debugging and error output
         inline std::vector<void const*> const&& getReferences() { return std::move(references); };
 
         // Return which callbacks are needed for this analysis
-        CallBacks requiredCallbacks(this auto& self) { return self.requiredCallbacksImpl(); }
+        CallBacks requiredCallbacks() { return static_cast<T*>(this)->requiredCallbacksImpl(); }
 };

@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 
-struct PreCallAnalysis : BaseAnalysis {
+struct PreCallAnalysis : BaseAnalysis<PreCallAnalysis> {
     public:
         PreCallAnalysis(void* func_supplier, CallOp_t* callop);
         PreCallAnalysis(void* func_supplier, CallTagOp_t* callop);

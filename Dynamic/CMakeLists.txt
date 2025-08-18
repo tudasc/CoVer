@@ -6,7 +6,7 @@ add_library(CoVerDynamicAnalyzer STATIC
   DynamicUtils.cpp
 )
 
-set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 23)
+set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 20)
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD ON)
 target_include_directories(CoVerDynamicAnalyzer PUBLIC ../Include/)
 target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions)
