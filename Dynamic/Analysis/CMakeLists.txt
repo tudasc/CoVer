@@ -6,11 +6,11 @@ set(DYNAMIC_ANALYSER_SOURCES
   DynamicUtils.cpp
 )
 
-add_library(CoVerDynamicAnalyzer SHARED ${DYNAMIC_ANALYSER_SOURCES})
+add_library(CoVerDynamicAnalyzer STATIC ${DYNAMIC_ANALYSER_SOURCES})
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 23)
+set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD ON)
 target_include_directories(CoVerDynamicAnalyzer PUBLIC ../../Include/)
-target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions -flto)
-target_link_options(CoVerDynamicAnalyzer PUBLIC -fuse-ld=lld)
+target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions)
 
 if (CMAKE_ADDR2LINE)
   target_compile_definitions(CoVerDynamicAnalyzer PUBLIC CMAKE_ADDR2LINE="${CMAKE_ADDR2LINE}")
