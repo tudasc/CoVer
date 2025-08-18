@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-struct PostCallAnalysis : public BaseAnalysis {
+struct PostCallAnalysis : public BaseAnalysis<PostCallAnalysis> {
     public:
         PostCallAnalysis(void* func_supplier, CallOp_t* callop);
         PostCallAnalysis(void* func_supplier, CallTagOp_t* callop);
