@@ -98,7 +98,6 @@ namespace DynamicUtils {
     }
 
     std::string getFileReference(void const* location) {
-        std::string filename = std::getenv("COVER_DYNAMIC_FILENAME");
         std::stringstream exec_cmd;
         Dl_info info;
         if (!dladdr(location, &info)) {
@@ -112,11 +111,11 @@ namespace DynamicUtils {
             location = (void*)((intptr_t)location - (intptr_t)info.dli_fbase - 1);
         }
 #ifdef CMAKE_ADDR2LINE
-        exec_cmd << CMAKE_ADDR2LINE " -e " << filename << " " << std::hex << location;
+        exec_cmd << CMAKE_ADDR2LINE " -e " << info.dli_fname << " " << std::hex << location;
         std::string result = exec(exec_cmd.str());
         result.pop_back();
 #else
-        exec_cmd << filename << std::hex << "[" << location << "] (Cannot resolve: No addr2line support configured)\n";
+        exec_cmd << info.dli_fname << std::hex << "[" << location << "] (Cannot resolve: No addr2line support configured)\n";
         std::string result = exec_cmd.str();
 #endif
         return result;

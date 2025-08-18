@@ -220,7 +220,12 @@ int main(int argc, const char** argv) {
 
     // Call LLVM passes
     std::string passlist = "contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
-    if (instr_level > Instrumentation::NONE) passlist += ",instrumentContracts";
+    if (instr_level > Instrumentation::NONE) {
+        // Need instrumentation, so add instr pass...
+        passlist += ",instrumentContracts";
+        // ...and link against analyser. Need to hackily link against stdlib as well for C code
+        rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
+    }
     if (instr_level == Instrumentation::SAFE) opt_flags += " -cover-instrument-type=safe";
     if (instr_level == Instrumentation::FULL) opt_flags += " -cover-instrument-type=full";
     execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
