@@ -183,6 +183,7 @@ endif(MPI_C_FOUND AND Python_FOUND)
 ##
 
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
+set(COVER_DYNAMIC_ANALYSER_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerDynamicAnalyzer.a)
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include")
 
 # Replace build folder with install folder
