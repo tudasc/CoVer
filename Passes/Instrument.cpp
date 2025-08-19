@@ -22,7 +22,6 @@
 #include <llvm/Support/WithColor.h>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -31,7 +30,7 @@ using namespace ContractTree;
 
 static cl::opt<std::string> ClInstrumentType(
     "cover-instrument-type", cl::init("full"),
-    cl::desc("Kind of instrumentation to apply. Choices: full, filtered"),
+    cl::desc("Kind of instrumentation to apply. Choices: full, filtered=<detection json>, funconly"),
     cl::Hidden);
 
 PreservedAnalyses InstrumentPass::run(Module &M,
@@ -70,7 +69,6 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
     CallInst* initFuncCI = CallInst::Create(initFuncCallee, GlobalDB);
     initFuncCI->insertBefore(mainF->getEntryBlock().getFirstNonPHIOrDbg());
-    isolateCallback(initFuncCI);
 
     // Create callback function for rel func call
     // Call sig: Function ptr, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
@@ -91,7 +89,8 @@ PreservedAnalyses InstrumentPass::run(Module &M,
 
     // Create callbacks
     instrumentFunctions(M);
-    instrumentRW(M);
+    if (ClInstrumentType != "funconly")
+        instrumentRW(M);
 
     return PreservedAnalyses::none();
 }
@@ -305,7 +304,6 @@ void InstrumentPass::instrumentFunctions(Module &M) {
 }
 
 void InstrumentPass::instrumentRW(Module &M) {
-    std::unordered_set<CallBase*> to_isolate;
     for (Function& F : M) {
         for (BasicBlock& BB : F) {
             for (Instruction& I : BB) {
@@ -314,13 +312,10 @@ void InstrumentPass::instrumentRW(Module &M) {
                     CallInst* callbackCI = CallInst::Create(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V});
                     callbackCI->setDebugLoc(I.getDebugLoc());
                     callbackCI->insertBefore(I.getIterator());
-                    to_isolate.insert(callbackCI);
                 }
             }
         }
     }
-    for (CallBase* CI : to_isolate)
-        isolateCallback(CI);
 }
 
 std::pair<Constant*,int64_t> InstrumentPass::createParamList(Module& M, std::vector<CallParam> params) {
@@ -355,17 +350,6 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         CallInst* callbackCI = CallInst::Create(callbackFuncCallee, params);
         callbackCI->setDebugLoc(callsite->getDebugLoc());
         callbackCI->insertBefore(callsite->getIterator());
-        isolateCallback(callbackCI);
     }
     already_instrumented.insert(F);
-}
-
-void InstrumentPass::isolateCallback(CallBase* callbackCI) {
-    if (ClInstrumentType != "safe") return;
-    BasicBlock* BeforeCI = callbackCI->getParent();
-    BasicBlock* CIBB = BeforeCI->splitBasicBlock(callbackCI);
-    BasicBlock* AfterCI = CIBB->splitBasicBlock(++callbackCI->getIterator());
-    ICmpInst* Cmp = new ICmpInst(BeforeCI->getTerminator()->getIterator(), CmpInst::ICMP_NE, callbackCI->getCalledOperand(), Null_Const);
-    BranchInst* NewBI = BranchInst::Create(CIBB, AfterCI, Cmp);
-    ReplaceInstWithInst(BeforeCI->getTerminator(), NewBI);
 }

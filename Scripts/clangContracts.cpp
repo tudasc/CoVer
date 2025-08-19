@@ -33,7 +33,7 @@ std::vector<std::string> source_file_names;
 
 std::string opt_flags = "";
 
-enum struct Instrumentation { NONE, FULL, SAFE };
+enum struct Instrumentation { NONE, FUNCONLY, FULL };
 Instrumentation instr_level;
 
 std::string exec(std::string const& cmd) {
@@ -100,7 +100,7 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             instr_level = Instrumentation::FULL;
             if (arg.starts_with("--instrument-contracts=")) {
                 std::string kind = arg.substr(23, std::string::npos); // Cutoff arg and equal sign
-                if (kind == "safe") instr_level = Instrumentation::SAFE;
+                if (kind == "funconly") instr_level = Instrumentation::FUNCONLY;
                 if (kind == "full") instr_level = Instrumentation::FULL;
                 if (kind == "none") instr_level = Instrumentation::NONE;
             }
@@ -226,7 +226,7 @@ int main(int argc, const char** argv) {
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
-    if (instr_level == Instrumentation::SAFE) opt_flags += " -cover-instrument-type=safe";
+    if (instr_level == Instrumentation::FUNCONLY) opt_flags += " -cover-instrument-type=funconly";
     if (instr_level == Instrumentation::FULL) opt_flags += " -cover-instrument-type=full";
     execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
