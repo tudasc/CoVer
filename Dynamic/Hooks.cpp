@@ -164,7 +164,7 @@ void resolveContracts() {
                 formatError(errors_precond);
             }
             if (!errors_postcond.msg.empty()) {
-                DynamicUtils::out() << "  Precondition:\n";
+                DynamicUtils::out() << "  Postcondition:\n";
                 formatError(errors_postcond);
             }
         }
