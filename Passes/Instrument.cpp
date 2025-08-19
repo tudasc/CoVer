@@ -30,7 +30,7 @@ using namespace ContractTree;
 
 static cl::opt<std::string> ClInstrumentType(
     "cover-instrument-type", cl::init("full"),
-    cl::desc("Kind of instrumentation to apply. Choices: full, filtered=<detection json>, funconly"),
+    cl::desc("Kind of instrumentation to apply. Choices: full, filtered[=<detection json>], funconly"),
     cl::Hidden);
 
 PreservedAnalyses InstrumentPass::run(Module &M,
@@ -300,7 +300,6 @@ void InstrumentPass::instrumentFunctions(Module &M) {
     for (std::pair<Function*, std::vector<TagUnit>> tag : DB->Tags) {
         insertFunctionInstrCallback(tag.first);
     }
-    #warning TODO all functions referenced by name only
 }
 
 void InstrumentPass::instrumentRW(Module &M) {
