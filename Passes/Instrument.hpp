@@ -8,9 +8,11 @@
 #include <llvm/IR/Instruction.h>
 #include <memory>
 #include <set>
+#include <unordered_set>
 #include <vector>
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
+#include "ErrorMessage.h"
 
 namespace llvm {
 
@@ -21,6 +23,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
     private:
         // Structure Creation
         Constant* createTagGlobal(Module &M); // Returns type, value
+        std::pair<Constant*, int64_t> createReferencesGlobal(Module &M);
         std::pair<Constant*, int64_t> createContractsGlobal(Module& M); // Returns value, number of elems (type is ptr)
         Constant* createScopeGlobal(Module& M, std::vector<std::shared_ptr<ContractFormula>> forms); // Returns value, number of elems (type is ptr)
         Constant* createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form);
@@ -37,14 +40,15 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         void instrumentRW(Module &M);
         void insertFunctionInstrCallback(Function* CB);
         void insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I);
-        bool shouldInstrument(Instruction const* I);
+        bool isRelevant(Instruction const* I);
         FunctionCallee callbackFuncCallee;
         FunctionCallee callbackRCallee;
         FunctionCallee callbackWCallee;
         std::set<Function*> already_instrumented;
 
         // Types
-        PointerType* Ptr_Type; 
+        PointerType* Ptr_Type;
+        IntegerType* Bool_Type;
         IntegerType* Int_Type;
         Type* Void_Type;
         StructType* Formula_Type;
@@ -57,7 +61,10 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* ReleaseOp_Type;
         StructType* RWOp_Type;
         StructType* Contract_Type;
+        StructType* FileRef_Type;
         Constant* Null_Const;
+
+        std::unordered_set<FileReference> references;
 
         ContractManagerAnalysis::ContractDatabase* DB;
 };

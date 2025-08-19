@@ -22,42 +22,42 @@ struct TagsMap_t {
 };
 
 // Number must match those defined in ContractTree.hpp!
-enum ParamAccess : int64_t { NORMAL = 0, DEREF = 1, ADDROF = 2 };
+enum ParamAccess : int32_t { NORMAL = 0, DEREF = 1, ADDROF = 2 };
 struct CallParam_t {
-    int64_t callP;
-    int64_t callPisTagVar; // Read as bool
-    int64_t contrP;
+    int32_t callP;
+    bool callPisTagVar; // Read as bool
+    int32_t contrP;
     ParamAccess accType;
 };
 
 struct RWOp_t {
-    int64_t idx;
+    int32_t idx;
     ParamAccess accType;
-    int64_t isWrite;
+    bool isWrite;
 };
 struct CallOp_t {
     const char* function_name;
     CallParam_t* params;
-    int64_t num_params;
+    int32_t num_params;
     void* target_function;
 };
 struct CallTagOp_t {
     const char* target_tag;
     CallParam_t* params;
-    int64_t num_params;
+    int32_t num_params;
 };
 struct ReleaseOp_t {
     void** release_op;
-    int64_t release_op_kind;
+    int32_t release_op_kind;
     void** forbidden_op;
-    int64_t forbidden_op_kind;
+    int32_t forbidden_op_kind;
 };
 
 // Number must match those defined in enums in ContractTree.hpp (operation + connective)!
-enum ContractConnective : int64_t { UNARY_READ = 0, UNARY_WRITE = 1, UNARY_CALL = 2, UNARY_CALLTAG = 3, UNARY_RELEASE = 4, AND = 5, OR = 6, XOR = 7 };
+enum ContractConnective : int32_t { UNARY_READ = 0, UNARY_WRITE = 1, UNARY_CALL = 2, UNARY_CALLTAG = 3, UNARY_RELEASE = 4, AND = 5, OR = 6, XOR = 7 };
 struct ContractFormula_t {
     ContractFormula_t* children;
-    int64_t num_children;
+    int32_t num_children;
     ContractConnective conn;
     const char* msg;
     void** data; // Only filled if conn == UNARY. Pointer to corresponding operation struct.
@@ -70,10 +70,18 @@ struct Contract_t {
     const char* function_name;
 };
 
+struct FileRef_t {
+    const char* file;
+    int32_t line;
+    int32_t column;
+};
+
 struct ContractDB_t {
     Contract_t* contracts;
-    int64_t num_contracts;
+    int32_t num_contracts;
     TagsMap_t tagMap;
+    FileRef_t* references;
+    int32_t num_references;
 };
 
 #ifdef __cplusplus
@@ -82,9 +90,9 @@ extern "C" {
 
 // Callback function declarations
 void PPDCV_Initialize(ContractDB_t const* DB);
-void PPDCV_FunctionCallback(void* function, int64_t num_params, ...); // Funcptr, num params, then: param type (0=int,1=ptr) and param in loop
-void PPDCV_MemRCallback(void* buf);
-void PPDCV_MemWCallback(void* buf);
+void PPDCV_FunctionCallback(bool isRel, void* function, int32_t num_params, ...); // Funcptr, num params, then: param type (0=int,1=ptr) and param in loop
+void PPDCV_MemRCallback(bool isRel, void* buf);
+void PPDCV_MemWCallback(bool isRel, void* buf);
 
 #ifdef __cplusplus
 }
