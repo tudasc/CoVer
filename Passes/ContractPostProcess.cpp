@@ -119,7 +119,7 @@ void ContractPostProcessingPass::checkExpErr(ContractManagerAnalysis::Contract C
 
 PreservedAnalyses ContractPostProcessingPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
-    ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
+    ContractManagerAnalysis::ContractDatabase& DB = AM.getResult<ContractManagerAnalysis>(M);
 
     json_messages["messages"] = {};
 
@@ -151,7 +151,8 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
     errs() << s.str();
 
-    // Write json to file
+    // Write json to file and database
+    DB.processedReports = json_messages;
     if (!ClPrintJsonReports.empty()) {
         std::ofstream file(ClPrintJsonReports);
         file << json_writer.write(json_messages);

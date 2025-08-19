@@ -33,8 +33,7 @@ std::vector<std::string> source_file_names;
 
 std::string opt_flags = "";
 
-enum struct Instrumentation { NONE, FUNCONLY, FULL };
-Instrumentation instr_level;
+bool instrument = false;
 
 std::string exec(std::string const& cmd) {
     std::array<char, 128> buffer;
@@ -68,17 +67,25 @@ void execSafe(std::string const& cmd) {
 void printHelp() {
     printf("@EXECUTABLE_WRAPPER_NAME@ is a compiler wrapper to utilize CoVer");
     printf("\nRequires LLVM >= @LLVM_VERSION_MIN@.");
-    printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] [--predefined-contracts] [--allow-multireports] [--instrument-contracts[=(safe|full|none)]] <compiler-params>");
+    printf("\n\nUsage: @EXECUTABLE_WRAPPER_NAME@ [--dry-run] [--verbose] [--wrap-target <arg>] [--predefined-contracts] [--allow-multireports] [--instrument-contracts[=(full|funconly|filtered)]] <compiler-params>");
     printf("\n\t--help: Print this help text and exit");
     printf("\n\t--dry-run: Only show the commands that would be run, but do not perform any");
     printf("\n\t--instrument-contracts: Perform instrumentation for runtime analysis. If set, defaults to \"full\"");
     printf("\n\t\t\"full\": Full instrumentation (default)");
-    printf("\n\t\t\"filtered\": Only instrument potential issues from static analysis");
+    printf("\n\t\t\"funconly\": Disable costly memory instrumentation");
+    printf("\n\t\t\"filtered[=<detection json>]\": Only instrument potential issues from static analysis. Defaults to CoVer static analysis, optionally give filepath to different detection json");
     printf("\n\t--verbose: Print commands to be executed");
     printf("\n\t--wrap-target: Set the compiler to wrap around");
     printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions using the -include flag");
     printf("\n\t--allow-multireports: Allow multiple reports of same violated contract");
     printf("\n\n");
+}
+
+std::string getOptParam(std::string param, std::string full) {
+    if (full.starts_with(param + "=")) {
+        return full.substr((param + "=").size(), std::string::npos);
+    }
+    return "";
 }
 
 std::pair<std::string,std::string> parseParams(std::vector<std::string> const& all_args) {
@@ -97,19 +104,18 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
         } else if (arg == "--wrap-target") {
             wrap_target = all_args[++i];
         } else if (arg.starts_with("--instrument-contracts")) {
-            instr_level = Instrumentation::FULL;
-            if (arg.starts_with("--instrument-contracts=")) {
-                std::string kind = arg.substr(23, std::string::npos); // Cutoff arg and equal sign
-                if (kind == "funconly") instr_level = Instrumentation::FUNCONLY;
-                if (kind == "full") instr_level = Instrumentation::FULL;
-                if (kind == "none") instr_level = Instrumentation::NONE;
+            instrument = true;
+            std::string kind = getOptParam("--instrument-contracts", arg);
+            if (kind == "funconly") opt_flags += " -cover-instrument-type=funconly";
+            if (kind.starts_with("filtered")) {
+                std::string file = getOptParam("filtered", kind);
+                opt_flags += file.empty() ? " -cover-instrument-type=filtered" : " -cover-instrument-type=\"filtered=" + file + "\"";
             }
         } else if (arg == "--allow-multireports") {
             opt_flags += " -cover-allow-multireports=1";
         } else if (arg.starts_with("--generate-json-report")) {
-            std::string output_file = "contract_messages.json";
-            if (arg.starts_with("--generate-json-report="))
-                output_file = arg.substr(23, std::string::npos); // Cutoff arg and equal sign
+            std::string output_file = getOptParam("--generate-json-report", arg);
+            if (output_file.empty()) output_file = "contract_messages.json";
             opt_flags += " -cover-generate-json-report=" + output_file;
         } else if (arg == "--predefined-contracts") {
             for (std::string path : predefined_contracts) {
@@ -220,14 +226,12 @@ int main(int argc, const char** argv) {
 
     // Call LLVM passes
     std::string passlist = "contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
-    if (instr_level > Instrumentation::NONE) {
+    if (instrument) {
         // Need instrumentation, so add instr pass...
         passlist += ",instrumentContracts";
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
-    if (instr_level == Instrumentation::FUNCONLY) opt_flags += " -cover-instrument-type=funconly";
-    if (instr_level == Instrumentation::FULL) opt_flags += " -cover-instrument-type=full";
     execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
 

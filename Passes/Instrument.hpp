@@ -5,6 +5,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
+#include <llvm/IR/Instruction.h>
 #include <memory>
 #include <set>
 #include <vector>
@@ -35,6 +36,8 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         void instrumentFunctions(Module &M);
         void instrumentRW(Module &M);
         void insertFunctionInstrCallback(Function* CB);
+        void insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I);
+        bool shouldInstrument(Instruction const* I);
         FunctionCallee callbackFuncCallee;
         FunctionCallee callbackRCallee;
         FunctionCallee callbackWCallee;
