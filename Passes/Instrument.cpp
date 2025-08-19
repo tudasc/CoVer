@@ -1,6 +1,12 @@
 #include "Instrument.hpp"
 #include "ContractManager.hpp"
+#include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
+#include "ErrorMessage.h"
+#include <cstdlib>
+#include <fstream>
+#include <json/reader.h>
+#include <json/value.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/IR/Attributes.h>
@@ -308,9 +314,7 @@ void InstrumentPass::instrumentRW(Module &M) {
             for (Instruction& I : BB) {
                 if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
                     Value* V = getLoadStorePointerOperand(&I);
-                    CallInst* callbackCI = CallInst::Create(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V});
-                    callbackCI->setDebugLoc(I.getDebugLoc());
-                    callbackCI->insertBefore(I.getIterator());
+                    insertCBIfNeeded(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V}, &I);
                 }
             }
         }
@@ -346,9 +350,43 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             params.push_back(ConstantInt::get(Int_Type, U->getType()->getPrimitiveSizeInBits()));
             params.push_back(U);
         }
-        CallInst* callbackCI = CallInst::Create(callbackFuncCallee, params);
-        callbackCI->setDebugLoc(callsite->getDebugLoc());
-        callbackCI->insertBefore(callsite->getIterator());
+        insertCBIfNeeded(callbackFuncCallee, params, callsite);
     }
     already_instrumented.insert(F);
+}
+
+void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I) {
+    if ((isa<LoadInst>(I) || isa<StoreInst>(I)) && !shouldInstrument(I)) return;
+    CallInst* callbackCI = CallInst::Create(FC, params);
+    callbackCI->setDebugLoc(I->getDebugLoc());
+    callbackCI->insertBefore(I->getIterator());
+}
+
+bool InstrumentPass::shouldInstrument(Instruction const* I) {
+    if (!ClInstrumentType.starts_with("filtered")) return true;
+    static Json::Value detJson = Json::nullValue;
+    if (detJson == Json::nullValue) {
+        if (ClInstrumentType.starts_with("filtered=")) {
+            std::ifstream  json_in(ClInstrumentType.substr(9, std::string::npos));
+            if (!json_in) {
+                WithColor(errs(), HighlightColor::Error) << "Given JSON file could not be opened!\nEnsure the path is correct!\n";
+                exit(EXIT_FAILURE);
+            }
+            Json::Reader reader;
+            reader.parse(json_in, detJson);
+            if (detJson.get("messages", Json::nullValue) == Json::nullValue) {
+                WithColor(errs(), HighlightColor::Error) << "Given JSON file is of invalid format!\n";
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            detJson = DB->processedReports;
+        }
+    }
+    FileReference f = ContractPassUtility::getFileReference(I);
+    for (Json::Value msg : detJson["messages"]) {
+        for (Json::Value ref : msg["references"]) {
+            if (ref["file"].asString() == f.file && ref["line"].asInt64() == f.line) return true;
+        }
+    }
+    return false;
 }

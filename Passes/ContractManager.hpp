@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <json/value.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Function.h>
 #include <llvm/Support/CommandLine.h>
@@ -39,6 +40,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             std::map<Function*, std::vector<TagUnit>> Tags;
             std::chrono::time_point<std::chrono::system_clock> start_time;
             bool allowMultiReports = false;
+            Json::Value processedReports;
         } typedef ContractDatabase;
 
         // Run Pass
