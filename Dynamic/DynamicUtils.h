@@ -2,6 +2,7 @@
 
 #include "DynamicAnalysis.h"
 #include <functional>
+#include <optional>
 #include <ostream>
 #include <unordered_set>
 #include <string>
@@ -50,5 +51,7 @@ namespace DynamicUtils {
     std::ostream& out();
 
     // Resolve loc ptr to printable string
-    std::string getFileReference(void const* location);
+    std::string getFileRefStr(void const* location);
+    // Get file reference object
+    std::optional<FileRef_t> getFileReference(void const* location);
 }

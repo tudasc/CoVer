@@ -28,6 +28,7 @@
 #include <llvm/Support/WithColor.h>
 #include <memory>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -46,12 +47,45 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     Function* mainF = M.getFunction("main");
     if (!mainF) return PreservedAnalyses::all(); // No point
 
+    // Read detJson
+    Json::Value detJson;
+    if (ClInstrumentType.starts_with("filtered=")) {
+        std::ifstream  json_in(ClInstrumentType.substr(9, std::string::npos));
+        if (!json_in) {
+            WithColor(errs(), HighlightColor::Error) << "Given JSON file could not be opened!\nEnsure the path is correct!\n";
+            exit(EXIT_FAILURE);
+        }
+        Json::Reader reader;
+        reader.parse(json_in, detJson);
+        if (detJson.get("messages", Json::nullValue) == Json::nullValue) {
+            WithColor(errs(), HighlightColor::Error) << "Given JSON file is of invalid format!\n";
+            exit(EXIT_FAILURE);
+        }
+    } else {
+        detJson = DB->processedReports;
+    }
+    // Fill references
+    for (Json::Value msg : detJson["messages"]) {
+        for (Json::Value ref : msg["references"]) {
+            references.insert({
+                ref["file"].asString(),
+                ref["line"].asUInt(),
+                ref["column"].asUInt()
+            });
+        }
+    }
+
     // Generic Types and consts
     createTypes(M);
 
     // Create Tag globals
     Constant* TagVal;
     TagVal = createTagGlobal(M);
+
+    // Create reference globals
+    Constant* ReferencesVal;
+    uint64_t num_refs;
+    std::tie(ReferencesVal, num_refs) = createReferencesGlobal(M);
 
     // Create Contract globals
     Constant* ContractsVal;
@@ -60,7 +94,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
 
     // Package database
     GlobalVariable* GlobalDB = dyn_cast<GlobalVariable>(M.getOrInsertGlobal("CONTR_DB", DB_Type));
-    Constant* CDB = ConstantStruct::get(DB_Type, {ContractsVal, ConstantInt::get(Int_Type, num_contrs),  TagVal});
+    Constant* CDB = ConstantStruct::get(DB_Type, {ContractsVal, ConstantInt::get(Int_Type, num_contrs),  TagVal, ReferencesVal, ConstantInt::get(Int_Type, num_refs)});
     GlobalDB->setInitializer(CDB);
 
     AttributeList fnAttr;
@@ -78,14 +112,14 @@ PreservedAnalyses InstrumentPass::run(Module &M,
 
     // Create callback function for rel func call
     // Call sig: Function ptr, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
-    FunctionType* FunctionCBType = FunctionType::get(Void_Type, {Ptr_Type, Int_Type}, true);
+    FunctionType* FunctionCBType = FunctionType::get(Void_Type, {Bool_Type, Ptr_Type, Int_Type}, true);
     callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType, fnAttr);
     Function* callbackFunc = dyn_cast<Function>(callbackFuncCallee.getCallee());
     callbackFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create callback function for RW
     // Call sig: int64-as-bool isWrite, mem ptr
-    FunctionType* FunctionRWType = FunctionType::get(Void_Type, {Ptr_Type}, false);
+    FunctionType* FunctionRWType = FunctionType::get(Void_Type, {Bool_Type, Ptr_Type}, false);
     callbackRCallee = M.getOrInsertFunction("PPDCV_MemRCallback", FunctionRWType, fnAttr);
     Function* callbackR = dyn_cast<Function>(callbackRCallee.getCallee());
     callbackR->setLinkage(GlobalValue::ExternalWeakLinkage);
@@ -127,6 +161,18 @@ Constant* InstrumentPass::createTagGlobal(Module& M) {
     // Full tag map structure
     Constant* TagsStruct = ConstantStruct::get(Tags_Type, {ptrFuncs, ptrTags, ConstantInt::get(Int_Type, count)});
     return TagsStruct;
+}
+
+std::pair<Constant*, int64_t> InstrumentPass::createReferencesGlobal(Module &M) {
+    std::vector<Constant*> crefs;
+    for (FileReference const& ref : references) {
+        Constant* file = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), ref.file), "CONTR_FILENAME_" + ref.file);
+        Constant* cref = ConstantStruct::get(FileRef_Type, {file, ConstantInt::get(Int_Type, ref.line), ConstantInt::get(Int_Type, ref.column)});
+        crefs.push_back(cref);
+    }
+    ArrayType* ArrRefs = ArrayType::get(FileRef_Type, crefs.size());
+    GlobalVariable* arrRefsGlobal = createConstantGlobal(M, ConstantArray::get(ArrRefs, crefs), "CONTR_LIST_REFERENCES");
+    return {arrRefsGlobal, crefs.size()};
 }
 
 std::pair<Constant*, int64_t> InstrumentPass::createContractsGlobal(Module& M) {
@@ -190,7 +236,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         case OperationType::READ:
         case OperationType::WRITE: {
             std::shared_ptr<const RWOperation> rwOP = static_pointer_cast<const RWOperation>(op);
-            ConstantInt* isWrite = ConstantInt::get(Int_Type, op->type() == OperationType::WRITE);
+            Constant* isWrite = ConstantInt::getBool(Bool_Type, op->type() == OperationType::WRITE);
             ConstantInt* const_paramacc = ConstantInt::get(Int_Type, (int)rwOP->contrParamAccess);
             ConstantInt* const_idx = ConstantInt::get(Int_Type, (int)rwOP->contrP);
             data = ConstantStruct::get(RWOp_Type, {const_idx, const_paramacc, isWrite});
@@ -243,13 +289,14 @@ GlobalVariable* InstrumentPass::createConstantGlobal(Module& M, Constant* C, std
 void InstrumentPass::createTypes(Module& M) {
     // Basic Types
     Ptr_Type = PointerType::get(M.getContext(), 0);
-    Int_Type = IntegerType::get(M.getContext(), 64);
+    Int_Type = IntegerType::get(M.getContext(), 32);
+    Bool_Type = IntegerType::get(M.getContext(), 1);
     Null_Const = ConstantPointerNull::getNullValue(Ptr_Type);
     Void_Type = Type::getVoidTy(M.getContext());
 
     // Operations
     Param_Type = StructType::create(M.getContext(), "CallParam_t");
-    Param_Type->setBody({Int_Type, Int_Type, Int_Type, Int_Type}); // call param, bool param is tag ref, contr param, acc type
+    Param_Type->setBody({Int_Type, Bool_Type, Int_Type, Int_Type}); // call param, bool param is tag ref, contr param, acc type
 
     CallOp_Type = StructType::create(M.getContext(), "CallOp_t");
     CallOp_Type->setBody({Ptr_Type, Ptr_Type, Int_Type, Ptr_Type}); // char* Function Name, list of params, num of params, Function Pointer
@@ -261,11 +308,11 @@ void InstrumentPass::createTypes(Module& M) {
     ReleaseOp_Type->setBody({Ptr_Type, Int_Type, Ptr_Type, Int_Type}); // void* release op, relop type, void* forbidden op, forbop type
 
     RWOp_Type = StructType::create(M.getContext(), "RWOp_t");
-    RWOp_Type->setBody({Int_Type, Int_Type, Int_Type}); // idx, paramaccess, isWrite
+    RWOp_Type->setBody({Int_Type, Int_Type, Bool_Type}); // idx, paramaccess, isWrite
 
     // Composite Types
     Tag_Type = StructType::create(M.getContext(), "Tag_t");
-    Tag_Type->setBody({Ptr_Type, Int_Type});
+    Tag_Type->setBody({Ptr_Type, Int_Type}); // tag str, param num
 
     Formula_Type = StructType::create(M.getContext(), "ContractFormula_t");
     Formula_Type->setBody({Ptr_Type, Int_Type, Int_Type, Ptr_Type, Ptr_Type}); // Children, number of children, connective, message char*, expression data ptr
@@ -277,7 +324,10 @@ void InstrumentPass::createTypes(Module& M) {
     Tags_Type->setBody({Ptr_Type, Ptr_Type, Int_Type}); // Funcptr list, Tag + param struct list, num elems
 
     DB_Type = StructType::create(M.getContext(), "ContractDB_t");
-    DB_Type->setBody( {Ptr_Type, Int_Type, Tags_Type} ); // contract list, num elems, tag container
+    DB_Type->setBody( {Ptr_Type, Int_Type, Tags_Type, Ptr_Type, Int_Type} ); // contract list, num elems, tag container, reference list, num refs
+
+    FileRef_Type = StructType::create(M.getContext(), "FileRef_t");
+    FileRef_Type->setBody({Ptr_Type, Int_Type, Int_Type}); // file, line, column
 }
 
 void InstrumentPass::instrumentFunctions(Module &M) {
@@ -325,7 +375,7 @@ std::pair<Constant*,int64_t> InstrumentPass::createParamList(Module& M, std::vec
     if (params.empty()) return { Null_Const, 0 };
     std::vector<Constant*> paramConsts;
     for (CallParam param : params) {
-        Constant* pConst = ConstantStruct::get(Param_Type, {ConstantInt::get(Int_Type, param.callP), ConstantInt::get(Int_Type, param.callPisTagVar), ConstantInt::get(Int_Type, param.contrP), ConstantInt::get(Int_Type, (int64_t)param.contrParamAccess)});
+        Constant* pConst = ConstantStruct::get(Param_Type, {ConstantInt::get(Int_Type, param.callP), ConstantInt::getBool(Bool_Type, param.callPisTagVar), ConstantInt::get(Int_Type, param.contrP), ConstantInt::get(Int_Type, (int64_t)param.contrParamAccess)});
         paramConsts.push_back(pConst);
     }
     ArrayType* paramArr_Type = ArrayType::get(Param_Type, paramConsts.size());
@@ -346,7 +396,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
         params.push_back(ConstantInt::get(Int_Type, callsite->arg_size()));
         for (Use& U : callsite->args()) {
-            params.push_back(U->getType()->isPointerTy() ? ConstantInt::get(Int_Type, 1) : ConstantInt::get(Int_Type, 0));
+            params.push_back(U->getType()->isPointerTy() ? ConstantInt::getTrue(Int_Type) : ConstantInt::getFalse(Int_Type));
             params.push_back(ConstantInt::get(Int_Type, U->getType()->getPrimitiveSizeInBits()));
             params.push_back(U);
         }
@@ -356,37 +406,18 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
 }
 
 void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I) {
-    if ((isa<LoadInst>(I) || isa<StoreInst>(I)) && !shouldInstrument(I)) return;
+    bool relevant = isRelevant(I);
+    if ((isa<LoadInst>(I) || isa<StoreInst>(I)) && ClInstrumentType.starts_with("filtered")) return;
+    params.insert(params.begin(), ConstantInt::getBool(Bool_Type, relevant));
     CallInst* callbackCI = CallInst::Create(FC, params);
     callbackCI->setDebugLoc(I->getDebugLoc());
     callbackCI->insertBefore(I->getIterator());
 }
 
-bool InstrumentPass::shouldInstrument(Instruction const* I) {
-    if (!ClInstrumentType.starts_with("filtered")) return true;
-    static Json::Value detJson = Json::nullValue;
-    if (detJson == Json::nullValue) {
-        if (ClInstrumentType.starts_with("filtered=")) {
-            std::ifstream  json_in(ClInstrumentType.substr(9, std::string::npos));
-            if (!json_in) {
-                WithColor(errs(), HighlightColor::Error) << "Given JSON file could not be opened!\nEnsure the path is correct!\n";
-                exit(EXIT_FAILURE);
-            }
-            Json::Reader reader;
-            reader.parse(json_in, detJson);
-            if (detJson.get("messages", Json::nullValue) == Json::nullValue) {
-                WithColor(errs(), HighlightColor::Error) << "Given JSON file is of invalid format!\n";
-                exit(EXIT_FAILURE);
-            }
-        } else {
-            detJson = DB->processedReports;
-        }
-    }
+bool InstrumentPass::isRelevant(Instruction const* I) {
     FileReference f = ContractPassUtility::getFileReference(I);
-    for (Json::Value msg : detJson["messages"]) {
-        for (Json::Value ref : msg["references"]) {
-            if (ref["file"].asString() == f.file && ref["line"].asInt64() == f.line) return true;
-        }
+    for (FileReference const& ref : references) {
+        if (ref == f) return true;
     }
     return false;
 }

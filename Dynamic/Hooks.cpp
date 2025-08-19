@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <iostream>
 #include <string>
+#include <cstring>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -32,6 +33,9 @@ struct AnalysisPair {
 
 void PPDCV_destructor();
 
+std::unordered_set<void const*> visitedLocs;
+std::unordered_set<FileRef_t*> relevantLocs;
+
 std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
 std::vector<AnalysisPair> all_analyses;
 std::vector<AnalysisPair> analyses_with_funcCB;
@@ -54,6 +58,7 @@ inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
 
 #define HANDLE_CALLBACK(pairs, CB, ...) \
     void const* location = __builtin_return_address(0);\
+    if (isRef) visitedLocs.insert(location);\
     _Pragma("unroll(5)") for (auto it = pairs.begin(); it < pairs.end();) { \
         it = fastVisit([&](auto& analysis) { \
             Fulfillment f = analysis->CB(std::move(location), __VA_ARGS__);\
@@ -108,7 +113,7 @@ ErrorMessage recurseResolveFormula(ContractFormula_t* form) {
         }
         std::vector<void const*> const& references = analysis_references[form];
         for (void const* loc : references)
-            msg.msg.push_back(std::string("Reference: ") + DynamicUtils::getFileReference(loc));
+            msg.msg.push_back(std::string("Reference: ") + DynamicUtils::getFileRefStr(loc));
         return msg;
     }
     std::vector<ErrorMessage> child_msg;
@@ -176,7 +181,7 @@ void PPDCV_Initialize(ContractDB_t const* DB) {
 
     DynamicUtils::Initialize(DB);
 
-    // Create contract map, functions of interest, and analyses for each operation
+    // Create contract map and analyses for each operation
     for (int i = 0; i < DB->num_contracts; i++) {
         void* function = DB->contracts[i].function;
         if (!contrs.contains(function)) contrs[function] = {};
@@ -189,20 +194,25 @@ void PPDCV_Initialize(ContractDB_t const* DB) {
         }
     }
 
+    // Fill relevant locs
+    for (int i = 0; i < DB->num_references; i++)
+        relevantLocs.insert(&DB->references[i]);
+    visitedLocs.reserve(DB->num_references * 3); // Reserve more as some lines contain multiple callbacks
+
     atexit(PPDCV_destructor);
 
     DynamicUtils::createMessage("Finished Initializing!");
 }
 
-void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
+void PPDCV_FunctionCallback(bool isRef, void* function, int32_t num_params, ...) {
     called_funcs.insert(function);
 
     CallsiteInfo callsite = { .location = __builtin_return_address(0) };
     std::va_list list;
     va_start(list, num_params);
     for (int i = 0; i < num_params; i++) {
-        bool isPtr = va_arg(list, int64_t);
-        int64_t param_size = va_arg(list, int64_t);
+        bool isPtr = va_arg(list, int32_t);
+        int32_t param_size = va_arg(list, int32_t);
         if (isPtr) {
             callsite.params.push_back({va_arg(list,void*)});
         } else {
@@ -220,11 +230,35 @@ void PPDCV_FunctionCallback(void* function, int64_t num_params, ...) {
     HANDLE_CALLBACK(analyses_with_funcCB, onFunctionCall, function, callsite);
 }
 
-void PPDCV_MemRCallback(void* buf) {
+void PPDCV_MemRCallback(bool isRef, void* buf) {
     HANDLE_CALLBACK(analyses_with_memRCB, onMemoryAccess, buf, false);
 }
-void PPDCV_MemWCallback(void* buf) {
+void PPDCV_MemWCallback(bool isRef, void* buf) {
     HANDLE_CALLBACK(analyses_with_memWCB, onMemoryAccess, buf, true);
+}
+
+void resolveCoverage() {
+#ifdef CMAKE_ADDR2LINE
+    for (const void* loc : visitedLocs) {
+        if (relevantLocs.empty()) break;
+        std::optional<FileRef_t> ref = DynamicUtils::getFileReference(loc);
+        if (!ref) continue;
+        for (std::unordered_set<FileRef_t*>::iterator it = relevantLocs.begin(); it != relevantLocs.end();) {
+            if (!std::strcmp((*it)->file, ref->file) && (*it)->line == ref->line) {
+                it = relevantLocs.erase(it);
+            } else {
+                it++;
+            };
+        }
+        delete ref->file;
+    }
+    if (!relevantLocs.empty()) {
+        DynamicUtils::out() << "-- Coverage Warnings --\n";
+        for (FileRef_t* ref : relevantLocs) {
+            DynamicUtils::out() << "  - Location: " << ref->file << ":" << ref->line << "\n";
+        }
+    }
+#endif
 }
 
 void PPDCV_destructor() {
@@ -239,4 +273,5 @@ void PPDCV_destructor() {
         }, pair.analysis);
     }
     resolveContracts();
+    //resolveCoverage();
 }
