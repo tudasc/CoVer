@@ -1,8 +1,13 @@
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
+#include <format>
+#include <fstream>
 #include <iostream>
 #include <string>
-#include <cstring>
+#include <ctime>
+#include <unistd.h>
+#include <cstdlib>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -34,7 +39,6 @@ struct AnalysisPair {
 void PPDCV_destructor();
 
 std::unordered_set<void const*> visitedLocs;
-std::unordered_set<FileRef_t*> relevantLocs;
 
 std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
 std::vector<AnalysisPair> all_analyses;
@@ -176,10 +180,53 @@ void resolveContracts() {
     }
 }
 
-void PPDCV_Initialize(ContractDB_t const* DB) {
+void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
     DynamicUtils::createMessage("Initializing...");
-
     DynamicUtils::Initialize(DB);
+
+    if (*argc >= 2) {
+        std::string arg = (*argv)[1];
+        if (arg == "--cover-coverage-check") {
+            // Fill relevant locs
+            std::unordered_set<std::string> relevantLocs;
+            for (int i = 0; i < DB->num_references; i++)
+                relevantLocs.insert(DB->references[i]);
+            std::vector<std::pair<std::string, void*>> coverageVisited;
+            DynamicUtils::createMessage("Coverage check requested!");
+            for (std::filesystem::path const& entry : std::filesystem::directory_iterator(std::filesystem::current_path())) {
+                if (entry.filename().string().starts_with("CoVerCoverage")) {
+                    DynamicUtils::out() << "Reading coverage file " << entry.filename() << "...\n";
+                    std::ifstream coverage_file(entry);
+                    std::string line = "";
+                    while (std::getline(coverage_file, line)) {
+                        if (line.empty()) continue;
+                        int pos = line.find_first_of('|');
+                        std::string parsed_loc_s = line.substr(pos + 1);
+                        long parsed_loc = std::strtoul(parsed_loc_s.c_str(), nullptr, 16);
+                        coverageVisited.push_back({line.substr(0, pos), (void*)parsed_loc});
+                    }
+                }
+            }
+            if (!coverageVisited.empty()) DynamicUtils::out() << "Coverage read complete, no more coverage files detected. Checking...\n";
+            else DynamicUtils::out() << "No coverage data found. Either program was not executed, or no relevant locations were encountered.\n";
+            for (std::pair<std::string,void const*> loc : coverageVisited) {
+                std::string locstr = DynamicUtils::getFileRefStr(loc.first, loc.second);
+                relevantLocs.erase(locstr);
+            }
+            if (!relevantLocs.empty()) {
+                DynamicUtils::out() << "Coverage error detected!\n";
+                for (std::string const& unvisited : relevantLocs) {
+                    DynamicUtils::out() << "Relevant location " << unvisited << " not checked!\n";
+                }
+                exit(EXIT_FAILURE);
+            } else {
+                DynamicUtils::out() << "No coverage errors found.\n";
+                exit(0);
+            }
+        }
+    }
+
+    visitedLocs.reserve(DB->num_references * 3); // Reserve more as some lines contain multiple callbacks
 
     // Create contract map and analyses for each operation
     for (int i = 0; i < DB->num_contracts; i++) {
@@ -193,11 +240,6 @@ void PPDCV_Initialize(ContractDB_t const* DB) {
             recurseCreateAnalyses(DB->contracts[i].postcondition, false, function);
         }
     }
-
-    // Fill relevant locs
-    for (int i = 0; i < DB->num_references; i++)
-        relevantLocs.insert(&DB->references[i]);
-    visitedLocs.reserve(DB->num_references * 3); // Reserve more as some lines contain multiple callbacks
 
     atexit(PPDCV_destructor);
 
@@ -237,28 +279,15 @@ void PPDCV_MemWCallback(bool isRef, void* buf) {
     HANDLE_CALLBACK(analyses_with_memWCB, onMemoryAccess, buf, true);
 }
 
-void resolveCoverage() {
-#ifdef CMAKE_ADDR2LINE
-    for (const void* loc : visitedLocs) {
-        if (relevantLocs.empty()) break;
-        std::optional<FileRef_t> ref = DynamicUtils::getFileReference(loc);
-        if (!ref) continue;
-        for (std::unordered_set<FileRef_t*>::iterator it = relevantLocs.begin(); it != relevantLocs.end();) {
-            if (!std::strcmp((*it)->file, ref->file) && (*it)->line == ref->line) {
-                it = relevantLocs.erase(it);
-            } else {
-                it++;
-            };
-        }
-        delete ref->file;
+void printCoverageFile() {
+    std::srand(std::time({}) + getpid());
+    std::string file_suffix = std::format("{:x}", rand());
+    std::ofstream coverage_file("CoVerCoverage_" + file_suffix);
+    for (void const* loc : visitedLocs) {
+        std::optional<std::pair<std::string, const void *>> info = DynamicUtils::getDLInfo(loc);
+        if (!info) continue;
+        coverage_file << std::format("{}|{:x}", info->first, (uintptr_t)info->second) << "\n";
     }
-    if (!relevantLocs.empty()) {
-        DynamicUtils::out() << "-- Coverage Warnings --\n";
-        for (FileRef_t* ref : relevantLocs) {
-            DynamicUtils::out() << "  - Location: " << ref->file << ":" << ref->line << "\n";
-        }
-    }
-#endif
 }
 
 void PPDCV_destructor() {
@@ -273,5 +302,5 @@ void PPDCV_destructor() {
         }, pair.analysis);
     }
     resolveContracts();
-    //resolveCoverage();
+    printCoverageFile();
 }

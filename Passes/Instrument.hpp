@@ -61,10 +61,10 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* ReleaseOp_Type;
         StructType* RWOp_Type;
         StructType* Contract_Type;
-        StructType* FileRef_Type;
         Constant* Null_Const;
 
         std::unordered_set<FileReference> references;
+        std::unordered_set<Instruction*> instrument_ignore;
 
         ContractManagerAnalysis::ContractDatabase* DB;
 };

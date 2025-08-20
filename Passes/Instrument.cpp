@@ -103,13 +103,18 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     fnAttr = fnAttr.addFnAttribute(M.getContext(), Attribute::NoCallback);
 
     // Create initialization routine for tool
-    FunctionType* InitCBType = FunctionType::get(Void_Type, {Ptr_Type}, false);
+    FunctionType* InitCBType = FunctionType::get(Void_Type, {Ptr_Type, Ptr_Type, Ptr_Type}, false);
     FunctionCallee initFuncCallee = M.getOrInsertFunction("PPDCV_Initialize", InitCBType, fnAttr);
     Function* initFunc = dyn_cast<Function>(initFuncCallee.getCallee());
     initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
-    CallInst* initFuncCI = CallInst::Create(initFuncCallee, GlobalDB);
-    initFuncCI->insertBefore(mainF->getEntryBlock().getFirstNonPHIOrDbg());
-
+    Value* Vargc = mainF->getArg(0);
+    Value* Vargv = mainF->getArg(1);
+    Value* argcptr = new AllocaInst(Int_Type, 0, "argc_ptr", mainF->getEntryBlock().getFirstNonPHIOrDbg());
+    Value* argvptr = new AllocaInst(Ptr_Type, 0, "argv_ptr", mainF->getEntryBlock().getFirstNonPHIOrDbg());
+    CallInst* initFuncCI = CallInst::Create(initFuncCallee, {argcptr, argvptr, GlobalDB});
+    initFuncCI->insertBefore(mainF->getEntryBlock().getFirstNonPHIOrDbgOrAlloca());
+    instrument_ignore.insert(new StoreInst(Vargc, argcptr, initFuncCI->getIterator()));
+    instrument_ignore.insert(new StoreInst(Vargv, argvptr, initFuncCI->getIterator()));
     // Create callback function for rel func call
     // Call sig: Function ptr, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
     FunctionType* FunctionCBType = FunctionType::get(Void_Type, {Bool_Type, Ptr_Type, Int_Type}, true);
@@ -166,11 +171,11 @@ Constant* InstrumentPass::createTagGlobal(Module& M) {
 std::pair<Constant*, int64_t> InstrumentPass::createReferencesGlobal(Module &M) {
     std::vector<Constant*> crefs;
     for (FileReference const& ref : references) {
-        Constant* file = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), ref.file), "CONTR_FILENAME_" + ref.file);
-        Constant* cref = ConstantStruct::get(FileRef_Type, {file, ConstantInt::get(Int_Type, ref.line), ConstantInt::get(Int_Type, ref.column)});
+        std::string reference_str = ref.file + ":" + std::to_string(ref.line);
+        Constant* cref = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), reference_str), "CONTR_REFERENCE_" + reference_str);
         crefs.push_back(cref);
     }
-    ArrayType* ArrRefs = ArrayType::get(FileRef_Type, crefs.size());
+    ArrayType* ArrRefs = ArrayType::get(Ptr_Type, crefs.size());
     GlobalVariable* arrRefsGlobal = createConstantGlobal(M, ConstantArray::get(ArrRefs, crefs), "CONTR_LIST_REFERENCES");
     return {arrRefsGlobal, crefs.size()};
 }
@@ -325,9 +330,6 @@ void InstrumentPass::createTypes(Module& M) {
 
     DB_Type = StructType::create(M.getContext(), "ContractDB_t");
     DB_Type->setBody( {Ptr_Type, Int_Type, Tags_Type, Ptr_Type, Int_Type} ); // contract list, num elems, tag container, reference list, num refs
-
-    FileRef_Type = StructType::create(M.getContext(), "FileRef_t");
-    FileRef_Type->setBody({Ptr_Type, Int_Type, Int_Type}); // file, line, column
 }
 
 void InstrumentPass::instrumentFunctions(Module &M) {
@@ -363,6 +365,7 @@ void InstrumentPass::instrumentRW(Module &M) {
         for (BasicBlock& BB : F) {
             for (Instruction& I : BB) {
                 if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
+                    if (instrument_ignore.contains(&I)) continue;
                     Value* V = getLoadStorePointerOperand(&I);
                     insertCBIfNeeded(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V}, &I);
                 }
