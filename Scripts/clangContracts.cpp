@@ -188,7 +188,7 @@ int main(int argc, const char** argv) {
     // Generate IR for source files
     std::string bitcode_files;
     if (!source_file_paths.empty()) {
-        std::string common_options = " -fPIC -g -emit-llvm -Xclang -disable-O0-optnone ";
+        std::string common_options = " -fPIC -g -emit-llvm ";
         execSafe(wrap_target + common_options + (cur_linkkind < LinkKind::ONLY_PREPROCESS ? "-c" : "-E") + " -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LinkKind::LINK ? dest_arg : ""));
 
         if (cur_linkkind == LinkKind::ONLY_COMPILE && dest_arg.empty()) {
