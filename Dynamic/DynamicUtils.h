@@ -6,6 +6,7 @@
 #include <ostream>
 #include <unordered_set>
 #include <string>
+#include <sstream>
 #include <vector>
 
 using ConcreteParam = void*;
@@ -52,6 +53,8 @@ namespace DynamicUtils {
 
     // Resolve loc ptr to printable string
     std::string getFileRefStr(void const* location);
-    // Get file reference object
-    std::optional<FileRef_t> getFileReference(void const* location);
+    std::string getFileRefStr(std::string file, void const* parsed_loc);
+
+    // Get information needed for references
+    std::optional<std::pair<std::string, void const*>> getDLInfo(void const* location);
 }

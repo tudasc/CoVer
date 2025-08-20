@@ -35,21 +35,6 @@ namespace {
         }
         return result;
     }
-
-    std::optional<std::pair<std::string, void const*>> getDLInfo(void const* location) {
-        Dl_info info;
-        if (!dladdr(location, &info)) {
-            return std::nullopt;
-        }
-        intptr_t resolvedLocation = (intptr_t)location;
-        if ((intptr_t)info.dli_fbase != (intptr_t)0x400000) {
-            // if the filebase is not 0x400000, we have an VMA offset that we have to subtract
-            // otherwise, it is a PIE so we can just use the codePtr
-            // Additionally, subtract 1 to get from return address to call
-            location = (void*)((intptr_t)location - (intptr_t)info.dli_fbase - 1);
-        }
-        return std::optional<std::pair<std::string, void const*>>({std::string(info.dli_fname), location});
-    }
 }
 
 namespace DynamicUtils {
@@ -116,37 +101,40 @@ namespace DynamicUtils {
         return false;
     }
 
-    std::optional<FileRef_t> getFileReference(void const* location) {
-        std::stringstream exec_cmd;
-        std::optional<std::pair<std::string, const void *>> dlinfo = getDLInfo(location);
-        if (!dlinfo) return std::nullopt;
-        exec_cmd << CMAKE_ADDR2LINE " -e " << dlinfo->first << " " << std::hex << dlinfo->second;
-        std::string result = exec(exec_cmd.str());
-        result.pop_back(); // Remove newline
-        int file_len = result.find(':');
-        std::string src_filename = result.substr(0, file_len);
-        std::string src_line_s = result.substr(file_len + 1);
-        int src_line = src_line_s != "?" ? std::stoi(src_line_s) : 0;
-        char* filename_c = new char[src_filename.size()];
-        strcpy(filename_c, src_filename.c_str());
-
-        return std::optional<FileRef_t>({filename_c, src_line, 0});
-    }
-
     std::string getFileRefStr(void const* location) {
         std::stringstream exec_cmd;
         std::optional<std::pair<std::string, const void *>> dlinfo = getDLInfo(location);
         if (!dlinfo) {
             return "dladdr failure!";
         }
+        return getFileRefStr(dlinfo->first, dlinfo->second);
+    }
+
+    std::string getFileRefStr(std::string file, void const* parsed_loc) {
+        std::stringstream exec_cmd;
 #ifdef CMAKE_ADDR2LINE
-        exec_cmd << CMAKE_ADDR2LINE " -e " << dlinfo->first << " " << std::hex << dlinfo->second;
+        exec_cmd << CMAKE_ADDR2LINE " -e " << file << " " << std::hex << parsed_loc;
         std::string result = exec(exec_cmd.str());
         result.pop_back();
 #else
-        exec_cmd << dlinfo->first << std::hex << "[" << dlinfo->second << "] (Cannot resolve: No addr2line support configured)\n";
+        exec_cmd << file << std::hex << "[" << parsed_loc << "] (Cannot resolve: No addr2line support configured)\n";
         std::string result = exec_cmd.str();
 #endif
         return result;
+    }
+
+    std::optional<std::pair<std::string, void const*>> getDLInfo(void const* location) {
+        Dl_info info;
+        if (!dladdr(location, &info)) {
+            return std::nullopt;
+        }
+        intptr_t resolvedLocation = (intptr_t)location;
+        if ((intptr_t)info.dli_fbase != (intptr_t)0x400000) {
+            // if the filebase is not 0x400000, we have an VMA offset that we have to subtract
+            // otherwise, it is a PIE so we can just use the codePtr
+            // Additionally, subtract 1 to get from return address to call
+            location = (void*)((intptr_t)location - (intptr_t)info.dli_fbase - 1);
+        }
+        return std::optional<std::pair<std::string, void const*>>({std::string(info.dli_fname), location});
     }
 }
