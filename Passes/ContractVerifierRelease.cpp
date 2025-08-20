@@ -33,7 +33,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
     printMultiReports = DB.allowMultiReports;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
-        for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
+        for (std::shared_ptr<ContractExpression> const& Expr : C.Post) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a postcondition
             std::string err;
@@ -69,7 +69,7 @@ struct IterTypeRelease {
     std::string releaseFunc;
     std::vector<CallParam> releaseParam;
     const CallBase* callsite;
-    std::map<const Function*, std::vector<TagUnit>> Tags;
+    std::map<Function*, std::vector<TagUnit>> Tags;
     const bool isTagRel;
 };
 

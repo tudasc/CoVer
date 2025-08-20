@@ -30,7 +30,7 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
-        for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
+        for (std::shared_ptr<ContractExpression> const& Expr : C.Post) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a precondition
             std::string err;
@@ -82,7 +82,7 @@ struct IterTypePostCall {
     const CallBase* callsite;
     const std::vector<CallParam> reqParams;
     const bool isTag;
-    std::map<const Function*, std::vector<TagUnit>> Tags;
+    std::map<Function*, std::vector<TagUnit>> Tags;
 };
 
 ContractVerifierPostCallPass::CallStatus transferPostCallStat(ContractVerifierPostCallPass::CallStatus cur, const Instruction* I, void* data) {

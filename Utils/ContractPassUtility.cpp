@@ -125,8 +125,6 @@ std::string getInstrLocStr(const Instruction* I) {
 }
 
 FileReference getFileReference(const Instruction* I) {
-    if (!I->getDebugLoc())
-        errs() << "Warning: Attempting to get file reference of instruction without debug information (most likely caused by outdated LLVM version)!\nThis may have adverse effects on report quality!\n";
     return {
         .file = getFile(I),
         .line = I->getDebugLoc() ? I->getDebugLoc()->getLine() : 0,
@@ -134,7 +132,7 @@ FileReference getFileReference(const Instruction* I) {
     };
 }
 
-bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
     if (!isTag) {
         if (!CB->getCalledFunction()) {
             if (!UnknownCalledParam.contains(CB)) {
@@ -208,7 +206,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     }
 }
 
-bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
     std::vector<const Value*> candidateParams;
     const Value* sourceParam = Source->getArgOperand(P.contrP);
 

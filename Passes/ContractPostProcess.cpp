@@ -56,12 +56,12 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const st
 Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
     Fulfillment s = Fulfillment::FULFILLED;
     std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons;
-    for (const std::shared_ptr<ContractFormula> Expr : C.Data.Pre) {
+    for (std::shared_ptr<ContractFormula> const& Expr : C.Data.Pre) {
         std::pair<Fulfillment,std::optional<ErrorMessage>> result = resolveFormula(Expr);
         if (result.second) reasons[Expr] = *result.second;
         s = std::max(s, result.first);
     }
-    for (const std::shared_ptr<ContractFormula> Expr : C.Data.Post) {
+    for (std::shared_ptr<ContractFormula> const& Expr : C.Data.Post) {
         std::pair<Fulfillment,std::optional<ErrorMessage>> result = resolveFormula(Expr);
         if (result.second) reasons[Expr] = *result.second;
         s = std::max(s, result.first);
@@ -119,7 +119,7 @@ void ContractPostProcessingPass::checkExpErr(ContractManagerAnalysis::Contract C
 
 PreservedAnalyses ContractPostProcessingPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
-    ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
+    ContractManagerAnalysis::ContractDatabase& DB = AM.getResult<ContractManagerAnalysis>(M);
 
     json_messages["messages"] = {};
 
@@ -151,7 +151,8 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
     errs() << s.str();
 
-    // Write json to file
+    // Write json to file and database
+    DB.processedReports = json_messages;
     if (!ClPrintJsonReports.empty()) {
         std::ofstream file(ClPrintJsonReports);
         file << json_writer.write(json_messages);
@@ -177,12 +178,15 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
         fs.push_back(children.first);
     }
     switch (contrF->type) {
+        case FormulaType::AND:
         case FormulaType::OR:
-            *contrF->Status = *std::min_element(fs.begin(), fs.end());
+            if (contrF->type == FormulaType::AND) *contrF->Status = *std::max_element(fs.begin(), fs.end());
+            else *contrF->Status = *std::min_element(fs.begin(), fs.end());
             if (*contrF->Status != Fulfillment::FULFILLED) {
-                // Add error info from children. As its an OR: All must not be fulfilled, so concat all
-                contrF->ErrorInfo->push_back({.text = "No children satisfied for subformula: " + contrF->ExprStr});
+                // Add error info from unfulfilled children
+                contrF->ErrorInfo->push_back({ .text = (contrF->type == FormulaType::OR ? "No children" : "At least one child not") + (" satisfied for subformula: " + contrF->ExprStr)});
                 for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
+                    if (*Form->Status == Fulfillment::FULFILLED) continue;
                     contrF->ErrorInfo->push_back({.text = "Error Info for child: " + Form->ExprStr});
                     contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
                 }
