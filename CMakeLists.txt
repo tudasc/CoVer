@@ -187,32 +187,15 @@ string(REPLACE "${CMAKE_CURRENT_BINARY_DIR}" "${CONTR_INCLUDE_PATH}" PREMADE_CON
 # Fix formatting for embed
 string(REPLACE ";" "\", \"" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_PATHS_EMBED}")
 
-set(COMPILER_WRAP_TARGET "mpicc")
-set(COMPILE_SRC_FILE_ENDINGS ".*\\\\.c$")
-set(EXECUTABLE_WRAPPER_NAME "clangContracts")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
-add_executable(clangContracts "clangContracts.cpp")
+function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS)
+  set(COMPILER_WRAP_TARGET "${TARGET_NAME}")
+  set(COMPILE_SRC_FILE_ENDINGS "${FILE_ENDINGS}")
+  set(EXECUTABLE_WRAPPER_NAME "${WRAPPER_NAME}")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
+  add_executable(${WRAPPER_NAME} "${WRAPPER_NAME}.cpp")
+  install(TARGETS ${WRAPPER_NAME})
+endfunction()
 
-set(COMPILER_WRAP_TARGET "mpicxx")
-set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
-set(EXECUTABLE_WRAPPER_NAME "clangContracts++")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
-add_executable(clangContracts++ "clangContracts++.cpp")
-
-set(COMPILER_WRAP_TARGET "mpif90")
-set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.f90|\\\\.F90)$")
-set(EXECUTABLE_WRAPPER_NAME "flangContracts")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/flangContracts.cpp" @ONLY)
-add_executable(flangContracts "flangContracts.cpp")
-
-install(
-  FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts"
-    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++"
-    "${CMAKE_CURRENT_BINARY_DIR}/flangContracts"
-  DESTINATION bin
-  PERMISSIONS
-    OWNER_READ OWNER_WRITE OWNER_EXECUTE
-    GROUP_READ GROUP_EXECUTE
-    WORLD_READ WORLD_EXECUTE
-)
+create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$")
+create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
+create_compile_wrapper("flangContracts" "mpif90" ".*(\\\\.f90|\\\\.F90)$")
