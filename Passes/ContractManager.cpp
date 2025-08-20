@@ -26,6 +26,11 @@
 
 using namespace llvm;
 
+static cl::opt<bool> ClMultiReports(
+    "cover-allow-multireports", cl::init(false),
+    cl::desc("Allow multiple error reports of the same contract"),
+    cl::Hidden);
+
 static std::optional<std::string> getFuncName(CallBase* FuncCall) {
     if (!FuncCall->getCalledFunction()) {
         if (!FuncCall->getCalledOperand()->getName().empty()) {
@@ -39,6 +44,7 @@ static std::optional<std::string> getFuncName(CallBase* FuncCall) {
 
 ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
     curDatabase.start_time = std::chrono::system_clock::now();
+    curDatabase.allowMultiReports = ClMultiReports;
 
     errs() << "Running Contract Manager on Module: " << M.getName() << "\n";
 

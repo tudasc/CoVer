@@ -1,5 +1,6 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
+#include "ErrorMessage.h"
 #include <climits>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Demangle/Demangle.h>
@@ -110,8 +111,27 @@ std::optional<uint> getLineNumber(const Instruction* I) {
     }
     return std::nullopt;
 }
+std::string getFile(const Instruction* I) {
+    if (I->getDebugLoc())
+        return (I->getDebugLoc()->getDirectory() != "" ? I->getDebugLoc()->getDirectory() + "/" : "").str() + I->getDebugLoc()->getFilename().str();
+    return "UNKNOWN";
+}
+
+
 std::string getInstrLocStr(const Instruction* I) {
-    return demangle(I->getParent()->getParent()->getName()) + ":" + (getLineNumber(I).has_value() ? std::to_string(getLineNumber(I).value()) : "UNKNOWN");
+    if (const DebugLoc &debugLoc = I->getDebugLoc())
+        return getFile(I) + ":" + std::to_string(debugLoc.getLine()) + ":" + std::to_string(debugLoc->getColumn());
+    return "UNKNOWN";
+}
+
+FileReference getFileReference(const Instruction* I) {
+    if (!I->getDebugLoc())
+        errs() << "Warning: Attempting to get file reference of instruction without debug information (most likely caused by outdated LLVM version)!\nThis may have adverse effects on report quality!\n";
+    return {
+        .file = getFile(I),
+        .line = I->getDebugLoc() ? I->getDebugLoc()->getLine() : 0,
+        .column = I->getDebugLoc() ? I->getDebugLoc()->getColumn() : 0
+    };
 }
 
 bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags) {

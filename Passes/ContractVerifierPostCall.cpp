@@ -2,6 +2,7 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
+#include "ErrorMessage.h"
 
 #include <algorithm>
 #include <llvm/Demangle/Demangle.h>
@@ -54,18 +55,24 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-void ContractVerifierPostCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<std::string>& err) {
+void ContractVerifierPostCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err) {
     // Generic error message
-    err.push_back("[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
-                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));
-    if (!candidates.empty()) {
-        // There were candidates, none fit
-        for (const CallBase* CB : candidates)
-            err.push_back("[ContractVerifierPostCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
-    } else {
-        // No candidates at all
-        err.push_back("[ContractVerifierPostCall] No candidates were found.");
-    }
+    err.push_back({
+        .error_id = "PostCall",
+        .text = "[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
+                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
+        .references = {ContractPassUtility::getFileReference(Provider)},
+    });
+    // err.push_back("[ContractVerifierPostCall] Did not find postcall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters after "
+    //                 + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));
+    // if (!candidates.empty()) {
+    //     // There were candidates, none fit
+    //     for (const CallBase* CB : candidates)
+    //         err.push_back("[ContractVerifierPostCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
+    // } else {
+    //     // No candidates at all
+    //     err.push_back("[ContractVerifierPostCall] No candidates were found.");
+    // }
 }
 
 struct IterTypePostCall {

@@ -3,6 +3,7 @@
 #include <chrono>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Function.h>
+#include <llvm/Support/CommandLine.h>
 #include <map>
 #include <memory>
 #include <vector>
@@ -37,6 +38,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             std::vector<LinearizedContract> LinearizedContracts; // For verification passes
             std::map<const Function*, std::vector<TagUnit>> Tags;
             std::chrono::time_point<std::chrono::system_clock> start_time;
+            bool allowMultiReports = false;
         } typedef ContractDatabase;
 
         // Run Pass

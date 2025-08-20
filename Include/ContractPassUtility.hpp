@@ -1,6 +1,7 @@
 #pragma once
 
 #include "ContractTree.hpp"
+#include "ErrorMessage.h"
 #include <functional>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Demangle/Demangle.h>
@@ -26,12 +27,16 @@ using namespace llvm;
 #define IS_DEBUG (getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1)
 
 namespace ContractPassUtility {
+    template<typename T>
+    using TransferFunction = std::function<T(T,const Instruction*,void*)>;
+    template<typename T>
+    using MergeFunction = std::function<std::pair<T,bool>(T,T,const Instruction*,void*)>;
     /*
     * Apply worklist algorithm
     * Need Start param to make sure that the initialization of parameters does not count as operation
     */
     template <typename T>
-    std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, void* data, T init);
+    std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init);
 
     /*
     * Get line number, or get a string representation of the location
@@ -39,6 +44,7 @@ namespace ContractPassUtility {
     */
     std::optional<uint> getLineNumber(const Instruction* I);
     std::string getInstrLocStr(const Instruction* I);
+    FileReference getFileReference(const Instruction* I);
 
     /*
     * Check if call applies to target (which may be a tag or function name)
@@ -68,7 +74,7 @@ struct WorklistEntry {
  * Need Start param to make sure that the initialization of parameters does not count as operation
  */
 template <typename T>
-std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instruction* Start, std::function<T(T,const Instruction*,void*)> transfer, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, void* data, T init) {
+std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
     // Analysis Info mapping
     std::map<const Instruction*, T> postAccess;
 

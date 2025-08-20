@@ -2,8 +2,10 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
+#include "ErrorMessage.h"
 
 #include <algorithm>
+#include <functional>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Module.h>
 #include <memory>
@@ -59,22 +61,27 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-void ContractVerifierPreCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<std::string>& err) {
+void ContractVerifierPreCallPass::appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err) {
     // Generic error message
-    err.push_back("[ContractVerifierPreCall] Did not find precall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters before "
-                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider));
-    if (!candidates.empty()) {
-        // There were candidates, none fit
-        for (const CallBase* CB : candidates)
-            err.push_back("[ContractVerifierPreCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
-    } else {
-        // No candidates at all
-        err.push_back("[ContractVerifierPreCall] No candidates were found.");
-    }
+    err.push_back({
+        .error_id = "PreCall",
+        .text = "[ContractVerifierPreCall] Did not find precall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters before "
+                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
+        .references = {ContractPassUtility::getFileReference(Provider)},
+    });
+
+    // if (!candidates.empty()) {
+    //     // There were candidates, none fit
+    //     for (const CallBase* CB : candidates)
+    //         err.push_back("[ContractVerifierPreCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
+    // } else {
+    //     // No candidates at all
+    //     err.push_back("[ContractVerifierPreCall] No candidates were found.");
+    // }
 }
 
 struct IterTypePreCall {
-    std::vector<std::string> err;
+    std::vector<ErrorMessage> err;
     std::vector<std::string> dbg;
     const std::string Target;
     const Function* F;
@@ -83,42 +90,42 @@ struct IterTypePreCall {
     std::map<const Function*, std::vector<TagUnit>> Tags;
 };
 
-ContractVerifierPreCallPass::CallStatus transferPreCallStat(ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
-    if (cur.CurVal == ContractVerifierPreCallPass::CallStatusVal::ERROR) return cur;
-    if (cur.CurVal == ContractVerifierPreCallPass::CallStatusVal::CALLED) return cur;
+ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPreCallStat(CallStatus cur, const Instruction* I, void* data) {
+    if (cur.CurVal == CallStatusVal::ERROR) return cur;
+    if (cur.CurVal == CallStatusVal::CALLED) return cur;
 
     IterTypePreCall* Data = static_cast<IterTypePreCall*>(data);
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
         if (ContractPassUtility::checkCalledApplies(CB, Data->Target, Data->isTag, Data->Tags)) {
             if (Data->reqParams.empty()) {
-                cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::CALLED;
+                cur.CurVal = CallStatusVal::CALLED;
                 return cur;
             }
             // Target function was called, need to check the parameters
-            cur.CurVal = llvm::ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK;
+            cur.CurVal = CallStatusVal::PARAMCHECK;
             cur.candidate.insert(CB);
             // Paramcheck is resolved once target found
             return cur;
         }
         if (CB->getCalledFunction() == Data->F) {
             // Found contract supplier. Either paramcheck or error
-            if (cur.CurVal != ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK) {
-                ContractVerifierPreCallPass::appendDebugStr(Data->Target, Data->isTag, CB, cur.candidate, Data->err);
-                cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::ERROR;
+            if (cur.CurVal != CallStatusVal::PARAMCHECK) {
+                appendDebugStr(Data->Target, Data->isTag, CB, cur.candidate, Data->err);
+                cur.CurVal = CallStatusVal::ERROR;
                 return cur;
             }
             for (CallParam param : Data->reqParams) {
                 for (const CallBase* Candidate : cur.candidate) {
                     if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags)) {
                         // Success!
-                        cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::CALLED;
+                        cur.CurVal = CallStatusVal::CALLED;
                         return cur;
                     }
                 }
             }
             // Any required parameter not used by any candidate
-            ContractVerifierPreCallPass::appendDebugStr(Data->Target, Data->isTag, CB, cur.candidate, Data->err);
-            cur.CurVal = ContractVerifierPreCallPass::CallStatusVal::ERROR;
+            appendDebugStr(Data->Target, Data->isTag, CB, cur.candidate, Data->err);
+            cur.CurVal = CallStatusVal::ERROR;
             return cur;
         }
     }
@@ -126,7 +133,7 @@ ContractVerifierPreCallPass::CallStatus transferPreCallStat(ContractVerifierPreC
     return cur;
 }
 
-std::pair<ContractVerifierPreCallPass::CallStatus,bool> mergePreCallStat(ContractVerifierPreCallPass::CallStatus prev, ContractVerifierPreCallPass::CallStatus cur, const Instruction* I, void* data) {
+std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallPass::mergePreCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data) {
     // Intersection of candidates
     std::set<const CallBase*> intersect;
     std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
@@ -134,8 +141,8 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> mergePreCallStat(Contrac
     ContractVerifierPreCallPass::CallStatus cs;
     cs.candidate = intersect;
     cs.CurVal = std::max(prev.CurVal, cur.CurVal);
-    if ((prev.CurVal == ContractVerifierPreCallPass::CallStatusVal::CALLED || cur.CurVal == ContractVerifierPreCallPass::CallStatusVal::CALLED) &&
-         cs.CurVal != ContractVerifierPreCallPass::CallStatusVal::CALLED) {
+    if ((prev.CurVal == CallStatusVal::CALLED || cur.CurVal == CallStatusVal::CALLED) &&
+         cs.CurVal != CallStatusVal::CALLED) {
         IterTypePreCall* Data = static_cast<IterTypePreCall*>(data);
         Data->dbg.push_back("[ContractVerifierPreCall] NOTE: Successful fulfillment was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
     }
@@ -148,11 +155,13 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
         error = "Cannot find main function, cannot construct path to check precall!";
         return CallStatusVal::ERROR;
     }
-    const Instruction* Entry = mainF->getEntryBlock().getFirstNonPHI();
+    const Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
 
     IterTypePreCall data = { {}, {}, cOP->Function, C.F, cOP->Params, isTag, Tags };
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
-    std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(Entry, transferPreCallStat, mergePreCallStat, &data, init);
+    ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPreCallPass::transferPreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPreCallPass::mergePreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    std::map<const Instruction *, CallStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<CallStatus>(Entry, transfer, merge, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
