@@ -280,6 +280,7 @@ void PPDCV_MemWCallback(bool isRef, void* buf) {
 }
 
 void printCoverageFile() {
+    if (visitedLocs.empty()) return;
     std::srand(std::time({}) + getpid());
     std::string file_suffix = std::format("{:x}", rand());
     std::ofstream coverage_file("CoVerCoverage_" + file_suffix);
