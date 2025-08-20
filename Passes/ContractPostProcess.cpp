@@ -172,7 +172,7 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
         std::pair<Fulfillment,std::optional<ErrorMessage>> children = resolveFormula(Form);
         if (children.second) {
             if (!outStr) outStr = "";
-            *outStr += ", " + (*children.second).text;
+            *outStr += ", " + children.second->text;
         }
         fs.push_back(children.first);
     }
