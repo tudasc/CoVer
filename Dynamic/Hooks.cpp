@@ -186,7 +186,7 @@ void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
 
     if (*argc >= 2) {
         std::string arg = (*argv)[1];
-        if (arg == "--cover-coverage-check") {
+        if (arg == "--cover-check-coverage") {
             // Fill relevant locs
             std::unordered_set<std::string> relevantLocs;
             for (int i = 0; i < DB->num_references; i++)
