@@ -89,7 +89,6 @@ target_include_directories(CoVerPlugin
   PUBLIC
     Include/
 )
-target_compile_options (CoVerPlugin PUBLIC -fexceptions)
 
 ##
 ## Runtime Dependencies
