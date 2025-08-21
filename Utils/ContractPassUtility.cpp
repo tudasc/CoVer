@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <vector>
 
+#include "dsa/DSNode.h"
 #include "dsa/DSSupport.h"
 #include "dsa/Steensgaard.hh"
 #include "dsa/DSGraph.h"
@@ -173,32 +174,29 @@ bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, 
     }
 }
 
+Module* getModule(Value const* V) {
+    if (Instruction const* I = dyn_cast<Instruction>(V)) return (Module*)I->getModule();
+    if (GlobalValue const* GV = dyn_cast<GlobalValue>(V)) return (Module*)GV->getParent();
+    return nullptr;
+}
+
 bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM) {
     const Value* source = contrP;
     const Value* target = callP;
-    Module* M = dyn_cast<Instruction>((Value*)contrP)->getModule();
-    std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*M);
-    //steens->writeGraphToFile(errs(), "graph");
-    int diff = 0;
+    std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
 
     switch (acc) {
-        case ContractTree::ParamAccess::NORMAL:
-            if (diff != 0) return false; // Interproc with load inside
-            break;
         case ContractTree::ParamAccess::DEREF:
             // Contr has a pointer, call has value.
             // If interproc, diff should be -1 if already resolved
-            if (diff == 0)
-                target = getLoadStorePointerOperand(target);
-            else if (diff != -1) return false;
+            target = getLoadStorePointerOperand(target);
             break;
         case ContractTree::ParamAccess::ADDROF:
             // Contr has value, call has pointer. Go down from target param
             // If interproc, diff should be 1 if already resolved
-            if (diff == 0)
-                source = getLoadStorePointerOperand(source);
-            else if (diff != 1) return false;
+            source = getLoadStorePointerOperand(source);
             break;
+        case ContractTree::ParamAccess::NORMAL: break;
     }
 
     if (source == target) return true;
@@ -206,6 +204,10 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
         DSNodeHandle sourceNode = steens->getNodeForValue(source);
         DSNodeHandle targetNode = steens->getNodeForValue(target);
+        while (sourceNode.getNode()->isCollapsedNode())
+            sourceNode = sourceNode.getNode()->edge_begin()->second;
+        while (targetNode.getNode()->isCollapsedNode())
+            targetNode = targetNode.getNode()->edge_begin()->second;
         return sourceNode == targetNode;
     }
     return false;

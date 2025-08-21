@@ -352,7 +352,7 @@ for func, contrs in function_contracts.items():
     header_output_c += ");\n\n"
     if func in exclude_fortran or "c2f" in func or "f2c" in func or "f082c" in func or "c2f08" in func: continue # Only defined for C
     # Now: Fortran
-    contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "")
+    contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "").replace("*", "").replace("&", "").replace("read!(", "read!(*").replace("write!(", "write!(*")
     header_output_fort += "    call Declare_Contract(" + func + ", \"CONTRACT{" + contract_str_fort + "}\")\n"
     # Fortran f08(ts)
     header_output_fort_f08 += create_f08_contract(func, contract_str_fort, False)
