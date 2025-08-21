@@ -187,7 +187,8 @@ string(REPLACE "${CMAKE_CURRENT_BINARY_DIR}" "${CONTR_INCLUDE_PATH}" PREMADE_CON
 # Fix formatting for embed
 string(REPLACE ";" "\", \"" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_PATHS_EMBED}")
 
-function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS)
+function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CONTRACT_INCLUDES)
+  string(REPLACE ";" "\", \"" PREMADE_CONTRACT_INCLUDES "${PREMADE_CONTRACT_INCLUDES}")
   set(COMPILER_WRAP_TARGET "${TARGET_NAME}")
   set(COMPILE_SRC_FILE_ENDINGS "${FILE_ENDINGS}")
   set(EXECUTABLE_WRAPPER_NAME "${WRAPPER_NAME}")
@@ -196,6 +197,6 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS)
   install(TARGETS ${WRAPPER_NAME})
 endfunction()
 
-create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$")
-create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
-create_compile_wrapper("flangContracts" "mpif90" ".*(\\\\.f90|\\\\.F90)$")
+create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "mpi_contracts.h;shmem.h")
+create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "mpi_contracts.h;shmem.h")
+create_compile_wrapper("flangContracts" "mpif90" ".*(\\\\.f90|\\\\.F90)$" "")
