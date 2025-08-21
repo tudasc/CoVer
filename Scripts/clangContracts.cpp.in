@@ -205,7 +205,7 @@ int main(int argc, const char** argv) {
     for (std::string file : link_time_sources) {
         std::string destination = std::filesystem::temp_directory_path().string() + "/contrPlugin_predef_XXXXXX";
         int fd = mkstemp(destination.data());
-        execSafe(wrap_target + " -cpp -g -c -emit-llvm -I\"@CONTR_INCLUDE_PATH@\" " + file + " -o " + destination);
+        execSafe(wrap_target + " -g -c -emit-llvm -I\"@CONTR_INCLUDE_PATH@\" " + file + " -o " + destination);
         bitcode_files += " " + destination;
     }
 
