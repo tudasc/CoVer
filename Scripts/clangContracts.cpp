@@ -21,15 +21,17 @@ std::regex link_file_ending(".*(\\.a|\\.so)");
 
 std::string wrap_target = "@COMPILER_WRAP_TARGET@";
 
-std::vector<std::string> predefined_contracts = {"@PREMADE_CONTRACT_INCLUDES@"};
+std::vector<std::string> predefined_contract_includes = {"@PREMADE_CONTRACT_INCLUDES@"};
+std::vector<std::string> predefined_contract_sources = {"@PREMADE_CONTRACT_SOURCES@"};
 
 std::regex llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
 
 std::regex source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
 std::string source_file_paths;
 std::regex obj_file_ending(".*(\\.o)");
-std::string llvmlink_obj_files = "";
+std::string bitcode_files;
 std::vector<std::string> source_file_names;
+std::vector<std::string> link_time_sources; // For predef fort contracts
 
 std::string opt_flags = "";
 
@@ -76,7 +78,9 @@ void printHelp() {
     printf("\n\t\t\"filtered[=<detection json>]\": Only instrument potential issues from static analysis. Defaults to CoVer static analysis, optionally give filepath to different detection json");
     printf("\n\t--verbose: Print commands to be executed");
     printf("\n\t--wrap-target: Set the compiler to wrap around");
-    printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions using the -include flag");
+    printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions.");
+    printf("\n\t\tC/C++: Include contract headers using the -include flag");
+    printf("\n\t\tFortran: Add contract sources to analyse step. This option does NOT work if attempting to compile Fortran 2008 without TS29113!");
     printf("\n\t--allow-multireports: Allow multiple reports of same violated contract");
     printf("\n\n");
 }
@@ -118,10 +122,10 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             if (output_file.empty()) output_file = "contract_messages.json";
             opt_flags += " -cover-generate-json-report=" + output_file;
         } else if (arg == "--predefined-contracts") {
-            for (std::string path : predefined_contracts) {
-                rem_args_compile += " -include " + path;
-                rem_args_link += " -include " + path;
+            for (std::string path : predefined_contract_includes) {
+                rem_args_link += !path.empty() ? " -include " + path : "";
             }
+            link_time_sources.insert(link_time_sources.end(), predefined_contract_sources.begin(), predefined_contract_sources.end());
         } else if (std::regex_match(arg, source_file_ending)) {
             source_file_paths += " " + arg;
             source_file_names.push_back(std::filesystem::path(arg).stem());
@@ -134,7 +138,7 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
         } else if (std::regex_match(arg, link_file_ending)) {
             rem_args_link += " " + arg;
         } else if (std::regex_match(arg, obj_file_ending)) {
-            llvmlink_obj_files += " " + arg;
+            bitcode_files += " " + arg;
         } else if (arg == "-MT") {
             rem_args_compile += " " + arg + " " + all_args[++i];
         } else {
@@ -186,7 +190,6 @@ int main(int argc, const char** argv) {
     sanityCheckCompiler();
 
     // Generate IR for source files
-    std::string bitcode_files;
     if (!source_file_paths.empty()) {
         std::string common_options = " -fPIC -g -emit-llvm ";
         execSafe(wrap_target + common_options + (cur_linkkind < LinkKind::ONLY_PREPROCESS ? "-c" : "-E") + " -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LinkKind::LINK ? dest_arg : ""));
@@ -219,10 +222,18 @@ int main(int argc, const char** argv) {
     // If not linking, return early
     if (cur_linkkind != LinkKind::LINK) return 0;
 
+    // Add source contract files if needed
+    for (std::string file : link_time_sources) {
+        std::string destination = std::filesystem::temp_directory_path().string() + "/contrPlugin_predef_XXXXXX";
+        int fd = mkstemp(destination.data());
+        execSafe(wrap_target + " -cpp -g -c -emit-llvm -I\"@CONTR_INCLUDE_PATH@\" " + file + " -o " + destination);
+        bitcode_files += " " + destination;
+    }
+
     // Perform link and analysis steps
     std::string tmpfile = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
     int fd = mkstemp(tmpfile.data());
-    execSafe("llvm-link" + bitcode_files + llvmlink_obj_files + " -o " + tmpfile);
+    execSafe("llvm-link" + bitcode_files + " -o " + tmpfile);
 
     // Call LLVM passes
     std::string passlist = "function(sroa),contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
