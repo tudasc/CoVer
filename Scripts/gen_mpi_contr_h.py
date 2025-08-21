@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import json
+import random
 
 if len(sys.argv) < 3:
     print("Insufficient arguments!\nUsage: {os.path.basename(__file__)} <outpath> <mpi.h location> [identifier]")
@@ -288,11 +289,6 @@ boilerplate_header_fort = f"""
 ! Instead of modifying this file, consider modifying the generation script
 ! Identifier: {ver_identifier}
 
-#define CONCAT_IMPL( x, y ) x##y
-#define MACRO_CONCAT( x, y ) CONCAT_IMPL( x, y )
-
-#define CONTRACT_DEFINITION MACRO_CONCAT(CONTRACT_DEFINITIONS_FORT_, __LINE__)
-
 module contract_helper
     interface
         subroutine Declare_Contract(funcPtr, contrString)
@@ -302,7 +298,7 @@ module contract_helper
     end interface
 end module
 
-subroutine CONTRACT_DEFINITION
+subroutine CONTRACT_DEFINITIONS_FORT_@RANDOM_UNIQUE@
     use contract_helper
 """
 
@@ -367,10 +363,10 @@ with open(f"{output_path}/mpi_contracts.h", "w") as contr_file:
     contr_file.write(header_output_c)
 
 with open(f"{output_path}/mpi_contracts.f90", "w") as contr_file:
-    contr_file.write(header_output_fort)
+    contr_file.write(header_output_fort.replace("@RANDOM_UNIQUE@", ''.join(random.choice('0123456789ABCDEF') for i in range(16))))
 
 with open(f"{output_path}/mpi_contracts_f08.f90", "w") as contr_file:
-    contr_file.write(header_output_fort_f08)
+    contr_file.write(header_output_fort_f08.replace("@RANDOM_UNIQUE@", ''.join(random.choice('0123456789ABCDEF') for i in range(16))))
 
 with open(f"{output_path}/mpi_contracts_f08ts.f90", "w") as contr_file:
-    contr_file.write(header_output_fort_f08ts)
+    contr_file.write(header_output_fort_f08ts.replace("@RANDOM_UNIQUE@", ''.join(random.choice('0123456789ABCDEF') for i in range(16))))

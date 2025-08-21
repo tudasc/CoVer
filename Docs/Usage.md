@@ -35,11 +35,16 @@ For more complicated constructions (disjunctions, XOR, parameter matching, taggi
 ## Adding Contracts to Code
 
 After defining the contracts, they must be added to the code.
-Some possible methods in order of recommendation:
+Some possible methods for C/C++ code in order of recommendation:
 - Add separate headers with the same function signatures and appended contracts, and include using `-include` preprocessor flag
 - Add separate headers, include in code
 - Replace includes of API header (`mpi.h`, `shmem.h`) with the contract headers
 - Modify API header directly
+For Fortran, the contracts are defined using calls to `Declare_Contract`.
+See the predefined contract sources for examples.
+
+The predefined contracts can be included simply using the compile wrappers' `--predefined-contracts` option,
+with some limitations. See [language support](LanguageSupport.md) for details.
 
 ## Adding Analyses
 

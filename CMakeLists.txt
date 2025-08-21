@@ -182,13 +182,11 @@ set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
 set(DSA_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/DSA.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include")
 
-# Replace build folder with install folder
-string(REPLACE "${CMAKE_CURRENT_BINARY_DIR}" "${CONTR_INCLUDE_PATH}" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_HEADERS}")
-# Fix formatting for embed
-string(REPLACE ";" "\", \"" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_PATHS_EMBED}")
-
-function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CONTRACT_INCLUDES)
+function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CONTRACT_INCLUDES PREMADE_CONTRACT_SOURCES)
+  list(TRANSFORM PREMADE_CONTRACT_INCLUDES PREPEND "${CONTR_INCLUDE_PATH}/" OUTPUT_VARIABLE PREMADE_CONTRACT_INCLUDES)
+  list(TRANSFORM PREMADE_CONTRACT_SOURCES PREPEND "${CONTR_INCLUDE_PATH}/" OUTPUT_VARIABLE PREMADE_CONTRACT_SOURCES)
   string(REPLACE ";" "\", \"" PREMADE_CONTRACT_INCLUDES "${PREMADE_CONTRACT_INCLUDES}")
+  string(REPLACE ";" "\", \"" PREMADE_CONTRACT_SOURCES "${PREMADE_CONTRACT_SOURCES}")
   set(COMPILER_WRAP_TARGET "${TARGET_NAME}")
   set(COMPILE_SRC_FILE_ENDINGS "${FILE_ENDINGS}")
   set(EXECUTABLE_WRAPPER_NAME "${WRAPPER_NAME}")
@@ -197,6 +195,6 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   install(TARGETS ${WRAPPER_NAME})
 endfunction()
 
-create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "mpi_contracts.h;shmem.h")
-create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "mpi_contracts.h;shmem.h")
-create_compile_wrapper("flangContracts" "mpif90" ".*(\\\\.f90|\\\\.F90)$" "")
+create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "mpi_contracts.h;shmem.h" "")
+create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "mpi_contracts.h;shmem.h" "")
+create_compile_wrapper("flangContracts" "mpif90" ".*(\\\\.f90|\\\\.F90)$" "" "mpi_contracts.f90;mpi_contracts_f08ts.f90")
