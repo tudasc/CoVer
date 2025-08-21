@@ -24,6 +24,7 @@
 #include <sys/types.h>
 #include <vector>
 
+#include "dsa/DSNode.h"
 #include "dsa/DSSupport.h"
 #include "dsa/Steensgaard.hh"
 #include "dsa/DSGraph.h"
@@ -171,12 +172,16 @@ bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, 
     }
 }
 
+Module* getModule(Value const* V) {
+    if (Instruction const* I = dyn_cast<Instruction>(V)) return (Module*)I->getModule();
+    if (GlobalValue const* GV = dyn_cast<GlobalValue>(V)) return (Module*)GV->getParent();
+    return nullptr;
+}
+
 bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM) {
     const Value* source = contrP;
     const Value* target = callP;
-    Module* M = dyn_cast<Instruction>((Value*)contrP)->getModule();
-    std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*M);
-    //steens->writeGraphToFile(errs(), "graph");
+    std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
     int diff = 0;
 
     constexpr bool use_dsa = true;
@@ -220,6 +225,10 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
             DSNodeHandle sourceNode = steens->getNodeForValue(source);
             DSNodeHandle targetNode = steens->getNodeForValue(target);
+            while (sourceNode.getNode()->isCollapsedNode())
+                sourceNode = sourceNode.getNode()->edge_begin()->second;
+            while (targetNode.getNode()->isCollapsedNode())
+                targetNode = targetNode.getNode()->edge_begin()->second;
             return sourceNode == targetNode;
         }
     } else {
