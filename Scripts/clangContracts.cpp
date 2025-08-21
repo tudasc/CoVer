@@ -21,7 +21,7 @@ std::regex link_file_ending(".*(\\.a|\\.so)");
 
 std::string wrap_target = "@COMPILER_WRAP_TARGET@";
 
-std::vector<std::string> predefined_contracts = {"@PREMADE_CONTRACT_PATHS_EMBED@"};
+std::vector<std::string> predefined_contracts = {"@PREMADE_CONTRACT_INCLUDES@"};
 
 std::regex llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
 
@@ -225,7 +225,7 @@ int main(int argc, const char** argv) {
     execSafe("llvm-link" + bitcode_files + llvmlink_obj_files + " -o " + tmpfile);
 
     // Call LLVM passes
-    std::string passlist = "contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
+    std::string passlist = "function(sroa),contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
     if (instrument) {
         // Need instrumentation, so add instr pass...
         passlist += ",instrumentContracts";
