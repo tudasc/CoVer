@@ -29,8 +29,6 @@ namespace {
         std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*> analysis;
     };
 
-    void PPDCV_destructor();
-
     std::unordered_set<void const*> visitedLocs;
 
     std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
