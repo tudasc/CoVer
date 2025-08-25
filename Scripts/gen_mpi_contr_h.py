@@ -306,7 +306,17 @@ header_output_fort = boilerplate_header_fort + "    use mpi\n    implicit none\n
 header_output_fort_f08 = boilerplate_header_fort + "    use mpi_f08\n    implicit none\n"
 header_output_fort_f08ts = header_output_fort_f08
 
-exclude_fortran = [ "MPI_Intercomm_create_from_groups", "MPI_Session_set_info", "MPI_Session_get_num_psets" ] # HACK: Not currently implemented
+exclude_fortran = [
+    "MPI_Intercomm_create_from_groups",
+    "MPI_Session_set_info",
+    "MPI_Session_get_num_psets",
+    "MPI_Status_get_error",
+    "MPI_Status_set_error",
+    "MPI_Status_get_source",
+    "MPI_Status_set_source",
+    "MPI_Status_get_tag",
+    "MPI_Status_set_tag",
+] # HACK: Not currently implemented for fortran in major mpi impls
 
 with open("apis.json", "r") as api_file:
     mpi_funcs = json.load(api_file)
