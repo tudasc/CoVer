@@ -195,6 +195,11 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   install(TARGETS ${WRAPPER_NAME})
 endfunction()
 
-create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "mpi_contracts.h;shmem_contracts.h" "")
-create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "mpi_contracts.h;shmem_contracts.h" "")
+set(C_HEADER_FILES mpi_contracts.h)
+if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+  set(C_HEADER_FILES mpi_contracts.h;shmem_contracts.h)
+endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+
+create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "${C_HEADER_FILES}" "")
+create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "${C_HEADER_FILES}" "")
 create_compile_wrapper("flangContracts" "mpif90" ".*(\\\\.f90|\\\\.F90)$" "" "mpi_contracts.f90;mpi_contracts_f08ts.f90")
