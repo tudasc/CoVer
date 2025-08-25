@@ -103,7 +103,7 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             opt_flags += " -cover-generate-json-report=" + output_file;
         } else if (arg == "--predefined-contracts") {
             for (std::string path : predefined_contract_includes) {
-                rem_args_link += !path.empty() ? " -include " + path : "";
+                rem_args_compile += !path.empty() ? " -include " + path : "";
             }
             link_time_sources.insert(link_time_sources.end(), predefined_contract_sources.begin(), predefined_contract_sources.end());
         } else if (std::regex_match(arg, source_file_ending)) {
