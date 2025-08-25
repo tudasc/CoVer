@@ -325,7 +325,7 @@ def create_contract_output_for_func(types, contrs):
 def has_buffer(func: str) -> bool:
     searchfunc = func.lower()
     if searchfunc.endswith("_c"): searchfunc = searchfunc[:-2]
-    api_func = mpi_funcs[func.lower()]
+    api_func = mpi_funcs[searchfunc]
     for p in api_func["parameters"]:
         if p["kind"] == "BUFFER": return True
     return False
