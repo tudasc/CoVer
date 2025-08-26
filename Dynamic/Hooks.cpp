@@ -78,6 +78,8 @@ void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
         }
     }
 
+    contract_status.reserve(formula_parents.size() + 2);
+
     atexit(PPDCV_destructor);
 
     DynamicUtils::createMessage("Finished Initializing!");
