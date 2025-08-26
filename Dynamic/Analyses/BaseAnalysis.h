@@ -4,6 +4,7 @@
 #include <utility>
 
 enum struct Fulfillment { FULFILLED, UNKNOWN, VIOLATED };
+enum struct AnalysisType { PRECALL, POSTCALL, RELEASE };
 
 struct CallBacks {
     bool const FUNCTION;

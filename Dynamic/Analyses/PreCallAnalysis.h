@@ -9,6 +9,8 @@
 
 struct PreCallAnalysis : BaseAnalysis<PreCallAnalysis> {
     public:
+        static constexpr AnalysisType Type = AnalysisType::PRECALL;
+
         PreCallAnalysis(void* func_supplier, CallOp_t* callop);
         PreCallAnalysis(void* func_supplier, CallTagOp_t* callop);
 
