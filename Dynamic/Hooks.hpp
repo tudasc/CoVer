@@ -9,6 +9,8 @@
 #include <ctime>
 #include <vector>
 
+#include "Analyses/BaseAnalysis.h"
+#include "DynamicUtils.h"
 #include "FastVariant.h"
 
 #include "Analyses/PreCallAnalysis.h"
@@ -32,6 +34,8 @@ namespace {
     std::unordered_set<void const*> visitedLocs;
 
     std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
+    std::unordered_map<ContractFormula_t*, ContractFormula_t*> formula_parents;
+    std::unordered_map<ContractFormula_t*, Contract_t*> toplevel_to_contract;
     std::vector<AnalysisPair> all_analyses;
     std::vector<AnalysisPair> analyses_with_funcCB;
     std::vector<AnalysisPair> analyses_with_memRCB;
@@ -39,12 +43,15 @@ namespace {
     std::unordered_map<ContractFormula_t*, std::vector<void const*>> analysis_references;
     std::unordered_set<void*> called_funcs;
 
+    ErrorMessage recurseCreateErrorMsg(ContractFormula_t* form);
+    void formatError(ErrorMessage msg, int indent = 2);
+
     template<typename Analysis, typename... Arguments>
     inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
         Analysis* A = new Analysis(args...);
         AnalysisPair new_pair = {form, A};
         all_analyses.push_back(new_pair);
-        
+
         CallBacks reqCB = A->requiredCallbacks();
         if (reqCB.FUNCTION) analyses_with_funcCB.push_back(new_pair);
         if (reqCB.MEMORY_R) analyses_with_memRCB.push_back(new_pair);
@@ -59,11 +66,58 @@ namespace {
                 Fulfillment f = analysis->CB(std::move(location), __VA_ARGS__);\
             if (f != Fulfillment::UNKNOWN) { \
                 contract_status[it->formula] = f; \
+                analysis_references[it->formula] = analysis->getReferences(); \
+                validateState(it->formula); \
                 return pairs.erase(it); \
             } return ++it;}, it->analysis);\
         }
 
-    void recurseCreateAnalyses(ContractFormula_t* form, bool isPre, void* func_supplier) {
+    void validateState(ContractFormula_t* form) {
+        if (contract_status[form] != Fulfillment::VIOLATED) return;
+        if (contract_status.contains(formula_parents[form])) return;
+
+        ContractFormula_t* parent = formula_parents[form];
+        if (parent == nullptr) {
+            // Top-level formula is violated, perform error output
+            Contract_t* C = toplevel_to_contract[form];
+            DynamicUtils::out() << "Error in contract for function \"" << C->function_name << "\":\n";
+            DynamicUtils::out() << (form == C->precondition ? "Precondition:\n" : "Postcondition:\n");
+            formatError(recurseCreateErrorMsg(form));
+            return;
+        }
+
+        switch (parent->conn) {
+            case AND:
+                // Failure guaranteed, parent is AND and has a violated member
+                contract_status[parent] = Fulfillment::VIOLATED;
+                validateState(parent);
+                return;
+            case OR:
+            case XOR: {
+                int num_fulfilled = 0;
+                for (int i = 0; i < parent->num_children; i++) {
+                    if (contract_status.contains(&parent->children[i]) && contract_status[&parent->children[i]] == Fulfillment::FULFILLED) {
+                        num_fulfilled++;
+                    }
+                }
+                if (parent->conn == OR && num_fulfilled > 0) { // Early fulfill OR if at least one satisfied
+                    contract_status[parent] = Fulfillment::FULFILLED;
+                    validateState(parent);
+                } else if (parent->conn == XOR && num_fulfilled > 1) { // Early violate XOR if more than one satisfied
+                    contract_status[parent] = Fulfillment::VIOLATED;
+                    validateState(parent);
+                }
+                return;
+            }
+            default:
+                __builtin_unreachable();
+                DynamicUtils::out() << "Unexpected connective in state validation!\n";
+        }
+        // If this is reached: No new information gained this time.
+    }
+
+    void recurseCreateAnalyses(ContractFormula_t* form, ContractFormula_t* parent, bool isPre, void* func_supplier) {
+        formula_parents[form] = parent;
         if (form->num_children == 0) {
             switch (form->conn) {
                 case UNARY_CALL:
@@ -83,13 +137,13 @@ namespace {
                     break;
             }
         } else {
-            for (int i = 0; i < form->num_children; i++) recurseCreateAnalyses(&form->children[i], isPre, func_supplier);
+            for (int i = 0; i < form->num_children; i++) recurseCreateAnalyses(&form->children[i], form, isPre, func_supplier);
         }
     }
 
-    ErrorMessage recurseResolveFormula(ContractFormula_t* form) {
+    ErrorMessage recurseCreateErrorMsg(ContractFormula_t* form) {
+        if (contract_status[form] != Fulfillment::VIOLATED) return {};
         if (form->num_children == 0) {
-            if (contract_status[form] == Fulfillment::FULFILLED) return {};
             ErrorMessage msg;
             msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg};
             switch (form->conn) {
@@ -104,7 +158,7 @@ namespace {
                     msg.msg.push_back(std::string("Found forbidden operation!"));
                     break;
                 }
-                default: return {{"UNEXPECTED OPERATION IN RESOLVE STEP"}, {}};
+                default: __builtin_unreachable();
             }
             std::vector<void const*> const& references = analysis_references[form];
             for (void const* loc : references)
@@ -113,19 +167,13 @@ namespace {
         }
         std::vector<ErrorMessage> child_msg;
         for (int i = 0; i < form->num_children; i++) {
-            child_msg.push_back(recurseResolveFormula(&form->children[i]));
+            child_msg.push_back(recurseCreateErrorMsg(&form->children[i]));
         }
         switch (form->conn) {
-            case AND: {
-                bool all_success = std::all_of(child_msg.begin(), child_msg.end(), [](ErrorMessage const& err) { return err.msg.empty(); });
-                if (all_success) return {{}, child_msg};
-                else return {{std::string("A child is not satisfied for Formula (message or contract string): ") + form->msg}, child_msg};
-            }
-            case OR: {
-                bool any_success = std::any_of(child_msg.begin(), child_msg.end(), [](ErrorMessage const& err) { return err.msg.empty(); });
-                if (any_success) return {{}, child_msg};
-                else return {{std::string("No child satisfied for Formula (message or contract string): ") + form->msg}, child_msg};
-            }
+            case AND:
+                return {{std::string("A child is not satisfied for Formula (message or contract string): ") + form->msg}, child_msg};
+            case OR:
+                return {{std::string("No child satisfied for Formula (message or contract string): ") + form->msg}, child_msg};
             case XOR: {
                 bool found = false;
                 for (ErrorMessage const& cmsg : child_msg) {
@@ -137,37 +185,17 @@ namespace {
                 if (!found) return {{std::string("No child satisfied for Formula (message or contract string): ") + form->msg}, child_msg};;
                 return {{}, child_msg};
             }
-            default: return {{"UNEXPECTED CONNECTIVE IN RESOLVE STEP"}, {}};
+            default: __builtin_unreachable();
         }
     }
 
-    void formatError(ErrorMessage msg, int indent = 2) {
+    void formatError(ErrorMessage msg, int indent) {
         if (msg.msg.empty()) return;
         std::string indent_s(indent, ' ');
         for (std::string const& line : msg.msg)
             DynamicUtils::out() << indent_s << "- " << line << "\n";
         for (ErrorMessage child : msg.child_msg) {
             formatError(child, indent + 2);
-        }
-    }
-
-    void resolveContracts() {
-        for (std::pair<void*, std::vector<Contract_t>> contract : contrs) {
-            if (!called_funcs.contains(contract.first)) continue;
-            for (Contract_t C : contract.second) {
-                ErrorMessage errors_precond = C.precondition ? recurseResolveFormula(C.precondition) : ErrorMessage{};
-                ErrorMessage errors_postcond = C.postcondition ? recurseResolveFormula(C.postcondition) : ErrorMessage{};
-                if (errors_precond.msg.empty() && errors_postcond.msg.empty()) continue;
-                DynamicUtils::out() << "Error in contract for function \"" << C.function_name << "\":\n";
-                if (!errors_precond.msg.empty()) {
-                    DynamicUtils::out() << "  Precondition:\n";
-                    formatError(errors_precond);
-                }
-                if (!errors_postcond.msg.empty()) {
-                    DynamicUtils::out() << "  Postcondition:\n";
-                    formatError(errors_postcond);
-                }
-            }
         }
     }
 
@@ -184,17 +212,18 @@ namespace {
     }
 
     void PPDCV_destructor() {
-        #warning todo find better way for postprocessing
-        std::cout << "CoVer-Dynamic: Analysis finished.\n";
-        for (AnalysisPair& pair : all_analyses) {
+        for (AnalysisPair const& pair : all_analyses) {
             fastVisit([&](auto&& analysis) {
-                if (!contract_status.contains(pair.formula))
+                if (!contract_status.contains(pair.formula)) {
                     contract_status[pair.formula] = analysis->onProgramExit(std::move(__builtin_return_address(0)));
+                    if (contract_status[pair.formula] == Fulfillment::VIOLATED) validateState(pair.formula);
+                }
                 analysis_references[pair.formula] = analysis->getReferences();
                 delete analysis;
             }, pair.analysis);
         }
-        resolveContracts();
+        DynamicUtils::out() << "Analysis finished. Writing coverage file... ";
         printCoverageFile();
+        std::cerr << "Done.\n";
     }
 }
