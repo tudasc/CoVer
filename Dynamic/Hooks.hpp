@@ -41,7 +41,6 @@ namespace {
     std::vector<AnalysisPair> analyses_with_memRCB;
     std::vector<AnalysisPair> analyses_with_memWCB;
     std::unordered_map<ContractFormula_t*, std::vector<void const*>> analysis_references;
-    std::unordered_set<void*> called_funcs;
 
     ErrorMessage recurseCreateErrorMsg(ContractFormula_t* form);
     void formatError(ErrorMessage msg, int indent = 2);
