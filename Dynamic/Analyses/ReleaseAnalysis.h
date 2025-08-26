@@ -8,6 +8,8 @@
 
 struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
     public:
+        static constexpr AnalysisType Type = AnalysisType::RELEASE;
+
         ReleaseAnalysis(void* func_supplier, ReleaseOp_t* rOP);
         Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
         Fulfillment memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite);

@@ -1,17 +1,14 @@
-#include <algorithm>
 #include <format>
 #include <iostream>
 #include <fstream>
 #include <string>
 #include <unistd.h>
 #include <unordered_map>
-#include <variant>
 #include <ctime>
 #include <vector>
 
 #include "Analyses/BaseAnalysis.h"
 #include "DynamicUtils.h"
-#include "FastVariant.h"
 
 #include "Analyses/PreCallAnalysis.h"
 #include "Analyses/PostCallAnalysis.h"
@@ -26,10 +23,35 @@ namespace {
 
     std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
+    struct AnalysisVariant {
+        template<typename Analysis>
+        AnalysisVariant(Analysis* A) : analysis_type(Analysis::Type) {
+            if constexpr (Analysis::Type == AnalysisType::PRECALL) precall = A;
+            if constexpr (Analysis::Type == AnalysisType::POSTCALL) postcall = A;
+            if constexpr (Analysis::Type == AnalysisType::RELEASE) release = A;
+        }
+        union {
+            PreCallAnalysis* precall;
+            PostCallAnalysis* postcall;
+            ReleaseAnalysis* release;
+        };
+        AnalysisType analysis_type;
+    };
+
     struct AnalysisPair {
         ContractFormula_t* formula;
-        std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*> analysis;
+        AnalysisVariant analysis;
     };
+
+    template<typename Visitor>
+    inline decltype(auto) fastVisit(Visitor&& f, AnalysisVariant const& variant) {
+        switch (variant.analysis_type) {
+            case AnalysisType::PRECALL: return f(variant.precall);
+            case AnalysisType::POSTCALL: return f(variant.postcall);
+            case AnalysisType::RELEASE: return f(variant.release);
+        }
+        __builtin_unreachable();
+    }
 
     std::unordered_set<void const*> visitedLocs;
 
@@ -48,7 +70,8 @@ namespace {
     template<typename Analysis, typename... Arguments>
     inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
         Analysis* A = new Analysis(args...);
-        AnalysisPair new_pair = {form, A};
+        AnalysisPair new_pair = {form, AnalysisVariant(A)};
+        
         all_analyses.push_back(new_pair);
 
         CallBacks reqCB = A->requiredCallbacks();
@@ -59,11 +82,11 @@ namespace {
 
     #define HANDLE_CALLBACK(pairs, CB, ...) \
         void const* location = __builtin_return_address(0);\
-        if (isRef) visitedLocs.insert(location);\
-        _Pragma("unroll(5)") for (auto it = pairs.begin(); it < pairs.end();) { \
+        if (isRef) visitedLocs.insert(__builtin_return_address(0));\
+        _Pragma("unroll(5)") for (auto it = pairs.begin(); it != pairs.end();) { \
             it = fastVisit([&](auto& analysis) { \
                 Fulfillment f = analysis->CB(std::move(location), __VA_ARGS__);\
-            if (f != Fulfillment::UNKNOWN) { \
+            if (f == Fulfillment::VIOLATED) { \
                 contract_status[it->formula] = f; \
                 analysis_references[it->formula] = analysis->getReferences(); \
                 validateState(it->formula); \
@@ -101,7 +124,6 @@ namespace {
                 }
                 if (parent->conn == OR && num_fulfilled > 0) { // Early fulfill OR if at least one satisfied
                     contract_status[parent] = Fulfillment::FULFILLED;
-                    validateState(parent);
                 } else if (parent->conn == XOR && num_fulfilled > 1) { // Early violate XOR if more than one satisfied
                     contract_status[parent] = Fulfillment::VIOLATED;
                     validateState(parent);

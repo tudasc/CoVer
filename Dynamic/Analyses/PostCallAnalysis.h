@@ -8,6 +8,8 @@
 
 struct PostCallAnalysis : public BaseAnalysis<PostCallAnalysis> {
     public:
+        static constexpr AnalysisType Type = AnalysisType::POSTCALL;
+
         PostCallAnalysis(void* func_supplier, CallOp_t* callop);
         PostCallAnalysis(void* func_supplier, CallTagOp_t* callop);
 
