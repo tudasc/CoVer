@@ -28,5 +28,5 @@ class BaseAnalysis {
         inline std::vector<void const*> const&& getReferences() { return std::move(references); };
 
         // Return which callbacks are needed for this analysis
-        CallBacks requiredCallbacks() { return static_cast<T*>(this)->requiredCallbacksImpl(); }
+        CallBacks requiredCallbacks() const { return static_cast<T const*>(this)->requiredCallbacksImpl(); }
 };

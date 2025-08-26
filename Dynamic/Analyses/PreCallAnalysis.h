@@ -18,7 +18,7 @@ struct PreCallAnalysis : BaseAnalysis<PreCallAnalysis> {
         Fulfillment memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite) { return Fulfillment::UNKNOWN; }
         Fulfillment exitCBImpl(void const* const&& location) { return Fulfillment::FULFILLED; };
 
-        CallBacks requiredCallbacksImpl() { return {true, false, false}; }
+        CallBacks requiredCallbacksImpl() const { return {true, false, false}; }
 
     private:
         void SharedInit(void* _func_supplier, const char* target_str, CallParam_t *params, int64_t num_params);

@@ -15,7 +15,7 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
         Fulfillment memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite);
         Fulfillment exitCBImpl(void const* const&& location) { return Fulfillment::FULFILLED; };
 
-        CallBacks requiredCallbacksImpl();
+        CallBacks requiredCallbacksImpl() const;
 
     private:
         // Configuration
