@@ -69,10 +69,12 @@ void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
         if (!contrs.contains(function)) contrs[function] = {};
         contrs[function].push_back(DB->contracts[i]);
         if (DB->contracts[i].precondition) {
-            recurseCreateAnalyses(DB->contracts[i].precondition, true, function);
+            recurseCreateAnalyses(DB->contracts[i].precondition, nullptr, true, function);
+            toplevel_to_contract[DB->contracts[i].precondition] = &DB->contracts[i];
         }
         if (DB->contracts[i].postcondition) {
-            recurseCreateAnalyses(DB->contracts[i].postcondition, false, function);
+            recurseCreateAnalyses(DB->contracts[i].postcondition, nullptr, false, function);
+            toplevel_to_contract[DB->contracts[i].postcondition] = &DB->contracts[i];
         }
     }
 
