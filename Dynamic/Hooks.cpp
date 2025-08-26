@@ -84,8 +84,6 @@ void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
 }
 
 void PPDCV_FunctionCallback(bool isRef, void* function, int32_t num_params, ...) {
-    called_funcs.insert(function);
-
     CallsiteInfo callsite = { .location = __builtin_return_address(0) };
     std::va_list list;
     va_start(list, num_params);
