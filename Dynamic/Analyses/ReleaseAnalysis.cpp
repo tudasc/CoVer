@@ -44,7 +44,7 @@ ReleaseAnalysis::ReleaseAnalysis(void* _func_supplier, ReleaseOp_t* rOP) {
     forbiddenCallsites.reserve(2 << 6);
 }
 
-CallBacks ReleaseAnalysis::requiredCallbacksImpl() {
+CallBacks ReleaseAnalysis::requiredCallbacksImpl() const {
     if (!forbIsRW) return {true, false, false};
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
     return {true, !rwOp->isWrite, (bool)rwOp->isWrite};
