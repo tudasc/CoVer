@@ -62,6 +62,7 @@ namespace DynamicUtils {
             case ParamAccess::ADDROF:
                 return *(void**)callP == contrP;
         }
+        __builtin_unreachable();
     }
 
     std::unordered_set<void*> getFunctionsForTag(std::string tag) {
