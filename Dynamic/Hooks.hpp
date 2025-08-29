@@ -25,9 +25,11 @@ namespace {
 
     std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
+    using AnalysisVariant = std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
+
     struct AnalysisPair {
         ContractFormula_t* formula;
-        std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*> analysis;
+        AnalysisVariant analysis;
     };
 
     std::unordered_set<void const*> visitedLocs;
@@ -48,7 +50,6 @@ namespace {
     inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
         Analysis* A = new Analysis(args...);
         AnalysisPair new_pair = {form, A};
-        
         all_analyses.push_back(new_pair);
 
         CallBacks reqCB = A->requiredCallbacks();
@@ -214,9 +215,9 @@ namespace {
             fastVisit([&](auto&& analysis) {
                 if (!contract_status.contains(pair.formula)) {
                     contract_status[pair.formula] = analysis->onProgramExit(std::move(__builtin_return_address(0)));
-                    if (contract_status[pair.formula] == Fulfillment::VIOLATED) validateState(pair.formula);
+                    validateState(pair.formula);
+                    analysis_references[pair.formula] = analysis->getReferences();
                 }
-                analysis_references[pair.formula] = analysis->getReferences();
                 delete analysis;
             }, pair.analysis);
         }
