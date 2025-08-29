@@ -1,4 +1,4 @@
-FROM debian:bookworm
+FROM debian:13
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Europe/Berlin
@@ -50,9 +50,9 @@ RUN apt-get update \
     llvm-19-dev
 
 # Install OpenMPI
-RUN wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.7.tar.bz2
-RUN tar xf openmpi-5.0.7.tar.bz2 && \
-    cd openmpi-5.0.7 && \
+RUN wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.8.tar.bz2
+RUN tar xf openmpi-5.0.8.tar.bz2 && \
+    cd openmpi-5.0.8 && \
     ./configure && \
     make -j$(nproc) install
 RUN ldconfig
@@ -106,7 +106,6 @@ ENV LD_LIBRARY_PATH="/usr/lib64:$LD_LIBRARY_PATH"
 
 RUN echo "root:root" | chpasswd
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-RUN mkdir /var/run/sshd
 CMD ["/usr/sbin/sshd", "-D"]
 EXPOSE 22
 
