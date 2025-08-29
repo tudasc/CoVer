@@ -100,9 +100,9 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
 Fulfillment ReleaseAnalysis::memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite) {
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
 
-    for (CallsiteInfo const& callsite : forbiddenCallsites) {
-        if (DynamicUtils::checkParamMatch(rwOp->accType, &callsite.params[rwOp->idx], memory)) {
-            references.insert(references.end(), {location, callsite.location});
+    for (CallsiteInfo const& forbcallsite : forbiddenCallsites) {
+        if (DynamicUtils::checkParamMatch(rwOp->accType, &forbcallsite.params[rwOp->idx], memory)) {
+            references.insert(references.end(), {location, forbcallsite.location});
             return Fulfillment::VIOLATED;
         }
     }
