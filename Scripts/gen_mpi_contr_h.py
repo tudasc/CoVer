@@ -3,7 +3,7 @@ import sys
 import re
 
 if len(sys.argv) < 3:
-    print("Insufficient arguments!\nUsage: {os.path.basename(__file__)} <outpath> <mpi.h location> [identifier]")
+    print(f"Insufficient arguments!\nUsage: {os.path.basename(__file__)} <outpath> <mpi.h location> [identifier]")
     exit(1)
 
 # Output filepath for header file
