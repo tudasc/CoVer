@@ -111,9 +111,9 @@ for func in function_decls.keys():
 # Call MPI finalizer
 for func in function_decls.keys():
     if func in ["MPI_Finalize", "MPI_Abort"]:
-        add_contract(func, "TAGS", "mpi_finalize")
+        add_contract(func, "TAGS", "mpi_exit")
         continue
-    add_contract(func, "POST", "call_tag!(mpi_finalize) MSG \"Missing Finalization call\"")
+    add_contract(func, "POST", "call_tag!(mpi_exit) MSG \"Missing Finalization call\"")
 
 # No request reuse until p2pcomplete for persistent comms, request must be completed
 tag_reqgen = [("MPI_Iallgather", 7),
