@@ -131,8 +131,9 @@ tag_reqgen = [("MPI_Iallgather", 7),
               ("MPI_Isendrecv", 11),
               ("MPI_Start", 0)]
 for func, tag_idx in tag_reqgen:
-    add_contract(func, "POST", f"no! (call_tag!(request_gen,$:{tag_idx})) until! (call_tag!(req_complete,$:{tag_idx})) MSG \"Double Request Use\"")
-    add_contract(func, "POST", f"call_tag!(req_complete,$:{tag_idx}) MSG \"Request Leak\"")
+    add_contract(func, "POST", f"(no! (call_tag!(request_gen,$:{tag_idx})) until! (call_tag!(req_complete,$:{tag_idx})) | \
+                                  no! (call_tag!(request_gen,$:{tag_idx})) until! (call_tag!(req_complete_noidx))) MSG \"Double Request Use\"")
+    add_contract(func, "POST", f"(call_tag!(req_complete,$:{tag_idx}) | call_tag!(req_complete_noidx)) MSG \"Request Leak\"")
     add_contract(func, "TAGS", f"request_gen({tag_idx})")
 # Also add Rget, Rput to req_gen to satisfy unmatched wait, but not the other contrs
 add_contract("MPI_Rget", "TAGS", f"request_gen(8)")
@@ -171,17 +172,29 @@ tag_buf = [("RMAWIN", "MPI_Put", 0, 7, "W", "R"),
            ("REQ", "MPI_Iallreduce", 1, 6, "RW", "W"), # Recv buffer - No RW
            ("REQ", "MPI_Ireduce", 0, 7, "W", "R"),
            ("REQ", "MPI_Ireduce", 1, 7, "RW", "W"),
-] 
+]
 for calltype, func, buf_idx, mark_idx, forbid, action in tag_buf:
     if calltype == "RMAWIN": completiontag = "rma_complete"
     if calltype == "REQ": completiontag = "req_complete"
     if calltype != "EITHER":
         if "R" in forbid:
-            add_contract(func, "POST", f"no! (read!(*{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local read\"")
-            add_contract(func, "POST", f"no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local read by call\"")
+            if calltype == "REQ":
+                add_contract(func, "POST", f"(no! (read!(*{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) | \
+                                              no! (read!(*{buf_idx})) until! (call_tag!(req_complete_noidx))) MSG \"Local Data Race - Local read\"")
+                add_contract(func, "POST", f"(no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) | \
+                                              no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!(req_complete_noidx))) MSG \"Local Data Race - Local read by call\"")
+            else:
+                add_contract(func, "POST", f"no! (read!(*{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local read\"")
+                add_contract(func, "POST", f"no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local read by call\"")
         if "W" in forbid:
-            add_contract(func, "POST", f"no! (write!(*{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local write\"")
-            add_contract(func, "POST", f"no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local write by call\"")
+            if calltype == "REQ":
+                add_contract(func, "POST", f"(no! (write!(*{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) | \
+                                              no! (write!(*{buf_idx})) until! (call_tag!(req_complete_noidx))) MSG \"Local Data Race - Local write\"")
+                add_contract(func, "POST", f"(no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) | \
+                                              no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!(req_complete_noidx))) MSG \"Local Data Race - Local write by call\"")
+            else:
+                add_contract(func, "POST", f"no! (write!(*{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local write\"")
+                add_contract(func, "POST", f"no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!({completiontag},$:{mark_idx})) MSG \"Local Data Race - Local write by call\"")
     if "R" in action:
         add_contract(func, "TAGS", f"buf_read({buf_idx})")
     if "W" in action:
@@ -219,6 +232,10 @@ for func, win_idx in tag_rmacomplete:
 tag_p2pcomplete = [("MPI_Wait", 0), ("MPI_Test", 0)]
 for func, req_idx in tag_p2pcomplete:
     add_contract(func, "TAGS", f"req_complete({req_idx})")
+
+tag_p2pcomplete_noidx = [("MPI_Waitall")]
+for func in tag_p2pcomplete_noidx:
+    add_contract(func, "TAGS", f"req_complete_noidx")
 
 # RMA Epoch needs to be open
 tag_needrmaepoch = [("MPI_Put", 7),
