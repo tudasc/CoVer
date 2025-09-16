@@ -22,12 +22,12 @@ void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
     if (*argc >= 2) {
         std::string arg = (*argv)[1];
         if (arg == "--cover-check-coverage") {
+            DynamicUtils::createMessage("Coverage check requested!");
             // Fill relevant locs
             std::unordered_set<std::string> relevantLocs;
             for (int i = 0; i < DB->num_references; i++)
                 relevantLocs.insert(DB->references[i]);
             std::vector<std::pair<std::string, void*>> coverageVisited;
-            DynamicUtils::createMessage("Coverage check requested!");
             for (std::filesystem::path const& entry : std::filesystem::directory_iterator(std::filesystem::current_path())) {
                 if (entry.filename().string().starts_with("CoVerCoverage")) {
                     DynamicUtils::out() << "Reading coverage file " << entry.filename() << "...\n";
