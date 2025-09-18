@@ -120,7 +120,7 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
         err = "Cannot find main function, cannot construct path to check precall!";
         return AllocStatusVal::ERROR;
     }
-    const Instruction* Entry = mainF->getEntryBlock().getFirstNonPHI();
+    const Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
 
     AllocStatus init = { AllocStatusVal::UNDEF, {}};
     IterTypeAlloc data = { {}, {}, AllocOp->contrP, AllocOp->contrParamAccess, F };
