@@ -73,7 +73,8 @@ namespace {
         }
 
     void validateState(ContractFormula_t* form) {
-        if (contract_status[form] != Fulfillment::VIOLATED) return;
+        if (contract_status[form] != Fulfillment::VIOLATED &&
+            !(contract_status[form] == Fulfillment::FULFILLED && formula_parents[form] && formula_parents[form]->conn == XOR)) return;
         if (contract_status.contains(formula_parents[form])) return;
 
         ContractFormula_t* parent = formula_parents[form];
@@ -95,14 +96,19 @@ namespace {
             case OR:
             case XOR: {
                 int num_fulfilled = 0;
+                bool has_unknown = 0;
                 for (int i = 0; i < parent->num_children; i++) {
-                    if (contract_status.contains(&parent->children[i]) && contract_status[&parent->children[i]] == Fulfillment::FULFILLED) {
-                        num_fulfilled++;
+                    if (contract_status.contains(&parent->children[i])) {
+                        if (contract_status[&parent->children[i]] == Fulfillment::FULFILLED) num_fulfilled++;
+                        if (contract_status[&parent->children[i]] == Fulfillment::UNKNOWN) has_unknown = true;
                     }
                 }
-                if (parent->conn == OR && num_fulfilled > 0) { // Early fulfill OR if at least one satisfied
+                if (parent->conn == OR && num_fulfilled) { // Early fulfill OR if at least one satisfied
                     contract_status[parent] = Fulfillment::FULFILLED;
                 } else if (parent->conn == XOR && num_fulfilled > 1) { // Early violate XOR if more than one satisfied
+                    contract_status[parent] = Fulfillment::VIOLATED;
+                    validateState(parent);
+                } else if (!has_unknown && !num_fulfilled) { // No more unknown, definitely violated
                     contract_status[parent] = Fulfillment::VIOLATED;
                     validateState(parent);
                 }
@@ -177,7 +183,7 @@ namespace {
                 bool found = false;
                 for (ErrorMessage const& cmsg : child_msg) {
                     if (cmsg.msg.empty()) {
-                        if (found) return {{std::string("More than one child satisfied for Formula (message or contract string): ") + form->msg}, child_msg};
+                        if (found) return {{std::string("More than one child satisfied for Formula (message or contract string): ") + form->msg, "Violated children:"}, child_msg};
                         found = true;
                     }
                 }
@@ -206,7 +212,7 @@ namespace {
         for (void const* loc : visitedLocs) {
             std::optional<std::pair<std::string, const void *>> info = DynamicUtils::getDLInfo(loc);
             if (!info) continue;
-            coverage_file << std::format("{}|{:x}", info->first, (uintptr_t)info->second) << "\n";
+            coverage_file << info->first << "|" << std::hex << (uintptr_t)info->second << "\n";
         }
     }
 
