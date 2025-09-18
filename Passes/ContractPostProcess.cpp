@@ -226,7 +226,7 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
                 }
             }
             if (prevFulfil) {
-                // At least one success logged, everythin is fine
+                // At least one success logged, everything is fine
                 contrF->ErrorInfo->push_back({.text = "Exactly one child satisfied of subformula: " + contrF->ExprStr});
                 *contrF->Status = Fulfillment::FULFILLED;
                 return {*contrF->Status, std::nullopt};
