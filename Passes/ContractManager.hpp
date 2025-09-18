@@ -40,7 +40,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             std::vector<Contract> Contracts; // For postprocessing only
             std::vector<LinearizedContract> LinearizedContracts; // For verification passes
             std::map<Function*, std::vector<TagUnit>> Tags;
-            std::map<std::string, std::pair<Value*, bool>> ContractVariableData;
+            std::map<std::string, Value*> ContractVariableData;
             std::chrono::time_point<std::chrono::system_clock> start_time;
             bool allowMultiReports = false;
             Json::Value processedReports;

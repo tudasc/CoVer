@@ -16,7 +16,6 @@
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 #include <llvm/Analysis/InlineCost.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -45,35 +44,38 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
             const ParamOperation* ParamOp = dynamic_cast<const ParamOperation*>(Expr->OP.get());
             C.DebugInfo->push_back("[ContractVerifierParam] Attempting to verify expression: " + Expr->ExprStr);
             Fulfillment resf = Fulfillment::FULFILLED;
-            for (std::pair<const Comparator, const std::string> req : ParamOp->reqs) {
-                Value* var;
-                try {
-                    // First, check if constant value provided
-                    int ivalue = std::stoi(req.second);
-                    var = ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue);
-                } catch(std::exception& e) {
-                    // Otherwise, check against value database
-                    if (!DB.ContractVariableData.contains(req.second)) {
-                        errs() << "Undefined non-constint contract value identifier \"" << req.second << "\"!\n";
-                        errs() << "Requirement will not be analysed!\n";
-                        continue;
-                    }
-                    var = DB.ContractVariableData[req.second].first;
-                }
-                // Perform the check on each callsite
-                for (const User* U : C.F->users()) {
-                    if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+
+            // Perform the check on each callsite
+            for (const User* U : C.F->users()) {
+                if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                    for (std::pair<const Comparator, const std::string> req : ParamOp->reqs) {
+                        // Figure out value(s) to check against
+                        Value* var;
+                        try {
+                            // First, check if constant value provided
+                            int ivalue = std::stoi(req.second);
+                            var = ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue);
+                        } catch(std::exception& e) {
+                            // Otherwise, check against value database
+                            if (!DB.ContractVariableData.contains(req.second)) {
+                                errs() << "Undefined non-constint contract value identifier \"" << req.second << "\"!\n";
+                                errs() << "Requirement will not be analysed!\n";
+                                continue;
+                            }
+                            var = DB.ContractVariableData[req.second];
+                        }
+
+                        // Perform check
                         std::string errInfo = "";
-                        Fulfillment f = checkParamReq(var, CB->getArgOperand(ParamOp->idx), req.first, DB.ContractVariableData[req.second].second, errInfo);
+                        Fulfillment f = checkParamReq(var, CB->getArgOperand(ParamOp->idx), req.first, errInfo);
                         if (f == Fulfillment::BROKEN) {
                             resf = Fulfillment::BROKEN;
-                            if (!errInfo.empty()) {
-                                    Expr->ErrorInfo->push_back({
-                                    .error_id = "Param",
-                                    .text = std::format("{:s} Parameter Index: {:d}, Contract Value Name: {:s}", errInfo, ParamOp->idx, req.second),
-                                    .references = {ContractPassUtility::getFileReference(CB)},
-                                });
-                            }
+                                Expr->ErrorInfo->push_back({
+                                .error_id = "Param",
+                                .text = std::format("{:s} Parameter Index: {:d}, Contract Value: {:s}", errInfo.empty() ? "Parameter error detected!" : errInfo, ParamOp->idx, req.second),
+                                .references = {ContractPassUtility::getFileReference(CB)},
+                            });
+                            goto exit_param_analysis;
                         }
                         if (f == Fulfillment::FULFILLED && req.first == Comparator::EXEQ) {
                             // Parameter fulfills exception value. Stop checking this parameter
@@ -130,8 +132,8 @@ Fulfillment compareCI(const ConstantInt* CI, const ConstantInt* CI2, Comparator 
     }
 }
 
-Fulfillment ContractVerifierParamPass::checkParamReq(const Value* var, const Value* callVal, Comparator comp, bool isPtr, std::string& ErrInfo) {
-    if (isPtr) {
+Fulfillment ContractVerifierParamPass::checkParamReq(const Value* var, const Value* callVal, Comparator comp, std::string& ErrInfo) {
+    if (callVal->getType()->isPointerTy()) {
         switch (comp) {
             case Comparator::NEQ:
                 if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
@@ -141,7 +143,7 @@ Fulfillment ContractVerifierParamPass::checkParamReq(const Value* var, const Val
                 return Fulfillment::FULFILLED;
             case Comparator::EXEQ:
                 if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
-                    ErrInfo = "Note: Parameter matches or is alias to exception value";
+                    ErrInfo = "Note: Parameter matches or is alias to exception value.";
                     return Fulfillment::FULFILLED;
                 }
                 // Not an exception. Continue analysis, so far no info gained

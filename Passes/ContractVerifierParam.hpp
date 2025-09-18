@@ -12,8 +12,7 @@ class ContractVerifierParamPass : public PassInfoMixin<ContractVerifierParamPass
 
     private:
         ModuleAnalysisManager* MAM;
-
-        ContractTree::Fulfillment checkParamReq(const Value* var, const Value* contrVal, ContractTree::Comparator comp, bool isPtr, std::string& ErrInfo);
+        ContractTree::Fulfillment checkParamReq(const Value* var, const Value* contrVal, ContractTree::Comparator comp, std::string& ErrInfo);
 };
 
 } // namespace llvm
