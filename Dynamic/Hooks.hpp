@@ -1,6 +1,6 @@
-#include <format>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <unistd.h>
 #include <unordered_map>
@@ -207,8 +207,9 @@ namespace {
     void printCoverageFile() {
         if (visitedLocs.empty()) return;
         std::srand(std::time({}) + getpid());
-        std::string file_suffix = std::format("{:x}", rand());
-        std::ofstream coverage_file("CoVerCoverage_" + file_suffix);
+        std::stringstream file_suffix;
+        file_suffix << std::hex << rand();
+        std::ofstream coverage_file("CoVerCoverage_" + file_suffix.str());
         for (void const* loc : visitedLocs) {
             std::optional<std::pair<std::string, const void *>> info = DynamicUtils::getDLInfo(loc);
             if (!info) continue;
