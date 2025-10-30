@@ -3,6 +3,7 @@
 #include "BaseAnalysis.h"
 #include "DynamicAnalysis.h"
 #include <unordered_set>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -27,5 +28,5 @@ struct PostCallAnalysis : public BaseAnalysis<PostCallAnalysis> {
         std::unordered_set<void*> target_funcs;
 
         // Analysis temporaries
-        std::vector<CallsiteInfo> uncheckedCallsites;
+        std::unordered_map<void*,CallsiteInfo> uncheckedCallsites;
 };
