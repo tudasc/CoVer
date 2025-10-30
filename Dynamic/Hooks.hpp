@@ -25,7 +25,7 @@ namespace {
 
     std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
-    using AnalysisVariant = std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
+    using AnalysisVariant = std::variant<PreCallAnalysis,PostCallAnalysis,ReleaseAnalysis>;
 
     struct AnalysisPair {
         ContractFormula_t* formula;
@@ -48,11 +48,12 @@ namespace {
 
     template<typename Analysis, typename... Arguments>
     inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
-        Analysis* A = new Analysis(args...);
-        AnalysisPair new_pair = {form, A};
+        AnalysisPair new_pair = {form, Analysis(args...)};
         all_analyses.push_back(new_pair);
 
-        CallBacks reqCB = A->requiredCallbacks();
+        CallBacks reqCB = fastVisit([&](auto& analysis) {
+            return analysis.requiredCallbacks();
+        }, new_pair.analysis);
         if (reqCB.FUNCTION) analyses_with_funcCB.push_back(new_pair);
         if (reqCB.MEMORY_R) analyses_with_memRCB.push_back(new_pair);
         if (reqCB.MEMORY_W) analyses_with_memWCB.push_back(new_pair);
@@ -60,22 +61,24 @@ namespace {
 
     #define HANDLE_CALLBACK(pairs, CB, ...) \
         void const* location = __builtin_return_address(0);\
-        if (isRef) visitedLocs.insert(__builtin_return_address(0));\
-        _Pragma("unroll(5)") for (auto it = pairs.begin(); it != pairs.end();) { \
+        if (isRef) visitedLocs.insert(location);\
+        for (auto it = pairs.begin(); it != pairs.end();) { \
             it = fastVisit([&](auto& analysis) { \
-                Fulfillment f = analysis->CB(std::move(location), __VA_ARGS__);\
-            if (f == Fulfillment::VIOLATED) { \
-                contract_status[it->formula] = f; \
-                analysis_references[it->formula] = analysis->getReferences(); \
-                validateState(it->formula); \
-                return pairs.erase(it); \
-            } return ++it;}, it->analysis);\
+                Fulfillment f;\
+                if (f != Fulfillment::UNKNOWN && f != Fulfillment::INACTIVE) { \
+                    contract_status[it->formula] = f; \
+                    analysis_references[it->formula] = analysis.getReferences(); \
+                    validateState(it->formula); \
+                    return pairs.erase(it); \
+                }\
+                return ++it;\
+            }, it->analysis);\
         }
 
     void validateState(ContractFormula_t* form) {
+        if (formula_parents[form] && contract_status.contains(formula_parents[form])) return; // If parent already decided return early
         if (contract_status[form] != Fulfillment::VIOLATED &&
             !(contract_status[form] == Fulfillment::FULFILLED && formula_parents[form] && formula_parents[form]->conn == XOR)) return;
-        if (contract_status.contains(formula_parents[form])) return;
 
         ContractFormula_t* parent = formula_parents[form];
         if (parent == nullptr) {
@@ -218,14 +221,13 @@ namespace {
     }
 
     void PPDCV_destructor() {
-        for (AnalysisPair const& pair : all_analyses) {
+        for (AnalysisPair& pair : all_analyses) {
             fastVisit([&](auto&& analysis) {
                 if (!contract_status.contains(pair.formula)) {
-                    contract_status[pair.formula] = analysis->onProgramExit(std::move(__builtin_return_address(0)));
+                    contract_status[pair.formula] = analysis.onProgramExit(std::move(__builtin_return_address(0)));
                     validateState(pair.formula);
-                    analysis_references[pair.formula] = analysis->getReferences();
+                    analysis_references[pair.formula] = analysis.getReferences();
                 }
-                delete analysis;
             }, pair.analysis);
         }
         DynamicUtils::out() << "Analysis finished. Writing coverage file... ";
