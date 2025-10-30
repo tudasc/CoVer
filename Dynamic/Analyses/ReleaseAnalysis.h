@@ -3,6 +3,7 @@
 #include "BaseAnalysis.h"
 #include "DynamicAnalysis.h"
 #include <unordered_set>
+#include <unordered_map>
 #include <string>
 #include <vector>
 
@@ -29,5 +30,5 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
         std::vector<CallParam_t*> params_release; // Required parameters
 
         // Analysis temporaries
-        std::vector<CallsiteInfo> forbiddenCallsites;
+        std::unordered_map<void*,CallsiteInfo> forbiddenCallsites;
 };
