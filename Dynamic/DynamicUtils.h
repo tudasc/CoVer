@@ -34,7 +34,7 @@ namespace DynamicUtils {
     void Initialize(ContractDB_t const* DB);
 
     // Check if two parameters match
-    bool checkParamMatch(ParamAccess acc, void const* contrP, void const* callP);
+    bool checkParamMatch(ParamAccess const& acc, void const* const& contrP, void const* const& callP);
 
     // Check if function call matches
     bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteInfo callParams, CallsiteInfo contrParams, std::string target_str);
