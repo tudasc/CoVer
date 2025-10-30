@@ -8,12 +8,10 @@
 
 struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
     public:
-        static constexpr AnalysisType Type = AnalysisType::RELEASE;
-
         ReleaseAnalysis(void* func_supplier, ReleaseOp_t* rOP);
-        Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
-        Fulfillment memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite);
-        Fulfillment exitCBImpl(void const* const&& location) const { return Fulfillment::FULFILLED; };
+        inline __attribute__((always_inline)) Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
+        inline __attribute__((always_inline)) Fulfillment memoryCBImpl(void const* const& location, void* const& memory, bool const& isWrite);
+        inline __attribute__((always_inline)) Fulfillment exitCBImpl(void const* const& location) const { return Fulfillment::FULFILLED; };
 
         CallBacks requiredCallbacksImpl() const;
 

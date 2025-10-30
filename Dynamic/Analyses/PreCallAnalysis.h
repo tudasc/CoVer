@@ -9,14 +9,12 @@
 
 struct PreCallAnalysis : BaseAnalysis<PreCallAnalysis> {
     public:
-        static constexpr AnalysisType Type = AnalysisType::PRECALL;
-
         PreCallAnalysis(void* func_supplier, CallOp_t* callop);
         PreCallAnalysis(void* func_supplier, CallTagOp_t* callop);
 
-        Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
-        Fulfillment memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite) const { return Fulfillment::UNKNOWN; }
-        Fulfillment exitCBImpl(void const* const&& location) const { return Fulfillment::INACTIVE; };
+        inline __attribute__((always_inline)) Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
+        inline __attribute__((always_inline)) Fulfillment memoryCBImpl(void const* const& location, void* const& memory, bool const& isWrite) const { return Fulfillment::UNKNOWN; }
+        inline __attribute__((always_inline)) Fulfillment exitCBImpl(void const* const& location) const { return Fulfillment::INACTIVE; };
 
         constexpr CallBacks requiredCallbacksImpl() const { return {true, false, false}; }
 
