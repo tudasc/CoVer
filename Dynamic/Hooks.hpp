@@ -64,7 +64,7 @@ namespace {
         if (isRef) visitedLocs.insert(location);\
         for (auto it = pairs.begin(); it != pairs.end();) { \
             it = fastVisit([&](auto& analysis) { \
-                Fulfillment f = analysis->CB(std::move(location), __VA_ARGS__);\
+                Fulfillment f = analysis.CB(std::move(location), __VA_ARGS__);\
                 if (f != Fulfillment::UNKNOWN && f != Fulfillment::INACTIVE) { \
                     contract_status[it->formula] = f; \
                     analysis_references[it->formula] = analysis.getReferences(); \
