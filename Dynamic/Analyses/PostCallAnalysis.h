@@ -12,7 +12,7 @@ struct PostCallAnalysis : public BaseAnalysis<PostCallAnalysis> {
         PostCallAnalysis(void* func_supplier, CallTagOp_t* callop);
 
         inline __attribute__((always_inline)) Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
-        inline __attribute__((always_inline)) Fulfillment memoryCBImpl(void const* const& location, void* const& memory, bool const& isWrite) const { return Fulfillment::UNKNOWN; }
+        inline __attribute__((always_inline)) Fulfillment memoryCBImpl(void const* const& location, void const* const& memory, bool const& isWrite) const { return Fulfillment::UNKNOWN; }
         inline __attribute__((always_inline)) Fulfillment exitCBImpl(void const* const& location);
 
         constexpr CallBacks requiredCallbacksImpl() const { return {true, false, false}; }

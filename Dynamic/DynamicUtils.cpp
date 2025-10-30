@@ -53,7 +53,7 @@ namespace DynamicUtils {
         }
     }
 
-    bool checkParamMatch(ParamAccess acc, void const* contrP, void const* callP) {
+    bool checkParamMatch(ParamAccess const& acc, void const* const& contrP, void const* const& callP) {
         switch (acc) {
             case ParamAccess::NORMAL:
                 return contrP == callP;
