@@ -41,8 +41,6 @@ ReleaseAnalysis::ReleaseAnalysis(void* _func_supplier, ReleaseOp_t* rOP) {
     }
 
     func_supplier = _func_supplier;
-
-    forbiddenCallsites.reserve(2 << 6);
 }
 
 CallBacks ReleaseAnalysis::requiredCallbacksImpl() const {
@@ -60,7 +58,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
         }
         // Check which callsites are satisfied, remove from unchecked
         for (auto callsite_iter = forbiddenCallsites.begin(); callsite_iter != forbiddenCallsites.end();) {
-            if (DynamicUtils::checkFuncCallMatch(func, params_release, callsite, *callsite_iter, target_str_rel)) {
+            if (DynamicUtils::checkFuncCallMatch(func, params_release, callsite, callsite_iter->second, target_str_rel)) {
                 callsite_iter = forbiddenCallsites.erase(callsite_iter);
             } else {
                 callsite_iter++;
@@ -74,14 +72,14 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
             references.push_back(callsite.location);
-            for (CallsiteInfo const& forbcallsite : forbiddenCallsites) references.push_back(forbcallsite.location);
+            for (std::pair<void*,CallsiteInfo> const& forbcallsitepair : forbiddenCallsites) references.push_back(forbcallsitepair.first);
             return Fulfillment::VIOLATED;
         }
 
         // Check if a callsite is violated
-        for (CallsiteInfo const& forbcallsite : forbiddenCallsites) {
+        for (std::pair<void*,CallsiteInfo> const& forbcallsitepair : forbiddenCallsites) {
             if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite, callsite, target_str_forb)) {
-                references.push_back(forbcallsite.location);
+                references.push_back(forbcallsitepair.first);
                 references.push_back(callsite.location);
                 return Fulfillment::VIOLATED;
             }
@@ -91,7 +89,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
     // Finally, check if supplier.
     // Needs to be done after check for forbidden, so that new supplier is not accidentally checked against itself
     if (func == func_supplier) {
-        forbiddenCallsites.push_back(callsite);
+        forbiddenCallsites[callsite.location] = callsite;
     }
 
     // Irrelevant function
@@ -101,9 +99,9 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
 Fulfillment ReleaseAnalysis::memoryCBImpl(void const* const& location, void const* const& memory, bool const& isWrite) {
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
 
-    for (CallsiteInfo const& forbcallsite : forbiddenCallsites) {
-        if (DynamicUtils::checkParamMatch(rwOp->accType, &forbcallsite.params[rwOp->idx], memory)) {
-            references.insert(references.end(), {location, forbcallsite.location});
+    for (std::pair<void*,CallsiteInfo> const& forbcallsitepair : forbiddenCallsites) {
+        if (DynamicUtils::checkParamMatch(rwOp->accType, &forbcallsitepair.second.params[rwOp->idx], memory)) {
+            references.insert(references.end(), {location, forbcallsitepair.first});
             return Fulfillment::VIOLATED;
         }
     }
