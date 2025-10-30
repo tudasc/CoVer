@@ -78,6 +78,8 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
         }
     }
 
+    DynamicUtils::out() << "Registered " << all_analyses.size() << " analyses\n";
+
     contract_status.reserve(formula_parents.size() + 2);
 
     atexit(PPDCV_destructor);
