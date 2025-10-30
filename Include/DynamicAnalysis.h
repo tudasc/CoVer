@@ -85,8 +85,8 @@ extern "C" {
 // Callback function declarations
 void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB);
 void PPDCV_FunctionCallback(bool isRel, void* function, int32_t num_params, ...); // Funcptr, num params, then: param type (0=int,1=ptr) and param in loop
-void PPDCV_MemRCallback(bool isRel, void* buf);
-void PPDCV_MemWCallback(bool isRel, void* buf);
+void PPDCV_MemRCallback(bool const isRel, void const* buf);
+void PPDCV_MemWCallback(bool const isRel, void const* buf);
 
 #ifdef __cplusplus
 }
