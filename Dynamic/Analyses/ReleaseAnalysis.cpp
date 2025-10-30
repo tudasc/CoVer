@@ -3,6 +3,7 @@
 #include "DynamicAnalysis.h"
 #include "../DynamicUtils.h"
 
+#include <cstdint>
 #include <vector>
 
 namespace {
@@ -97,7 +98,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
     return Fulfillment::UNKNOWN;
 }
 
-Fulfillment ReleaseAnalysis::memoryCBImpl(void const* const&& location, void* const& memory, bool const& isWrite) {
+Fulfillment ReleaseAnalysis::memoryCBImpl(void const* const& location, void* const& memory, bool const& isWrite) {
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
 
     for (CallsiteInfo const& forbcallsite : forbiddenCallsites) {

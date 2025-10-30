@@ -50,7 +50,7 @@ Fulfillment PostCallAnalysis::functionCBImpl(void* const& func, CallsiteInfo con
     return Fulfillment::UNKNOWN;
 }
 
-Fulfillment PostCallAnalysis::exitCBImpl(void const* const&& location) {
+Fulfillment PostCallAnalysis::exitCBImpl(void const* const& location) {
     for (CallsiteInfo callsite : uncheckedCallsites) {
         references.push_back(callsite.location);
     }

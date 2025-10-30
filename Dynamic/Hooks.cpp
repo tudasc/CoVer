@@ -15,7 +15,7 @@
 
 #include "Hooks.hpp"
 
-void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
+void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
     DynamicUtils::createMessage("Initializing...");
     DynamicUtils::Initialize(DB);
 
@@ -85,7 +85,7 @@ void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
     DynamicUtils::createMessage("Finished Initializing!");
 }
 
-void PPDCV_FunctionCallback(bool isRef, void* function, int32_t num_params, ...) {
+void __attribute__((visibility("default"))) PPDCV_FunctionCallback(bool isRef, void* function, int32_t num_params, ...) {
     CallsiteInfo callsite = { .location = __builtin_return_address(0) };
     std::va_list list;
     va_start(list, num_params);
@@ -109,9 +109,9 @@ void PPDCV_FunctionCallback(bool isRef, void* function, int32_t num_params, ...)
     HANDLE_CALLBACK(analyses_with_funcCB, onFunctionCall, function, callsite);
 }
 
-void PPDCV_MemRCallback(bool isRef, void* buf) {
+void __attribute__((visibility("default"))) PPDCV_MemRCallback(bool isRef, void* buf) {
     HANDLE_CALLBACK(analyses_with_memRCB, onMemoryAccess, buf, false);
 }
-void PPDCV_MemWCallback(bool isRef, void* buf) {
+void __attribute__((visibility("default"))) PPDCV_MemWCallback(bool isRef, void* buf) {
     HANDLE_CALLBACK(analyses_with_memWCB, onMemoryAccess, buf, true);
 }
