@@ -72,8 +72,8 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
     // Check if forbidden
     if (forb_funcs.contains(func)) {
         if (params_forb.empty()) {
-            references.push_back(callsite.location);
             for (int i = 0; i < forbiddenCallsites.size(); i++) references.push_back(forbiddenCallsites[i].location);
+            references.push_back(callsite.location);
             return Fulfillment::VIOLATED;
         }
 
@@ -109,7 +109,7 @@ Fulfillment ReleaseAnalysis::memoryCBImpl(void const* const& location, void cons
 
     for (int i = 0; i < forbiddenCallsites.size(); i++) {
         if (DynamicUtils::checkParamMatch(rwOp->accType, &forbiddenCallsites[i].params[rwOp->idx], memory)) {
-            references.insert(references.end(), {location, forbiddenCallsites[i].location});
+            references.insert(references.end(), {forbiddenCallsites[i].location, location});
             return Fulfillment::VIOLATED;
         }
     }
