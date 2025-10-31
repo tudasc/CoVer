@@ -25,7 +25,7 @@ namespace {
 
     std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
-    using AnalysisVariant = std::variant<PreCallAnalysis,PostCallAnalysis,ReleaseAnalysis>;
+    using AnalysisVariant = std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
 
     struct AnalysisPair {
         ContractFormula_t* formula;
@@ -48,11 +48,11 @@ namespace {
 
     template<typename Analysis, typename... Arguments>
     inline void addAnalysis(ContractFormula_t* form, Arguments... args) {
-        AnalysisPair new_pair = {form, Analysis(args...)};
+        AnalysisPair new_pair = {form, new Analysis(args...)};
         all_analyses.push_back(new_pair);
 
         CallBacks reqCB = fastVisit([&](auto& analysis) {
-            return analysis.requiredCallbacks();
+            return analysis->requiredCallbacks();
         }, new_pair.analysis);
         if (reqCB.FUNCTION) analyses_with_funcCB.push_back(new_pair);
         if (reqCB.MEMORY_R) analyses_with_memRCB.push_back(new_pair);
@@ -64,10 +64,10 @@ namespace {
         if (isRef) visitedLocs.insert(location);\
         for (auto it = pairs.begin(); it < pairs.end();) { \
             it = fastVisit([&](auto& analysis) { \
-                Fulfillment f = analysis.CB(std::move(location), __VA_ARGS__);\
+                Fulfillment f = analysis->CB(std::move(location), __VA_ARGS__);\
                 if (f != Fulfillment::UNKNOWN && f != Fulfillment::INACTIVE) { \
                     if (!contract_status.contains(it->formula)) contract_status[it->formula] = f; \
-                    analysis_references[it->formula] = analysis.getReferences(); \
+                    analysis_references[it->formula] = analysis->getReferences(); \
                     validateState(it->formula); \
                     return pairs.erase(it); \
                 }\
@@ -221,13 +221,14 @@ namespace {
     }
 
     void PPDCV_destructor() {
-        for (AnalysisPair& pair : all_analyses) {
+        for (AnalysisPair const& pair : all_analyses) {
             fastVisit([&](auto&& analysis) {
                 if (!contract_status.contains(pair.formula)) {
-                    contract_status[pair.formula] = analysis.onProgramExit(std::move(__builtin_return_address(0)));
+                    contract_status[pair.formula] = analysis->onProgramExit(std::move(__builtin_return_address(0)));
                     validateState(pair.formula);
-                    analysis_references[pair.formula] = analysis.getReferences();
+                    analysis_references[pair.formula] = analysis->getReferences();
                 }
+                delete analysis;
             }, pair.analysis);
         }
         DynamicUtils::out() << "Analysis finished. Writing coverage file... ";
