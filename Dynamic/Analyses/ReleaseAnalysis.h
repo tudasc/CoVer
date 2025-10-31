@@ -30,5 +30,5 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
         std::vector<CallParam_t*> params_release; // Required parameters
 
         // Analysis temporaries
-        std::unordered_map<void*,CallsiteInfo> forbiddenCallsites;
+        std::vector<CallsiteInfo> forbiddenCallsites;
 };
