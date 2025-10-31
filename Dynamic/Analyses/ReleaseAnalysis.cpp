@@ -79,7 +79,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
 
         // Check if a callsite is violated
         for (int i = 0; i < forbiddenCallsites.size(); i++) {
-            if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite, callsite, target_str_forb)) {
+            if (DynamicUtils::checkFuncCallMatch(func, params_forb, callsite, forbiddenCallsites[i], target_str_forb)) {
                 references.push_back(forbiddenCallsites[i].location);
                 references.push_back(callsite.location);
                 return Fulfillment::VIOLATED;
