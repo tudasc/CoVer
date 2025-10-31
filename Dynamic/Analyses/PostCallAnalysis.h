@@ -28,5 +28,5 @@ struct PostCallAnalysis : public BaseAnalysis<PostCallAnalysis> {
         std::unordered_set<void*> target_funcs;
 
         // Analysis temporaries
-        std::unordered_map<void*,CallsiteInfo> uncheckedCallsites;
+        std::vector<CallsiteInfo> uncheckedCallsites;
 };

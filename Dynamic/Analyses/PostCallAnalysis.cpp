@@ -34,7 +34,7 @@ Fulfillment PostCallAnalysis::functionCBImpl(void* const& func, CallsiteInfo con
 
         // Check which callsites are satisfied, remove from unchecked
         for (auto callsite_iter = uncheckedCallsites.begin(); callsite_iter != uncheckedCallsites.end();) {
-            if (DynamicUtils::checkFuncCallMatch(func, params, callsite, callsite_iter->second, target_str)) {
+            if (DynamicUtils::checkFuncCallMatch(func, params, callsite, *callsite_iter, target_str)) {
                 callsite_iter = uncheckedCallsites.erase(callsite_iter);
             } else {
                 callsite_iter++;
@@ -43,16 +43,23 @@ Fulfillment PostCallAnalysis::functionCBImpl(void* const& func, CallsiteInfo con
         // For the rest: Maybe actual fulfillment comes later
         return Fulfillment::UNKNOWN;
     } else if (func == func_supplier) {
-        uncheckedCallsites[callsite.location] = callsite;
+        for (int i = 0; i < uncheckedCallsites.size(); i++) {
+            if (uncheckedCallsites[i].location == callsite.location) {
+                uncheckedCallsites[i] = callsite;
+                goto exit_postcall_funccb;
+            }
+        }
+        uncheckedCallsites.push_back(callsite);
     }
 
+    exit_postcall_funccb:
     // Irrelevant function
     return Fulfillment::UNKNOWN;
 }
 
 Fulfillment PostCallAnalysis::exitCBImpl(void const* const& location) {
-    for (std::pair<void*,CallsiteInfo> callsitepair : uncheckedCallsites) {
-        references.push_back(callsitepair.first);
+    for (CallsiteInfo const& callsite : uncheckedCallsites) {
+        references.push_back(callsite.location);
     }
     return uncheckedCallsites.empty() ? Fulfillment::FULFILLED : Fulfillment::VIOLATED;
 }
