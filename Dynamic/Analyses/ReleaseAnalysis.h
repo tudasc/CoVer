@@ -21,7 +21,6 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
         void* func_supplier;
         bool forbIsRW = false;
         void* forbiddenOp;
-        int64_t forbidden_kind;
         std::string target_str_forb; // Either tag str or func str
         std::unordered_set<void*> forb_funcs;
         std::vector<CallParam_t*> params_forb;
