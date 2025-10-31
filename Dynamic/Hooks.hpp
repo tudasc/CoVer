@@ -99,12 +99,10 @@ namespace {
             case OR:
             case XOR: {
                 int num_fulfilled = 0;
-                bool has_unknown = 0;
+                bool has_unknown = false;
                 for (int i = 0; i < parent->num_children; i++) {
-                    if (contract_status.contains(&parent->children[i])) {
-                        if (contract_status[&parent->children[i]] == Fulfillment::FULFILLED) num_fulfilled++;
-                        if (contract_status[&parent->children[i]] == Fulfillment::UNKNOWN) has_unknown = true;
-                    }
+                    if (!contract_status.contains(&parent->children[i])) has_unknown = true;
+                    else if (contract_status[&parent->children[i]] == Fulfillment::FULFILLED) num_fulfilled++;
                 }
                 if (parent->conn == OR && num_fulfilled) { // Early fulfill OR if at least one satisfied
                     contract_status[parent] = Fulfillment::FULFILLED;
