@@ -16,8 +16,12 @@ namespace {
 }
 
 ReleaseAnalysis::ReleaseAnalysis(void* _func_supplier, ReleaseOp_t* rOP) {
-    if (rOP->forbidden_op_kind == UNARY_READ || rOP->forbidden_op_kind == UNARY_WRITE) forbIsRW = true;
-    else {
+    if (rOP->forbidden_op_kind == UNARY_READ || rOP->forbidden_op_kind == UNARY_WRITE) {
+        forbIsRW = true;
+        RWOp_t* rwOp = (RWOp_t*)rOP->forbidden_op;
+        rwIdx = rwOp->idx;
+        rwAcc = rwOp->accType;
+    } else {
         if (rOP->forbidden_op_kind == UNARY_CALLTAG) {
             CallTagOp_t* cOP = (CallTagOp_t*)rOP->forbidden_op;
             processFunctionForInit(target_str_forb, cOP->target_tag, params_forb, cOP->num_params, cOP->params);
@@ -54,6 +58,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
     if (rel_funcs.contains(func)) {
         if (params_release.empty()) {
             forbiddenCallsites.clear();
+            forbMem.clear();
             return Fulfillment::UNKNOWN;
         }
         // Check which callsites are satisfied, remove from unchecked
@@ -61,6 +66,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
             CallsiteInfo const& forbcallsite = forbiddenCallsites[i];
             if (DynamicUtils::checkFuncCallMatch(func, params_release, callsite, forbcallsite, target_str_rel)) {
                 forbiddenCallsites.erase(forbiddenCallsites.begin() + i);
+                if (forbIsRW) forbMem.erase(forbMem.begin() + i);
             } else {
                 i++;
             }
@@ -89,13 +95,15 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
     // Finally, check if supplier.
     // Needs to be done after check for forbidden, so that new supplier is not accidentally checked against itself
     if (func == func_supplier) {
-        for (CallsiteInfo& forbCallsite : forbiddenCallsites) {
-            if (forbCallsite.location == callsite.location) {
-                forbCallsite = callsite;
+        for (int i = 0; i < forbiddenCallsites.size(); i++) {
+            if (forbiddenCallsites[i].location == callsite.location) {
+                forbiddenCallsites[i] = callsite;
+                if (forbIsRW) forbMem[i] = forbiddenCallsites[i].params[rwIdx];
                 goto exit_rel_funccb;
             }
         }
         forbiddenCallsites.push_back(callsite);
+        if (forbIsRW) forbMem.push_back(callsite.params[rwIdx]);
     }
 
     // Irrelevant function
@@ -104,11 +112,9 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
 }
 
 Fulfillment ReleaseAnalysis::memoryCBImpl(void const* const& location, void const* const& memory, bool const& isWrite) {
-    RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
-
-    for (CallsiteInfo const& forbCallsite : forbiddenCallsites) {
-        if (DynamicUtils::checkParamMatch(rwOp->accType, &forbCallsite.params[rwOp->idx], memory)) {
-            references.insert(references.end(), {forbCallsite.location, location});
+    for (int i = 0; i < forbMem.size(); i++) {
+        if (DynamicUtils::checkParamMatch(rwAcc, &forbMem[rwIdx], memory)) {
+            references.insert(references.end(), {forbiddenCallsites[i].location, location});
             return Fulfillment::VIOLATED;
         }
     }

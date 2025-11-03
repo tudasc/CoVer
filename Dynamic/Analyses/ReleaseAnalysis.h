@@ -20,6 +20,8 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
         // Configuration
         void* func_supplier;
         bool forbIsRW = false;
+        ParamAccess rwAcc;
+        int32_t rwIdx;
         void* forbiddenOp;
         std::string target_str_forb; // Either tag str or func str
         std::unordered_set<void*> forb_funcs;
@@ -30,4 +32,5 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
 
         // Analysis temporaries
         std::vector<CallsiteInfo> forbiddenCallsites;
+        std::vector<void const*> forbMem;
 };
