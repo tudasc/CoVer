@@ -43,9 +43,9 @@ Fulfillment PostCallAnalysis::functionCBImpl(void* const& func, CallsiteInfo con
         // For the rest: Maybe actual fulfillment comes later
         return Fulfillment::UNKNOWN;
     } else if (func == func_supplier) {
-        for (int i = 0; i < uncheckedCallsites.size(); i++) {
-            if (uncheckedCallsites[i].location == callsite.location) {
-                uncheckedCallsites[i] = callsite;
+        for (CallsiteInfo& uncheckedCallsite : uncheckedCallsites) {
+            if (uncheckedCallsite.location == callsite.location) {
+                uncheckedCallsite = callsite;
                 goto exit_postcall_funccb;
             }
         }
