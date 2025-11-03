@@ -38,7 +38,7 @@ Fulfillment PreCallAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
         // Check params if needed
         if (params.empty()) return Fulfillment::FULFILLED;
         for (std::pair<void*,std::vector<CallsiteInfo>> possible_match : possible_matches) {
-            for (CallsiteInfo match_params : possible_match.second) {
+            for (CallsiteInfo const& match_params : possible_match.second) {
                 if (DynamicUtils::checkFuncCallMatch(possible_match.first, params, match_params, callsite, target_str)) {
                     // Success!
                     return Fulfillment::FULFILLED;
