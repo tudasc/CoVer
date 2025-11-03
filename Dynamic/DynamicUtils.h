@@ -37,13 +37,13 @@ namespace DynamicUtils {
     bool checkParamMatch(ParamAccess const& acc, void const* const& contrP, void const* const& callP);
 
     // Check if function call matches
-    bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteInfo callParams, CallsiteInfo contrParams, std::string target_str);
+    bool checkFuncCallMatch(void const* callF, std::vector<CallParam_t*> params_expect, CallsiteInfo callParams, CallsiteInfo contrParams, std::string target_str);
 
     // Resolve tag to possible functions
-    std::unordered_set<void*> getFunctionsForTag(std::string tag);
+    std::vector<void const*> getFunctionsForTag(std::string tag);
 
     // Resolve function to possible tags
-    std::unordered_set<Tag_t*> getTagsForFunction(void* func);
+    std::vector<Tag_t*> getTagsForFunction(void const* func);
 
     // Report something
     void createMessage(std::string msg);

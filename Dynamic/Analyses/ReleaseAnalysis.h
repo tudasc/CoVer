@@ -9,7 +9,7 @@
 
 struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
     public:
-        ReleaseAnalysis(void* func_supplier, ReleaseOp_t* rOP);
+        ReleaseAnalysis(void const* func_supplier, ReleaseOp_t* rOP);
         inline __attribute__((always_inline)) Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
         inline __attribute__((always_inline)) Fulfillment memoryCBImpl(void const* const& location, void const* const& memory, bool const& isWrite);
         inline __attribute__((always_inline)) Fulfillment exitCBImpl(void const* const& location) const { return Fulfillment::FULFILLED; };
@@ -18,16 +18,16 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
 
     private:
         // Configuration
-        void* func_supplier;
+        void const* func_supplier;
         bool forbIsRW = false;
         ParamAccess rwAcc;
         int32_t rwIdx;
-        void* forbiddenOp;
+        void const* forbiddenOp;
         std::string target_str_forb; // Either tag str or func str
-        std::unordered_set<void*> forb_funcs;
+        std::vector<void const*> forb_funcs;
         std::vector<CallParam_t*> params_forb;
         std::string target_str_rel; // Either tag str or func str
-        std::unordered_set<void*> rel_funcs;
+        std::vector<void const*> rel_funcs;
         std::vector<CallParam_t*> params_release; // Required parameters
 
         // Analysis temporaries

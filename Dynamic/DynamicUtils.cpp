@@ -38,8 +38,8 @@ namespace {
 }
 
 namespace DynamicUtils {
-    std::unordered_map<void*, std::unordered_set<Tag_t*>> func_to_tags;
-    std::unordered_map<std::string, std::unordered_set<void*>> tags_to_func;
+    std::unordered_map<void const*, std::vector<Tag_t*>> func_to_tags;
+    std::unordered_map<std::string, std::vector<void const*>> tags_to_func;
 
     void Initialize(ContractDB_t const* DB) {
         // Initialize Tags
@@ -47,9 +47,9 @@ namespace DynamicUtils {
             void* function = DB->tagMap.functions[i];
             Tag_t* tag = &DB->tagMap.tags[i];
             if (!func_to_tags.contains(function)) func_to_tags[function] = {tag};
-            else func_to_tags[function].insert(tag);
+            else func_to_tags[function].emplace_back(tag);
             if (!tags_to_func.contains(tag->tag)) tags_to_func[tag->tag] = {function};
-            else tags_to_func[tag->tag].insert(function);
+            else tags_to_func[tag->tag].emplace_back(function);
         }
     }
 
@@ -58,20 +58,20 @@ namespace DynamicUtils {
             case ParamAccess::NORMAL:
                 return contrP == callP;
             case ParamAccess::DEREF:
-                return *(void**)contrP == callP;
+                return *(void const* const*)contrP == callP;
             case ParamAccess::ADDROF:
-                return *(void**)callP == contrP;
+                return *(void const* const*)callP == contrP;
         }
         __builtin_unreachable();
     }
 
-    std::unordered_set<void*> getFunctionsForTag(std::string tag) {
+    std::vector<void const*> getFunctionsForTag(std::string tag) {
         if (tags_to_func.contains(tag))
             return tags_to_func[tag];
         return {};
     }
 
-    std::unordered_set<Tag_t*> getTagsForFunction(void* func) {
+    std::vector<Tag_t*> getTagsForFunction(void const* func) {
         if (func_to_tags.contains(func))
             return func_to_tags[func];
         return {};
@@ -85,10 +85,10 @@ namespace DynamicUtils {
         return std::cerr << "CoVer-Dynamic: ";
     }
 
-    bool checkFuncCallMatch(void* callF, std::vector<CallParam_t*> params_expect, CallsiteInfo callParams, CallsiteInfo contrParams, std::string target_str) {
+    bool checkFuncCallMatch(void const* callF, std::vector<CallParam_t*> params_expect, CallsiteInfo callParams, CallsiteInfo contrParams, std::string target_str) {
         for (CallParam_t* param : params_expect) {
             if (param->callPisTagVar) {
-                std::unordered_set<Tag_t*> tags = DynamicUtils::getTagsForFunction(callF);
+                std::vector<Tag_t*> tags = DynamicUtils::getTagsForFunction(callF);
                 for (Tag_t* tag : tags) {
                     if (tag->tag != target_str) continue;
                     if (DynamicUtils::checkParamMatch(param->accType, contrParams.params[param->contrP], callParams.params[tag->param]))
