@@ -9,8 +9,8 @@
 
 struct PreCallAnalysis : BaseAnalysis<PreCallAnalysis> {
     public:
-        PreCallAnalysis(void* func_supplier, CallOp_t* callop);
-        PreCallAnalysis(void* func_supplier, CallTagOp_t* callop);
+        PreCallAnalysis(void const* func_supplier, CallOp_t* callop);
+        PreCallAnalysis(void const* func_supplier, CallTagOp_t* callop);
 
         inline __attribute__((always_inline)) Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
         inline __attribute__((always_inline)) Fulfillment memoryCBImpl(void const* const& location, void const* const& memory, bool const& isWrite) const { return Fulfillment::UNKNOWN; }
@@ -19,14 +19,14 @@ struct PreCallAnalysis : BaseAnalysis<PreCallAnalysis> {
         constexpr CallBacks requiredCallbacksImpl() const { return {true, false, false}; }
 
     private:
-        void SharedInit(void* _func_supplier, const char* target_str, CallParam_t *params, int64_t num_params);
+        void SharedInit(void const* _func_supplier, const char* target_str, CallParam_t *params, int64_t num_params);
 
         // Configuration
-        void* func_supplier;
+        void const* func_supplier;
         std::string target_str; // Either tag str or func str
         std::vector<CallParam_t*> params; // Required parameters
-        std::unordered_set<void*> target_funcs;
+        std::vector<void const*> target_funcs;
 
         // Analysis temporaries
-        std::unordered_map<void*, std::vector<CallsiteInfo>> possible_matches;
+        std::unordered_map<void const*, std::vector<CallsiteInfo>> possible_matches;
 };
