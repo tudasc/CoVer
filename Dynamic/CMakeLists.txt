@@ -9,7 +9,7 @@ add_library(CoVerDynamicAnalyzer STATIC
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 20)
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD ON)
 target_include_directories(CoVerDynamicAnalyzer PUBLIC ../Include/)
-target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions)
+target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions -fomit-frame-pointer -fno-stack-protector -fvisibility=hidden -fvisibility-inlines-hidden)
 
 if (CMAKE_ADDR2LINE)
   target_compile_definitions(CoVerDynamicAnalyzer PUBLIC CMAKE_ADDR2LINE="${CMAKE_ADDR2LINE}")
