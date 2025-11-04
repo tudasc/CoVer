@@ -50,7 +50,7 @@ ReleaseAnalysis::ReleaseAnalysis(void const* _func_supplier, ReleaseOp_t* rOP) {
 CallBacks ReleaseAnalysis::requiredCallbacksImpl() const {
     if (!forbIsRW) return {true, false, false};
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
-    return {true, !rwOp->isWrite, (bool)rwOp->isWrite};
+    return {true, !rwOp->isWrite, rwOp->isWrite};
 }
 
 Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo const& callsite) {
