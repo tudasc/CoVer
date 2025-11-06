@@ -9,7 +9,7 @@
 #include <sstream>
 #include <vector>
 
-using ConcreteParam = void*;
+using ConcreteParam = void const*;
 struct CallsiteInfo {
     void* location;
     std::vector<ConcreteParam> params;
