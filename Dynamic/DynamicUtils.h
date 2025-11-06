@@ -10,13 +10,14 @@
 #include <sstream>
 #include <vector>
 
+using CodePtr = void const*;
 struct ConcreteParam {
     void const* value;
     uint32_t size;
     bool operator==(ConcreteParam const& other) const { return value == other.value; }
 };
 struct CallsiteInfo {
-    void* location;
+    CodePtr location;
     std::vector<ConcreteParam> params;
     bool operator==(CallsiteInfo const& other) const {
         return this->location == other.location && params == other.params;
@@ -27,7 +28,7 @@ template <>
 struct std::hash<CallsiteInfo> {
     std::size_t operator()(CallsiteInfo const& ref) const
     {
-        std::size_t hash = std::hash<void*>()(ref.location);
+        std::size_t hash = std::hash<decltype(ref.location)>()(ref.location);
         for (ConcreteParam p : ref.params)
             hash ^= std::hash<decltype(p.value)>()(p.value);
         return hash;

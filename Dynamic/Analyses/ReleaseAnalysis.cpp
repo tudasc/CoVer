@@ -115,7 +115,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
     return Fulfillment::UNKNOWN;
 }
 
-Fulfillment ReleaseAnalysis::memoryCBImpl(void const* const& location, void const* const& memory, bool const& isWrite) {
+Fulfillment ReleaseAnalysis::memoryCBImpl(CodePtr const& location, void const* const& memory, bool const& isWrite) {
     for (int i = 0; i < forbMem.size(); i++) {
         if (DynamicUtils::checkParamMatch(rwAcc, {&forbMem[rwIdx].value, sizeof(void*)*8}, {memory, sizeof(void*)*8})) {
             references.insert(references.end(), {forbiddenCallsites[i].location, location});
