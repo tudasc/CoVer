@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <sys/types.h>
 #include <unistd.h>
 #include <cstdlib>
 #include <unordered_map>
@@ -92,18 +93,9 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_FunctionCallback(bo
     std::va_list list;
     va_start(list, num_params);
     for (int i = 0; i < num_params; i++) {
-        bool isPtr = va_arg(list, int32_t);
-        int32_t param_size = va_arg(list, int32_t);
-        if (isPtr) {
-            callsite.params.push_back({va_arg(list,void*)});
-        } else {
-            if (param_size == 64)
-                callsite.params.push_back({reinterpret_cast<void*>(va_arg(list, int64_t))});
-            else if (param_size == 32)
-                callsite.params.push_back({reinterpret_cast<void*>(va_arg(list, int32_t))});
-            else
-                DynamicUtils::createMessage("Unkown Parameter size!");
-        }
+        uint32_t param_size = va_arg(list,uint32_t);
+        void const* param_val = va_arg(list,void*);
+        callsite.params.push_back({param_val, param_size});
     }
     va_end(list);
 

@@ -399,8 +399,15 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
         params.push_back(ConstantInt::get(Int_Type, callsite->arg_size()));
         for (Use& U : callsite->args()) {
-            params.push_back(U->getType()->isPointerTy() ? ConstantInt::getTrue(Int_Type) : ConstantInt::getFalse(Int_Type));
-            params.push_back(ConstantInt::get(Int_Type, U->getType()->getPrimitiveSizeInBits()));
+            // Store size of data type
+            params.push_back(ConstantInt::get(Int_Type, callsite->getModule()->getDataLayout().getTypeStoreSizeInBits(U->getType())));
+
+            // Store actual parameter, making sure to cast if necessary
+            Value* actual_param = U;
+            if (!U->getType()->isPointerTy()) {
+                // Now, actual pointer cast
+                actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Ptr_Type, "", callsite->getIterator());
+            }
             params.push_back(U);
         }
         insertCBIfNeeded(callbackFuncCallee, params, callsite);

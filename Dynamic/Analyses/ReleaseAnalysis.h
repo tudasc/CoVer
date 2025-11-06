@@ -30,5 +30,5 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
 
         // Analysis temporaries
         std::vector<CallsiteInfo> forbiddenCallsites;
-        std::vector<void const*> forbMem;
+        std::vector<ConcreteParam> forbMem;
 };

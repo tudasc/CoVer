@@ -1,6 +1,7 @@
 #pragma once
 
 #include "DynamicAnalysis.h"
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <ostream>
@@ -9,7 +10,11 @@
 #include <sstream>
 #include <vector>
 
-using ConcreteParam = void const*;
+struct ConcreteParam {
+    void const* value;
+    uint32_t size;
+    bool operator==(ConcreteParam const& other) const { return value == other.value; }
+};
 struct CallsiteInfo {
     void* location;
     std::vector<ConcreteParam> params;
@@ -24,7 +29,7 @@ struct std::hash<CallsiteInfo> {
     {
         std::size_t hash = std::hash<void*>()(ref.location);
         for (ConcreteParam p : ref.params)
-            hash ^= std::hash<ConcreteParam>()(p);
+            hash ^= std::hash<decltype(p.value)>()(p.value);
         return hash;
     }
 };
@@ -34,7 +39,7 @@ namespace DynamicUtils {
     void Initialize(ContractDB_t const* DB);
 
     // Check if two parameters match
-    bool checkParamMatch(ParamAccess const& acc, void const* const& contrP, void const* const& callP);
+    bool checkParamMatch(ParamAccess const& acc, ConcreteParam const& contrP, ConcreteParam const& callP);
 
     // Check if function call matches
     bool checkFuncCallMatch(void const* callF, std::vector<CallParam_t*> params_expect, CallsiteInfo callParams, CallsiteInfo contrParams, std::string target_str);
