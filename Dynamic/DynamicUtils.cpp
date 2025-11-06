@@ -2,17 +2,15 @@
 
 #include <cstdint>
 #include <cstdlib>
-#include <cstring>
 #include <dlfcn.h>
 #include <ios>
 #include <iostream>
-#include <new>
 #include <optional>
 #include <ostream>
 #include <sstream>
 #include <string>
+#include <sys/types.h>
 #include <unordered_map>
-#include <unordered_set>
 #include <array>
 #include <utility>
 
@@ -35,6 +33,14 @@ namespace {
         }
         return result;
     }
+
+    uint64_t truncate_bits(uintptr_t const val, int const bit_width) {
+        // Mask off unused bits
+        if (bit_width < 64)
+            return val & ((1ULL << bit_width) - 1);
+
+        return val;
+    }
 }
 
 namespace DynamicUtils {
@@ -53,14 +59,14 @@ namespace DynamicUtils {
         }
     }
 
-    bool checkParamMatch(ParamAccess const& acc, void const* const& contrP, void const* const& callP) {
+    bool checkParamMatch(ParamAccess const& acc, ConcreteParam const& contrP, ConcreteParam const& callP) {
         switch (acc) {
             case ParamAccess::NORMAL:
-                return contrP == callP;
+                return truncate_bits((uintptr_t)contrP.value, contrP.size) == truncate_bits((uintptr_t)callP.value, callP.size);
             case ParamAccess::DEREF:
-                return *(void const* const*)contrP == callP;
+                return truncate_bits(*(uintptr_t const*)contrP.value, callP.size) == (uintptr_t)callP.value;
             case ParamAccess::ADDROF:
-                return *(void const* const*)callP == contrP;
+                return truncate_bits(*(uintptr_t const*)callP.value, contrP.size) == (uintptr_t)contrP.value;
         }
         __builtin_unreachable();
     }
