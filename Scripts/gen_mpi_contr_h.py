@@ -71,7 +71,7 @@ with open(inputh_location) as f:
             funcdec = line
             while True:
                 if ";" in funcdec:
-                    break;
+                    break
                 newline = next(h_iter)
                 funcdec += newline
 
