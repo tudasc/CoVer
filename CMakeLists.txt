@@ -153,20 +153,27 @@ if (MPI_C_FOUND AND Python_FOUND)
   else()
     set(MPI_FUNC_DECLS_FILE "${MPI_C_HEADER_DIR}/mpi.h") # OpenMPI
   endif(EXISTS "${MPI_C_HEADER_DIR}/mpi_proto.h")
+  message("Found MPI header with function definitions in ${MPI_FUNC_DECLS_FILE}, example MPI contracts will be generated.")
   add_custom_target(
     genMPIContracts ALL
     SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
     COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_FUNC_DECLS_FILE}" "CoVer ${GIT_REV}"
   )
   set(PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h")
-  if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+  if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h" OR DEFINED SHMEM_HEADER_PATH)
+    if (DEFINED SHMEM_HEADER_PATH)
+      message("Using manually specified OpenSHMEM header ${SHMEM_HEADER_PATH}, example OpenSHMEM contracts will be generated.")
+    else()
+      set(SHMEM_HEADER_PATH "${MPI_C_HEADER_DIR}/shmem.h")
+      message("Found OpenSHMEM header in ${SHMEM_HEADER_PATH}, example OpenSHMEM contracts will be generated.")
+    endif(DEFINED SHMEM_HEADER_PATH)
     add_custom_target(
       genSHMEMContracts ALL
       SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py"
-      COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/shmem.h" "CoVer ${GIT_REV}"
+      COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${SHMEM_HEADER_PATH}" "CoVer ${GIT_REV}"
     )
     list(APPEND PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/shmem_contracts.h") # Works for OpenMPI, enough for now
-  endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+  endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h" OR DEFINED SHMEM_HEADER_PATH)
   install(
     FILES
       ${PREMADE_CONTRACT_HEADERS}
