@@ -84,6 +84,7 @@ namespace {
         if (parent == nullptr) {
             // Top-level formula is violated, perform error output
             Contract_t* C = toplevel_to_contract[form];
+            DynamicUtils::out() << "## Contract violation detected! ##\n";
             DynamicUtils::out() << "Error in contract for function \"" << C->function_name << "\":\n";
             DynamicUtils::out() << (form == C->precondition ? "Precondition:\n" : "Postcondition:\n");
             formatError(recurseCreateErrorMsg(form));
