@@ -44,6 +44,8 @@ ignorelist = [
     "MPI_ATTR_PUT",
     "MPI_KEYVAL_CREATE",
 ]
+safetylist = [
+]
 
 
 function_decls = {}
@@ -70,10 +72,16 @@ with open(inputh_location) as f:
             # Extract full function
             funcdec = line
             while True:
-                if ";" in funcdec:
+                if ";" in funcdec or "{" in funcdec:
                     break
-                newline = next(h_iter)
-                funcdec += newline
+                line = next(h_iter)
+                funcdec += line
+
+            # Check if definition, not declaration
+            if "{" in funcdec:
+                while not "}" in line:
+                    line = next(h_iter)
+                continue
 
             # Cleanup
 
@@ -295,6 +303,8 @@ boilerplate_header = f"""
 #include "Contracts.h"
 #include <mpi.h>
 
+#define MACRO_SAFETY(x) (x)
+
 """
 
 header_output = boilerplate_header
@@ -313,7 +323,10 @@ def create_contract_output_for_func(types, contrs):
 for func, contrs in function_contracts.items():
     if not contrs["PRE"] and not contrs["POST"] and not contrs["TAGS"]:
         continue # No contracts, no need to output
-    header_output += function_decls[func][:-1] + " CONTRACT(\n"
+    new_decl = function_decls[func][:-1]
+    if func in safetylist:
+        new_decl = new_decl.replace(func, f"MACRO_SAFETY({func})")
+    header_output += new_decl + " CONTRACT(\n"
     header_output += create_contract_output_for_func(contrs.keys(), contrs)
     header_output += ");\n\n"
 
