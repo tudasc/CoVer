@@ -1,0 +1,23 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: CoVer
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Yussur Mustafa
+    family-names: Oraji
+    email: yussur.oraji@hotmail.de
+    orcid: 'https://orcid.org/0009-0004-9922-3112'
+identifiers:
+  - type: doi
+    value: 10.1007/978-3-032-07194-1_4
+    description: Original CoVer Publication
+  - type: doi
+    value: 10.1145/3731599.3767360
+    description: Static-Dynamic Coupling
+repository-code: 'https://github.com/tudasc/CoVer/'
+license: GPL-3.0-or-later
