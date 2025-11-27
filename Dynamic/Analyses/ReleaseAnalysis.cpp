@@ -117,7 +117,7 @@ Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo cons
 
 Fulfillment ReleaseAnalysis::memoryCBImpl(CodePtr const& location, void const* const& memory, bool const& isWrite) {
     for (int i = 0; i < forbMem.size(); i++) {
-        if (DynamicUtils::checkParamMatch(rwAcc, {&forbMem[rwIdx].value, sizeof(void*)*8}, {memory, sizeof(void*)*8})) {
+        if (DynamicUtils::checkParamMatch(rwAcc, {&forbMem[i].value, sizeof(void*)*8}, {memory, sizeof(void*)*8})) {
             references.insert(references.end(), {forbiddenCallsites[i].location, location});
             return Fulfillment::VIOLATED;
         }
