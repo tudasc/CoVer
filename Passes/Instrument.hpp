@@ -40,7 +40,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         void instrumentRW(Module &M);
         void insertFunctionInstrCallback(Function* CB);
         void insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I);
-        bool isRelevant(Instruction const* I);
+        bool isRelevant(Instruction const* I) const;
         FunctionCallee callbackFuncCallee;
         FunctionCallee callbackRCallee;
         FunctionCallee callbackWCallee;
