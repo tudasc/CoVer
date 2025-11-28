@@ -102,6 +102,10 @@ tag_buf = [("shmem_int_put_nbi", 1, "W", "R"),
            ("shmem_int_atomic_fetch_inc_nbi", 0, "RW", "RW"),
            ("shmem_int_atomic_fetch_nbi", 0, "RW", "RW"),
            ("shmem_int_atomic_compare_swap_nbi", 0, "RW", "RW"),
+           ("shmem_int_broadcast", 1, "RW", "W"),
+           ("shmem_int_broadcast", 2, "W", "R"),
+           ("shmem_int_sum_reduce", 1, "RW", "W"),
+           ("shmem_int_sum_reduce", 2, "W", "R"),
 ]
 for func, buf_idx, forbid, action in tag_buf:
     if "R" in forbid:
@@ -115,7 +119,7 @@ for func, buf_idx, forbid, action in tag_buf:
     if "W" in action:
         add_contract(func, "TAGS", f"buf_write({buf_idx})")
 
-tag_shmemcomplete = [("shmem_barrier_all"), ("shmem_barrier"), ("shmem_quiet")]
+tag_shmemcomplete = [("shmem_barrier_all"), ("shmem_barrier"), ("shmem_quiet"), ("shmem_uint64_wait_until")]
 for func in tag_shmemcomplete:
     add_contract(func, "TAGS", f"shmem_complete")
 
