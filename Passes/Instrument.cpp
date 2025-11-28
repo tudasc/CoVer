@@ -416,15 +416,14 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
 }
 
 void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I) {
-    bool relevant = isRelevant(I);
-    if ((isa<LoadInst>(I) || isa<StoreInst>(I)) && ClInstrumentType.starts_with("filtered")) return;
-    params.insert(params.begin(), ConstantInt::getBool(Bool_Type, relevant));
+    if (!isRelevant(I) && (isa<LoadInst>(I) || isa<StoreInst>(I)) && ClInstrumentType.starts_with("filtered")) return;
+    params.insert(params.begin(), ConstantInt::getBool(Bool_Type, isRelevant(I)));
     CallInst* callbackCI = CallInst::Create(FC, params);
     callbackCI->setDebugLoc(I->getDebugLoc());
     callbackCI->insertBefore(I->getIterator());
 }
 
-bool InstrumentPass::isRelevant(Instruction const* I) {
+bool InstrumentPass::isRelevant(Instruction const* I) const {
     FileReference f = ContractPassUtility::getFileReference(I);
     for (FileReference const& ref : references) {
         if (ref == f) return true;
