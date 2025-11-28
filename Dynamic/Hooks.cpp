@@ -22,7 +22,7 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
 
     if (*argc >= 2) {
         std::string arg = (*argv)[1];
-        if (arg == "--cover-check-coverage") {
+        if (arg == "--cover:check-coverage") {
             DynamicUtils::createMessage("Coverage check requested!");
             // Fill relevant locs
             std::unordered_set<std::string> relevantLocs;
