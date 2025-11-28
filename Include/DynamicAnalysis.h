@@ -70,11 +70,16 @@ struct Contract_t {
     const char* function_name;
 };
 
+struct Reference_t {
+    const char* ref;
+    const char* type;
+};
+
 struct ContractDB_t {
     Contract_t* contracts;
     int32_t num_contracts;
     TagsMap_t tagMap;
-    const char** references;
+    Reference_t* references;
     int32_t num_references;
 };
 

@@ -65,14 +65,16 @@ PreservedAnalyses InstrumentPass::run(Module &M,
         detJson = DB->processedReports;
     }
     // Fill references
-    for (Json::Value msg : detJson["messages"]) {
-        for (Json::Value ref : msg["references"]) {
-            references.insert({
+    for (Json::Value msg_j : detJson["messages"]) {
+        ErrorMessage msg = {msg_j["type"].asString(), msg_j["error_id"].asString(), msg_j["text"].asString()};
+        for (Json::Value ref : msg_j["references"]) {
+            msg.references.push_back({
                 ref["file"].asString(),
                 ref["line"].asUInt(),
                 ref["column"].asUInt()
             });
         }
+        err_msgs.push_back(msg);
     }
 
     // Generic Types and consts
@@ -170,12 +172,15 @@ Constant* InstrumentPass::createTagGlobal(Module& M) {
 
 std::pair<Constant*, int64_t> InstrumentPass::createReferencesGlobal(Module &M) {
     std::vector<Constant*> crefs;
-    for (FileReference const& ref : references) {
-        std::string reference_str = ref.file + ":" + std::to_string(ref.line);
-        Constant* cref = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), reference_str), "CONTR_REFERENCE_" + reference_str);
-        crefs.push_back(cref);
+    for (ErrorMessage const& msg : err_msgs) {
+        GlobalVariable* emsg = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), msg.type), "CONTR_ERROR_TYPE_" + msg.type);
+        for (FileReference const& ref : msg.references) {
+            std::string reference_str = ref.file + ":" + std::to_string(ref.line);
+            GlobalVariable* fref = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), reference_str), "CONTR_REFERENCE_" + reference_str);
+            crefs.push_back(ConstantStruct::get(Ref_Type, {fref, emsg}));
+        }
     }
-    ArrayType* ArrRefs = ArrayType::get(Ptr_Type, crefs.size());
+    ArrayType* ArrRefs = ArrayType::get(Ref_Type, crefs.size());
     GlobalVariable* arrRefsGlobal = createConstantGlobal(M, ConstantArray::get(ArrRefs, crefs), "CONTR_LIST_REFERENCES");
     return {arrRefsGlobal, crefs.size()};
 }
@@ -328,8 +333,11 @@ void InstrumentPass::createTypes(Module& M) {
     Tags_Type = StructType::create(M.getContext(), "TagsMap_t");
     Tags_Type->setBody({Ptr_Type, Ptr_Type, Int_Type}); // Funcptr list, Tag + param struct list, num elems
 
+    Ref_Type = StructType::create(M.getContext(), "Reference_t");
+    Ref_Type->setBody({Ptr_Type, Ptr_Type}); // char* file ref, char* type
+
     DB_Type = StructType::create(M.getContext(), "ContractDB_t");
-    DB_Type->setBody( {Ptr_Type, Int_Type, Tags_Type, Ptr_Type, Int_Type} ); // contract list, num elems, tag container, reference list, num refs
+    DB_Type->setBody({Ptr_Type, Int_Type, Tags_Type, Ptr_Type, Int_Type}); // contract list, num elems, tag container, reference list, num refs
 }
 
 void InstrumentPass::instrumentFunctions(Module &M) {
@@ -425,8 +433,8 @@ void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> pa
 
 bool InstrumentPass::isRelevant(Instruction const* I) const {
     FileReference f = ContractPassUtility::getFileReference(I);
-    for (FileReference const& ref : references) {
-        if (ref == f) return true;
+    for (ErrorMessage const& msg : err_msgs) {
+        for (FileReference const& ref : msg.references) if (ref == f) return true;
     }
     return false;
 }
