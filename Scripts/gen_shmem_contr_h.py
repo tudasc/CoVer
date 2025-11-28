@@ -119,6 +119,14 @@ for func, buf_idx, forbid, action in tag_buf:
     if "W" in action:
         add_contract(func, "TAGS", f"buf_write({buf_idx})")
 
+# *Blocking* buffer-accessing functions, i.e. lead to data race but not a release req
+tag_buf_blocking = [
+    ("shmem_int_get", 0, "W"),
+]
+for func, buf_idx, action in tag_buf_blocking:
+    if "R" in action: add_contract(func, "TAGS", f"buf_read({buf_idx})")
+    if "W" in action: add_contract(func, "TAGS", f"buf_write({buf_idx})")
+
 tag_shmemcomplete = [("shmem_barrier_all"), ("shmem_barrier"), ("shmem_quiet"), ("shmem_uint64_wait_until")]
 for func in tag_shmemcomplete:
     add_contract(func, "TAGS", f"shmem_complete")
