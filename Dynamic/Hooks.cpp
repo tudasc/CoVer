@@ -25,9 +25,9 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
         if (arg == "--cover:check-coverage") {
             DynamicUtils::createMessage("Coverage check requested!");
             // Fill relevant locs
-            std::unordered_set<std::string> relevantLocs;
+            std::unordered_set<Reference_t*> relevantLocs;
             for (int i = 0; i < DB->num_references; i++)
-                relevantLocs.insert(DB->references[i]);
+                relevantLocs.insert(&DB->references[i]);
             std::vector<std::pair<std::string, void*>> coverageVisited;
             for (std::filesystem::path const& entry : std::filesystem::directory_iterator(std::filesystem::current_path())) {
                 if (entry.filename().string().starts_with("CoVerCoverage")) {
@@ -47,12 +47,12 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
             else DynamicUtils::out() << "No coverage data found. Either program was not executed, or no relevant locations were encountered.\n";
             for (std::pair<std::string,void const*> loc : coverageVisited) {
                 std::string locstr = DynamicUtils::getFileRefStr(loc.first, loc.second);
-                relevantLocs.erase(locstr);
+                std::erase_if(relevantLocs, [&](Reference_t* relRef){ return relRef->ref == locstr; });
             }
             if (!relevantLocs.empty()) {
                 DynamicUtils::out() << "Coverage error detected!\n";
-                for (std::string const& unvisited : relevantLocs) {
-                    DynamicUtils::out() << "Relevant location " << unvisited << " not checked!\n";
+                for (Reference_t* const& unvisited : relevantLocs) {
+                    DynamicUtils::out() << "Relevant location " << unvisited->ref << " of error \"" << unvisited->type << "\" not checked!\n";
                 }
                 exit(EXIT_FAILURE);
             } else {
