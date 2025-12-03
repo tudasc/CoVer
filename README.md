@@ -25,4 +25,7 @@ Alternatively, the Docker file provides a known working environment for testing.
 
 ## References
 
-- TODO
+| Reference  | Additional Info |
+| ---------- | --------------- |
+| [Verifying MPI API Usage Requirements with Contracts](https://doi.org/10.1145/3731599.3767360) | First CoVer Publication    |
+| [Coupling Static and Dynamic MPI Correctness Tools to Optimize Accuracy and Overhead](https://doi.org/10.1007/978-3-032-07194-1_4) | Corresponds to [PR 1](https://github.com/tudasc/CoVer/pull/1)|
