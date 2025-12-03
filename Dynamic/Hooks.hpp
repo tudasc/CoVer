@@ -81,7 +81,7 @@ namespace {
             !(contract_status[form] == Fulfillment::FULFILLED && formula_parents[form] && formula_parents[form]->conn == XOR)) return;
 
         ContractFormula_t* parent = formula_parents[form];
-        if (parent == nullptr) {
+        if (parent == nullptr && contract_status[form] == Fulfillment::VIOLATED) {
             // Top-level formula is violated, perform error output
             Contract_t* C = toplevel_to_contract[form];
             DynamicUtils::out() << "## Contract violation detected! ##\n";
