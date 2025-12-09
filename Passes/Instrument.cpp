@@ -419,7 +419,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                 // Now, actual pointer cast
                 actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Ptr_Type, "", callsite->getIterator());
             }
-            params.push_back(U);
+            params.push_back(actual_param);
         }
         insertCBIfNeeded(callbackFuncCallee, params, callsite);
     }
