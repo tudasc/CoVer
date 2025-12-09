@@ -413,6 +413,9 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             // Store actual parameter, making sure to cast if necessary
             Value* actual_param = U;
             if (!U->getType()->isPointerTy()) {
+                if (U->getType()->isFloatingPointTy()) {
+                    actual_param = CastInst::Create(Instruction::CastOps::BitCast, actual_param, Int_Type, "", callsite->getIterator());
+                }
                 // Now, actual pointer cast
                 actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Ptr_Type, "", callsite->getIterator());
             }
