@@ -54,43 +54,45 @@ CallBacks ReleaseAnalysis::requiredCallbacksImpl() const {
 }
 
 Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo const& callsite) {
-    // First, check if release
-    for (void const* const& rel_func : rel_funcs) {
-        if (rel_func == func) {
-            if (params_release.empty()) {
-                forbiddenCallsites.clear();
-                forbMem.clear();
+    if (!forbiddenCallsites.empty()) {
+        // First, check if release
+        for (void const* const& rel_func : rel_funcs) {
+            if (rel_func == func) {
+                if (params_release.empty()) {
+                    forbiddenCallsites.clear();
+                    forbMem.clear();
+                    return Fulfillment::UNKNOWN;
+                }
+                // Check which callsites are satisfied, remove from unchecked
+                for (int i = 0; i < forbiddenCallsites.size();) {
+                    CallsiteInfo const& forbcallsite = forbiddenCallsites[i];
+                    if (DynamicUtils::checkFuncCallMatch(rel_func, params_release, callsite, forbcallsite, target_str_rel)) {
+                        forbiddenCallsites.erase(forbiddenCallsites.begin() + i);
+                        if (forbIsRW) forbMem.erase(forbMem.begin() + i);
+                    } else {
+                        i++;
+                    }
+                }
+                // For the rest: Maybe actual fulfillment comes later
                 return Fulfillment::UNKNOWN;
             }
-            // Check which callsites are satisfied, remove from unchecked
-            for (int i = 0; i < forbiddenCallsites.size();) {
-                CallsiteInfo const& forbcallsite = forbiddenCallsites[i];
-                if (DynamicUtils::checkFuncCallMatch(rel_func, params_release, callsite, forbcallsite, target_str_rel)) {
-                    forbiddenCallsites.erase(forbiddenCallsites.begin() + i);
-                    if (forbIsRW) forbMem.erase(forbMem.begin() + i);
-                } else {
-                    i++;
-                }
-            }
-            // For the rest: Maybe actual fulfillment comes later
-            return Fulfillment::UNKNOWN;
         }
-    }
 
-    // Check if forbidden
-    for (void const* const& forb_func : forb_funcs) {
-        if (forb_func == func) {
-            if (params_forb.empty()) {
-                for (CallsiteInfo const& forbCallsite : forbiddenCallsites) references.push_back(forbCallsite.location);
-                references.push_back(callsite.location);
-                return Fulfillment::VIOLATED;
-            }
-
-            // Check if a callsite is violated
-            for (CallsiteInfo const& forbCallsite : forbiddenCallsites) {
-                if (DynamicUtils::checkFuncCallMatch(forb_func, params_forb, callsite, forbCallsite, target_str_forb)) {
-                    references.insert(references.end(), {forbCallsite.location, callsite.location});
+        // Check if forbidden
+        for (void const* const& forb_func : forb_funcs) {
+            if (forb_func == func) {
+                if (params_forb.empty()) {
+                    for (CallsiteInfo const& forbCallsite : forbiddenCallsites) references.push_back(forbCallsite.location);
+                    references.push_back(callsite.location);
                     return Fulfillment::VIOLATED;
+                }
+
+                // Check if a callsite is violated
+                for (CallsiteInfo const& forbCallsite : forbiddenCallsites) {
+                    if (DynamicUtils::checkFuncCallMatch(forb_func, params_forb, callsite, forbCallsite, target_str_forb)) {
+                        references.insert(references.end(), {forbCallsite.location, callsite.location});
+                        return Fulfillment::VIOLATED;
+                    }
                 }
             }
         }
