@@ -287,7 +287,7 @@ tag_typegen = [("MPI_Type_contiguous", 2), ("MPI_Type_vector", 4)]
 for func, tag_idx in tag_typegen:
     add_contract(func, "POST", f"no! (call_tag!(type_use,$:*{tag_idx})) until! (call!(MPI_Type_commit,0:{tag_idx})) MSG \"Type not committed before use\"")
     add_contract(func, "POST", f"no! (call!(MPI_Finalize)) until! (call!(MPI_Type_free,0:{tag_idx})) MSG \"Data type leak, free function not called\"")
-    add_contract(func, "POST", f"no! (call_tag!(type_gen)) until! (call!(MPI_Type_free,0:{tag_idx})) MSG \"Data type leak, type handle lost\"")
+    add_contract(func, "POST", f"no! (call_tag!(type_gen,$:{tag_idx})) until! (call!(MPI_Type_free,0:{tag_idx})) MSG \"Data type leak, type handle lost\"")
     add_contract(func, "TAGS", f"type_gen({tag_idx})")
 
 tag_typeuse = [("MPI_Send", 2), ("MPI_Isend", 2)]
