@@ -91,36 +91,37 @@ namespace {
             return;
         }
 
+        int num_fulfilled = 0;
+        bool has_unknown = false;
+        bool has_violated = false;
+        for (int i = 0; i < parent->num_children; i++) {
+            if (!contract_status.contains(&parent->children[i])) has_unknown = true;
+            else if (contract_status[&parent->children[i]] == Fulfillment::FULFILLED) num_fulfilled++;
+            else if (contract_status[&parent->children[i]] == Fulfillment::VIOLATED) has_violated = true;
+        }
         switch (parent->conn) {
             case AND:
-                // Failure guaranteed, parent is AND and has a violated member
-                contract_status[parent] = Fulfillment::VIOLATED;
-                validateState(parent);
-                return;
+                if (has_violated) {
+                    contract_status[parent] = Fulfillment::VIOLATED;
+                    validateState(parent);
+                }
+                break;
             case OR:
-            case XOR: {
-                int num_fulfilled = 0;
-                bool has_unknown = false;
-                for (int i = 0; i < parent->num_children; i++) {
-                    if (!contract_status.contains(&parent->children[i])) has_unknown = true;
-                    else if (contract_status[&parent->children[i]] == Fulfillment::FULFILLED) num_fulfilled++;
-                }
-                if (parent->conn == OR && num_fulfilled) { // Early fulfill OR if at least one satisfied
-                    contract_status[parent] = Fulfillment::FULFILLED;
-                } else if (parent->conn == XOR && num_fulfilled > 1) { // Early violate XOR if more than one satisfied
-                    contract_status[parent] = Fulfillment::VIOLATED;
-                    validateState(parent);
-                } else if (!has_unknown && !num_fulfilled) { // No more unknown, definitely violated
+                if (num_fulfilled) contract_status[parent] = Fulfillment::FULFILLED;
+            case XOR:
+                if (num_fulfilled > 1) {
                     contract_status[parent] = Fulfillment::VIOLATED;
                     validateState(parent);
                 }
-                return;
-            }
+                if (!has_unknown && !num_fulfilled) {
+                    contract_status[parent] = Fulfillment::VIOLATED;
+                    validateState(parent);
+                }
+                break;
             default:
                 __builtin_unreachable();
                 DynamicUtils::out() << "Unexpected connective in state validation!\n";
         }
-        // If this is reached: No new information gained this time.
     }
 
     void recurseCreateAnalyses(ContractFormula_t* form, ContractFormula_t* parent, bool isPre, void* func_supplier) {
