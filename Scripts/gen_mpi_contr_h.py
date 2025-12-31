@@ -259,6 +259,7 @@ for func, win_idx in tag_needrmaepoch:
 tag_createfencermaepoch = [("MPI_Win_fence", 1)]
 for func, win_idx in tag_createfencermaepoch:
     add_contract(func, "TAGS", f"epoch_fence_create({win_idx})")
+    add_contract(func, "PRE", f"call_tag!(rma_createwin,$:&{win_idx}) MSG \"Did not create window before fence!\"")
 tag_createlockrmaepoch = [("MPI_Win_lock", 3), ("MPI_Win_lock_all", 1)]
 for func, win_idx in tag_createlockrmaepoch:
     add_contract(func, "TAGS", f"epoch_lock_create({win_idx})")
