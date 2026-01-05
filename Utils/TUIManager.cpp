@@ -38,11 +38,15 @@ std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
 }
 
 ftxui::ScreenInteractive screen = ftxui::ScreenInteractive::FullscreenPrimaryScreen();
-ftxui::Element header = ftxui::vbox({
-    ftxui::separator(),
-    ftxui::text("CoVer: Running in interactive mode") | ftxui::center,
-    ftxui::separator()
-});
+
+ftxui::Element getHeader(std::string cur_title) {
+    ftxui::Element header = ftxui::vbox({
+        ftxui::separator(),
+        ftxui::hbox({ftxui::text("CoVer (Interactive mode) | "), ftxui::text(cur_title), ftxui::filler()}),
+        ftxui::separator()
+    });
+    return header;
+}
 
 int RenderMenu(std::vector<std::string> choices, std::string title) {
     int selected = 0;
@@ -55,9 +59,7 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
     ftxui::Component render = ftxui::Renderer(
         menu, [&] {
            return ftxui::vbox({
-            header,
-            ftxui::text(title) | ftxui::center,
-            ftxui::separator(),
+            getHeader(title),
             ftxui::yframe(menu->Render()),
             ftxui::separator()
            });
@@ -83,9 +85,7 @@ std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title,
     ftxui::Component render = ftxui::Renderer(
         input_comp, [&] {
            return ftxui::vbox({
-            header,
-            ftxui::text(title) | ftxui::center,
-            ftxui::separator(),
+            getHeader(title),
             ftxui::yframe(ftxui::vbox(full_lines)),
             ftxui::separator(),
             ftxui::filler(),
@@ -131,9 +131,7 @@ void ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, st
     ftxui::Component render = ftxui::Renderer(
         menu, [&] {
            return ftxui::vbox({
-            header,
-            ftxui::text(title) | ftxui::center,
-            ftxui::separator(),
+            getHeader(title),
             ftxui::hbox(ftxui::text("Contract Formula: " + Form->ExprStr)),
             ftxui::hbox(ftxui::text("Status: "), ftxui::text(FulfillmentStr(*Form->Status)) | FulfillmentColor(*Form->Status)),
             ftxui::separator(),
@@ -175,9 +173,7 @@ void ShowContractDetails(ContractManagerAnalysis::Contract C) {
     ftxui::Component render = ftxui::Renderer(
         menu, [&] {
            return ftxui::vbox({
-            header,
-            ftxui::text("Contract Details: " + C.F->getName().str()) | ftxui::center,
-            ftxui::separator(),
+            getHeader("Contract Details: " + C.F->getName().str()),
             ftxui::text("Full String:"),
             ftxui::text(C.ContractString.str()),
             ftxui::separator(),
@@ -201,7 +197,7 @@ void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus
     
     while (filestream) {
         std::getline(filestream, out);
-        ftxui::Element text_elem = ftxui::text(out);
+        ftxui::Element text_elem = ftxui::text(std::format("{:>4} | {}", cur_line, out));
         if (cur_line == focus_line) text_elem |= ftxui::focus;
         if (highlights.contains(cur_line)) text_elem |= ftxui::bgcolor(highlights[cur_line]);
         lines.push_back(text_elem);
@@ -212,7 +208,7 @@ void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus
 
 void ShowLines(std::vector<ftxui::Element> lines) {
     int selected = 0;
-    int page_size = screen.dimy() - 10; // Size of output box
+    int page_size = screen.dimy() - 8; // Size of output box
     int pages = lines.size() / page_size;
     std::map<int, std::vector<ftxui::Element>>  lines_per_page;
     for (size_t i = 0; i <= pages; i++) {
@@ -232,9 +228,7 @@ void ShowLines(std::vector<ftxui::Element> lines) {
         ftxui::Component render = ftxui::Renderer(
             menu, [&] {
             return ftxui::vbox({
-                header,
-                ftxui::text("Source Context (Page " + std::to_string(cur_page) + "/" + std::to_string(pages) + ")") | ftxui::center,
-                ftxui::separator(),
+                getHeader("Source Context (Page " + std::to_string(cur_page) + "/" + std::to_string(pages) + ")"),
                 ftxui::vbox(lines_per_page[cur_page]),
                 ftxui::filler(),
                 ftxui::separator(),
@@ -268,9 +262,7 @@ bool ShowMessageDetails(Json::Value msg) {
     ftxui::Component render = ftxui::Renderer(
         menu, [&] {
            return ftxui::vbox({
-            header,
-            ftxui::text("Report Details: " + msg["type"].asString()) | ftxui::center,
-            ftxui::separator(),
+            getHeader("Report Details: " + msg["type"].asString()),
             ftxui::text("Full Report:"),
             ftxui::text(msg["text"].asString()),
             ftxui::separator(),
