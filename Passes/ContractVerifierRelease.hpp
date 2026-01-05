@@ -2,9 +2,11 @@
 
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
+#include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 #include "ErrorMessage.h"
+#include "TUIManager.hpp"
 
 namespace llvm {
 
@@ -19,8 +21,28 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
         bool printMultiReports = false;
         ReleaseStatus transferRelease(ReleaseStatus cur, const Instruction* I, void* data);
         std::pair<ReleaseStatus,bool> mergeRelease(ReleaseStatus prev, ReleaseStatus cur, const Instruction* I, void* data);
-        ReleaseStatus checkRelease(const ContractTree::ReleaseOperation relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, const Module& M, std::string& error);
+        ReleaseStatus checkRelease(ContractTree::ReleaseOperation const& relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression& Expr, const Module& M, std::string& error);
         std::map<const Function*, std::vector<TagUnit>> Tags;
+
+        static std::string releaseStatusToStr(ReleaseStatus S) {
+            switch (S) {
+                case ReleaseStatus::FULFILLED: return "FULFILLED";
+                case ReleaseStatus::FORBIDDEN: return "FORBIDDEN";
+                case ReleaseStatus::ERROR_UNFULFILLED: return "ERROR_UNFULFILLED";
+                case ReleaseStatus::ERROR: return "ERROR";
+            }
+        }
+
+        static void handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
+            ContractPassUtility::JumpTraceEntry<ReleaseStatus>* startloc = nullptr;
+            for (std::pair<const Instruction*, ReleaseStatus> AI : WLRes.AnalysisInfo) {
+                if (AI.second >= ReleaseStatus::ERROR_UNFULFILLED) {
+                    startloc = WLRes.JumpTraces[AI.first];
+                    break;
+                }
+            }
+            TUIManager::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, startloc, releaseStatusToStr);
+        }
 };
 
 } // namespace llvm

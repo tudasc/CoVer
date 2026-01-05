@@ -40,7 +40,7 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
             bool result = false;
             switch (Expr->OP->type()) {
                 case OperationType::RELEASE: {
-                    const ReleaseOperation& relOP = static_cast<const ReleaseOperation&>(*Expr->OP);
+                    ReleaseOperation const& relOP = static_cast<const ReleaseOperation&>(*Expr->OP);
                     C.DebugInfo->push_back("[ContractVerifierRelease] Attempting to verify expression: " + Expr->ExprStr);
                     result = checkRelease(relOP, C, *Expr, M, err) == ReleaseStatus::FULFILLED;
                     break;
@@ -174,7 +174,7 @@ std::pair<ContractVerifierReleasePass::ReleaseStatus,bool> ContractVerifierRelea
     return { newStat, newStat > prev};
 }
 
-ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(const ContractTree::ReleaseOperation relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, const Module& M, std::string& error) {
+ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(ContractTree::ReleaseOperation const& relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression& Expr, const Module& M, std::string& error) {
     // Figure out release parameters
     OperationType forbiddenType = relOp.Forbidden->type();
     std::vector<std::any> param;
@@ -216,7 +216,12 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
                 data.err.clear();
                 for (std::pair<const Instruction *, ReleaseStatus> x : WLRes.AnalysisInfo) {
-                    if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) return ReleaseStatus::ERROR;
+                    if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) {
+                        std::function<void()> handleDebug_inst = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, C);
+                        WLRes.handleDebug = handleDebug_inst;
+                        Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<ReleaseStatus>>(WLRes);
+                        return ReleaseStatus::ERROR;
+                    }
                 }
             }
         }
