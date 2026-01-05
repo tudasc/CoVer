@@ -46,7 +46,8 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
                 if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
                     if (CB->getCalledFunction() == C.F) {
                         if (AI.second.CurVal == CallStatusVal::ERROR) {
-                            startloc = WLRes.JumpTraces[CB];
+                            // nextnondbg exists, supplier is always a CB so next will at least be block terminator
+                            startloc = WLRes.JumpTraces[CB->getNextNonDebugInstruction()];
                             break;
                         }
                     }
