@@ -203,10 +203,10 @@ void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus
         lines.push_back(text_elem);
         cur_line++;
     }
-    ShowLines(lines);
+    ShowLines(lines, "Source Preview");
 }
 
-void ShowLines(std::vector<ftxui::Element> lines) {
+void ShowLines(std::vector<ftxui::Element> lines, std::string title) {
     int selected = 0;
     int page_size = screen.dimy() - 8; // Size of output box
     int pages = lines.size() / page_size;
@@ -228,7 +228,7 @@ void ShowLines(std::vector<ftxui::Element> lines) {
         ftxui::Component render = ftxui::Renderer(
             menu, [&] {
             return ftxui::vbox({
-                getHeader("Source Context (Page " + std::to_string(cur_page) + "/" + std::to_string(pages) + ")"),
+                getHeader(title + " (Page " + std::to_string(cur_page) + "/" + std::to_string(pages) + ")"),
                 ftxui::vbox(lines_per_page[cur_page]),
                 ftxui::filler(),
                 ftxui::separator(),

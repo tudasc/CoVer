@@ -51,7 +51,7 @@ namespace TUIManager {
     std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res);
     int RenderMenu(std::vector<std::string> choices, std::string title);
     void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line = -1);
-    void ShowLines(std::vector<ftxui::Element> lines);
+    void ShowLines(std::vector<ftxui::Element> lines, std::string title);
 
     template<typename T>
     void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr);
@@ -134,7 +134,10 @@ void TUIManager::ShowBlock(TraceBlock<T> block, bool transToSource, std::functio
     std::string newline = getSourceLine(block.last_entry, transToSource, infoToStr);
     if (!newline.empty() && newline != last)
         lines.push_back(ftxui::hbox({ftxui::text(infoToStr(block.last_entry->analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE), ftxui::text(" | " + newline)}));
-    ShowLines(lines);
+    std::string title = "Block Preview";
+    if (transToSource) title += ", Source Approx.";
+    else title += ", LLVM IR";
+    ShowLines(lines, title);
 }
 
 template<typename T>
@@ -171,7 +174,7 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
                 ftxui::text("    reanalyse"),
                 ftxui::text("        Re-run all analyses after adding instrumentation"),
             };
-            ShowLines(lines);
+            ShowLines(lines, "Worklist Trace Help Menu");
         } else if (input.starts_with("jump ")) {
 
         } else if (input.starts_with("child")) {
