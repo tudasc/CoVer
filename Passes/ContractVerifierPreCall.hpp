@@ -33,14 +33,10 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
 
         static std::string postCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
             switch (S.CurVal) {
-                case llvm::ContractVerifierPreCallPass::CallStatusVal::CALLED:
-                    return "CALLED";
-                case llvm::ContractVerifierPreCallPass::CallStatusVal::NOTCALLED:
-                    return "NOTCALLED";
-                case llvm::ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK:
-                    return "PARAMCHECK";
-                case llvm::ContractVerifierPreCallPass::CallStatusVal::ERROR:
-                    return "ERROR";
+                case CallStatusVal::CALLED: return "CALLED";
+                case CallStatusVal::NOTCALLED: return "NOTCALLED";
+                case CallStatusVal::PARAMCHECK: return "PARAMCHECK";
+                case CallStatusVal::ERROR: return "ERROR";
             }
         }
 
