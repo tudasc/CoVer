@@ -130,7 +130,10 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
                 if (ContractPassUtility::checkCalledApplies(CB, std::any_cast<std::string>(Data->param[0]), Data->forbiddenType == ContractTree::OperationType::CALLTAG, Data->Tags)) {
                     // Found forbidden function. Current status is unknown, if we find forbidden parameter (and one is specified) this is an error
                     const std::vector<CallParam> forbidParams = std::any_cast<const std::vector<CallParam>>(Data->param[1]);
-                    if (forbidParams.empty()) return ReleaseStatus::ERROR_UNFULFILLED;
+                    if (forbidParams.empty()) {
+                        appendDebugStr(Data->err, CB, Data->callsite);
+                        return ReleaseStatus::ERROR_UNFULFILLED;
+                    }
                     for (CallParam forbidParam : forbidParams) {
                         if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags)) {
                             appendDebugStr(Data->err, CB, Data->callsite);
