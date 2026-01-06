@@ -32,7 +32,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
         std::map<Function*, std::vector<TagUnit>> Tags;
         ModuleAnalysisManager* MAM;
 
-        static std::string postCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
+        static std::string preCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
             switch (S.CurVal) {
                 case CallStatusVal::CALLED: return "CALLED";
                 case CallStatusVal::NOTCALLED: return "NOTCALLED";
@@ -54,7 +54,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
                     }
                 }
             }
-            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
+            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
         }
 };
 
