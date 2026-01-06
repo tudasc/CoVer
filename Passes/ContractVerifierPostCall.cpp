@@ -126,16 +126,7 @@ std::pair<ContractVerifierPostCallPass::CallStatus,bool> ContractVerifierPostCal
     return { cs, cs > prev };
 }
 
-std::string postCallStatusToStr(ContractVerifierPostCallPass::CallStatus S) {
-    switch (S) {
-        case llvm::ContractVerifierPostCallPass::CallStatus::CALLED:
-            return "CALLED";
-        case llvm::ContractVerifierPostCallPass::CallStatus::NOTCALLED:
-            return "NOTCALLED";
-    }
-}
-
-ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error) {
+ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error) {
     IterTypePostCall data = { {}, {}, cOP->Function, nullptr, cOP->Params, isTag, Tags };
 
     ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPostCallPass::transferPostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
@@ -150,6 +141,9 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
                 for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getParent()->getParent()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
                         appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, *Expr.ErrorInfo, x.first);
+                        std::function<void()> handleDebug_inst = std::bind(&ContractVerifierPostCallPass::handleDebug, WLRes, C);
+                        WLRes.handleDebug = handleDebug_inst;
+                        Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<CallStatus>>(WLRes);
                         return CallStatus::NOTCALLED;
                     }
                 }

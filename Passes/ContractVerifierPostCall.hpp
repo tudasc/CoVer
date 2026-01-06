@@ -1,8 +1,10 @@
 #pragma once
 
+#include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 #include "ErrorMessage.h"
+#include "TUIManager.hpp"
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
@@ -20,11 +22,29 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
         static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err, const Instruction* retLoc);
 
     private:
-        CallStatus checkPostCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error);
+        CallStatus checkPostCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
         std::map<Function*, std::vector<TagUnit>> Tags;
         std::pair<CallStatus,bool> mergePostCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data);
         CallStatus transferPostCallStat(CallStatus cur, const Instruction* I, void* data);
         ModuleAnalysisManager* MAM;
+
+        static std::string postCallStatusToStr(ContractVerifierPostCallPass::CallStatus S) {
+            switch (S) {
+                case CallStatus::CALLED: return "CALLED";
+                case CallStatus::NOTCALLED: return "NOTCALLED";
+            }
+        }
+
+        static void handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
+            ContractPassUtility::JumpTraceEntry<CallStatus>* startloc = nullptr;
+            for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
+                if (isa<ReturnInst>(x.first) && x.first->getParent()->getParent()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
+                    startloc = WLRes.JumpTraces[x.first];
+                    break;
+                }
+            }
+            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
+        }
 };
 
 } // namespace llvm
