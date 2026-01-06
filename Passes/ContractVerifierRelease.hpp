@@ -39,7 +39,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
             for (std::pair<const Instruction*, ReleaseStatus> AI : WLRes.AnalysisInfo) {
                 if (AI.second >= ReleaseStatus::ERROR_UNFULFILLED) {
                     // nextnondbg exists, forb will always be mem or call not ret instr
-                    startloc = WLRes.JumpTraces[AI.first->getNextNonDebugInstruction()];
+                    startloc = WLRes.JumpTraces[AI.first->getNextNode()];
                     break;
                 }
             }
