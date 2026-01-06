@@ -31,7 +31,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
         CallStatusVal checkPreCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
         std::map<const Function*, std::vector<TagUnit>> Tags;
 
-        static std::string postCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
+        static std::string preCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
             switch (S.CurVal) {
                 case CallStatusVal::CALLED: return "CALLED";
                 case CallStatusVal::NOTCALLED: return "NOTCALLED";
@@ -53,7 +53,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
                     }
                 }
             }
-            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
+            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
         }
 };
 
