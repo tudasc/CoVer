@@ -224,7 +224,7 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
                 continue;
             }
             if (block < 0 || block >= trace_by_blocks.size()) {
-                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 2);
+                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
                 continue;
             }
             last_res = "";
