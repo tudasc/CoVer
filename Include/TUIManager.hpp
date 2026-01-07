@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <format>
 #include <fstream>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
@@ -17,7 +18,7 @@
 #include "ContractPassUtility.hpp"
 #include "ErrorMessage.h"
 
-#define UI_ANALYSISINFO_PAD_SIZE 15
+constexpr int UI_ANALYSISINFO_PAD_SIZE = 15;
 
 using namespace llvm;
 
@@ -48,7 +49,7 @@ namespace TUIManager {
     template<typename T>
     std::vector<TUIManager::TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>*,int> preds_select);
 
-    std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res);
+    std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, std::string last_res);
     int RenderMenu(std::vector<std::string> choices, std::string title);
     void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line = -1);
     void ShowLines(std::vector<ftxui::Element> lines, std::string title);
@@ -146,13 +147,9 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
     std::string last_res = "";
     while (true) {
         std::vector<TUIManager::TraceBlock<T>> trace_by_blocks = GetTraceList(traceDB, trace, infoToStr, sibling_select);
-        std::vector<ftxui::Element> full_trace;
+        std::vector<std::string> full_trace;
         for (int i = 0; i < trace_by_blocks.size(); i++) {
-            ftxui::Element trace_block_str = ftxui::hbox({
-                ftxui::text(std::to_string(i) + ": "),
-                ftxui::text(infoToStr(trace_by_blocks[i].first_entry->analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE),
-                ftxui::text(" -- " + trace_by_blocks[i].trace_list)
-            });
+            std::string trace_block_str = std::format("{:>3}: {:^{}} - {}", i, infoToStr(trace_by_blocks[i].first_entry->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, trace_by_blocks[i].trace_list);
             full_trace.push_back(trace_block_str);
         }
         std::string input = RenderTxtEntry(full_trace, "JumpTrace", last_res);

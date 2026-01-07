@@ -1,13 +1,16 @@
 #include "TUIManager.hpp"
 
+#include <algorithm>
+#include <cstddef>
 #include <fstream>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_base.hpp>
 #include <ftxui/component/component_options.hpp>
+#include <ftxui/component/event.hpp>
+#include <ftxui/component/mouse.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
-#include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include <string>
 #include <vector>
@@ -42,7 +45,7 @@ ftxui::ScreenInteractive screen = ftxui::ScreenInteractive::FullscreenPrimaryScr
 ftxui::Element getHeader(std::string cur_title) {
     ftxui::Element header = ftxui::vbox({
         ftxui::separator(),
-        ftxui::hbox({ftxui::text("CoVer (Interactive mode) | "), ftxui::text(cur_title), ftxui::filler()}),
+        ftxui::hbox({ftxui::text("CoVer (Interactive mode) "), ftxui::separator(), ftxui::text(" " + cur_title), ftxui::filler()}),
         ftxui::separator()
     });
     return header;
@@ -69,7 +72,7 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
     return *menu_options.selected;
 }
 
-std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res) {
+std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, std::string last_res) {
     std::string input_str;
     ftxui::InputOption input_options = {
         .content = &input_str,
@@ -79,21 +82,39 @@ std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title,
     };
     ftxui::Component input_comp = ftxui::Input(input_options);
     std::vector<ftxui::Element> full_lines;
-    for (ftxui::Element line : lines) {
-        full_lines.push_back(ftxui::xframe(line));
+    for (std::string line : lines) {
+        full_lines.push_back(ftxui::text(line));
     }
-    ftxui::Component render = ftxui::Renderer(
+    size_t offset = 7; // Number of lines taken by decorations, input, etc. excluding trace itself
+    size_t cur_focus = 0;
+    ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(
         input_comp, [&] {
            return ftxui::vbox({
             getHeader(title),
-            ftxui::yframe(ftxui::vbox(full_lines)),
+            ftxui::vbox(full_lines) | ftxui::focusPosition(0, cur_focus) | ftxui::vscroll_indicator | ftxui::yframe | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, screen.dimy() - offset),
             ftxui::separator(),
-            ftxui::filler(),
             ftxui::text(last_res),
             ftxui::hbox(ftxui::text(">>> "), input_comp->Render())
            });
         }
-    );
+    ), [&](ftxui::Event e) {
+        // Avoid "empty scrolling"
+        int lines_shown = screen.dimy() - offset; // Number of lines of the trace shown
+        size_t min_focus = (lines_shown / 2) - 1;
+        size_t max_focus = full_lines.size() - (lines_shown / 2) - 1;
+        cur_focus = std::clamp(cur_focus, min_focus, max_focus);
+
+        if (e == ftxui::Event::ArrowUp || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelUp)) {
+            cur_focus = std::max(min_focus, cur_focus - 1);
+            return true;
+        }
+        if (e == ftxui::Event::ArrowDown || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelDown)) {
+            cur_focus = std::min(max_focus, cur_focus + 1);
+            return true;
+        }
+        return false;
+    });
+    render->OnEvent(ftxui::Event()); // Trigger onEvent once to let cur_focus be computed
     screen.Loop(render);
     return *input_options.content;
 }
