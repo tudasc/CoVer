@@ -26,11 +26,8 @@ ftxui::Decorator FulfillmentColor(Fulfillment f) {
         case Fulfillment::FULFILLED: return ftxui::bgcolor(ftxui::Color::Green);
         case Fulfillment::UNKNOWN: return ftxui::bgcolor(ftxui::Color::Yellow);
         case Fulfillment::BROKEN: return ftxui::bgcolor(ftxui::Color::Red);
-
     }
 }
-
-constexpr int FILE_CONTEXT_SIZE = 5;
 
 std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
     switch (kind) {
@@ -41,9 +38,9 @@ std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
     }
 }
 
-ftxui::ScreenInteractive screen = ftxui::ScreenInteractive::FullscreenPrimaryScreen();
+static ftxui::ScreenInteractive screen = ftxui::ScreenInteractive::FullscreenPrimaryScreen();
 
-ftxui::Element getHeader(std::string cur_title) {
+static ftxui::Element getHeader(std::string cur_title) {
     ftxui::Element header = ftxui::vbox({
         ftxui::separator(),
         ftxui::hbox({ftxui::text("CoVer (Interactive mode) "), ftxui::separator(), ftxui::text(" " + cur_title), ftxui::filler()}),
@@ -52,12 +49,12 @@ ftxui::Element getHeader(std::string cur_title) {
     return header;
 }
 
-bool scrollableEventHdlr(ftxui::Event e, size_t num_lines, int offset, size_t* cur_focus) {
+static bool scrollableEventHdlr(ftxui::Event e, size_t num_lines, int offset, size_t* cur_focus) {
     // Avoid "empty scrolling"
     int lines_shown = screen.dimy() - offset; // Number of lines of the trace shown
     size_t min_focus = (lines_shown / 2) - 1;
     size_t max_focus = num_lines - (lines_shown / 2) - 1;
-    *cur_focus = std::clamp(*cur_focus, min_focus, max_focus);
+    *cur_focus = std::clamp(*cur_focus, min_focus, std::max(max_focus, min_focus));
 
     if (e == ftxui::Event::ArrowUp || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelUp)) {
         *cur_focus = std::max(min_focus, *cur_focus - 1);
