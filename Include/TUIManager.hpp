@@ -52,7 +52,7 @@ namespace TUIManager {
     std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, std::string last_res);
     int RenderMenu(std::vector<std::string> choices, std::string title);
     void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line = -1);
-    void ShowLines(std::vector<ftxui::Element> lines, std::string title);
+    void ShowLines(std::vector<ftxui::Element> lines, std::string title, int focus = 0);
 
     template<typename T>
     void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr);
