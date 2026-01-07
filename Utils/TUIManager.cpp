@@ -11,6 +11,7 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -51,6 +52,24 @@ ftxui::Element getHeader(std::string cur_title) {
     return header;
 }
 
+bool scrollableEventHdlr(ftxui::Event e, size_t num_lines, int offset, size_t* cur_focus) {
+    // Avoid "empty scrolling"
+    int lines_shown = screen.dimy() - offset; // Number of lines of the trace shown
+    size_t min_focus = (lines_shown / 2) - 1;
+    size_t max_focus = num_lines - (lines_shown / 2) - 1;
+    *cur_focus = std::clamp(*cur_focus, min_focus, max_focus);
+
+    if (e == ftxui::Event::ArrowUp || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelUp)) {
+        *cur_focus = std::max(min_focus, *cur_focus - 1);
+        return true;
+    }
+    if (e == ftxui::Event::ArrowDown || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelDown)) {
+        *cur_focus = std::min(max_focus, *cur_focus + 1);
+        return true;
+    }
+    return false;
+}
+
 int RenderMenu(std::vector<std::string> choices, std::string title) {
     int selected = 0;
     ftxui::MenuOption menu_options = {
@@ -87,6 +106,7 @@ std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, st
     }
     size_t offset = 7; // Number of lines taken by decorations, input, etc. excluding trace itself
     size_t cur_focus = 0;
+    std::function<bool(ftxui::Event)> scrollableEventHdlr_inst = std::bind(scrollableEventHdlr, std::placeholders::_1, full_lines.size(), offset, &cur_focus);
     ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(
         input_comp, [&] {
            return ftxui::vbox({
@@ -97,23 +117,7 @@ std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, st
             ftxui::hbox(ftxui::text(">>> "), input_comp->Render())
            });
         }
-    ), [&](ftxui::Event e) {
-        // Avoid "empty scrolling"
-        int lines_shown = screen.dimy() - offset; // Number of lines of the trace shown
-        size_t min_focus = (lines_shown / 2) - 1;
-        size_t max_focus = full_lines.size() - (lines_shown / 2) - 1;
-        cur_focus = std::clamp(cur_focus, min_focus, max_focus);
-
-        if (e == ftxui::Event::ArrowUp || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelUp)) {
-            cur_focus = std::max(min_focus, cur_focus - 1);
-            return true;
-        }
-        if (e == ftxui::Event::ArrowDown || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelDown)) {
-            cur_focus = std::min(max_focus, cur_focus + 1);
-            return true;
-        }
-        return false;
-    });
+    ), scrollableEventHdlr_inst);
     render->OnEvent(ftxui::Event()); // Trigger onEvent once to let cur_focus be computed
     screen.Loop(render);
     return *input_options.content;
@@ -215,7 +219,7 @@ void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus
     // Now, read lines of relevance
     int cur_line = 1;
     std::vector<ftxui::Element> lines;
-    
+
     while (filestream) {
         std::getline(filestream, out);
         ftxui::Element text_elem = ftxui::text(std::format("{:>4} | {}", cur_line, out));
@@ -224,42 +228,34 @@ void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus
         lines.push_back(text_elem);
         cur_line++;
     }
-    ShowLines(lines, "Source Preview");
+    ShowLines(lines, "Source Preview", focus_line);
 }
 
-void ShowLines(std::vector<ftxui::Element> lines, std::string title) {
+void ShowLines(std::vector<ftxui::Element> lines, std::string title, int focus) {
     int selected = 0;
-    int page_size = screen.dimy() - 8; // Size of output box
-    int pages = lines.size() / page_size;
-    std::map<int, std::vector<ftxui::Element>>  lines_per_page;
-    for (size_t i = 0; i <= pages; i++) {
-        auto end = std::min((i+1)*page_size, lines.size());
-        lines_per_page[i] = std::vector<ftxui::Element>(lines.begin() + i*page_size, lines.begin() + end);
-    }
     ftxui::MenuOption menu_options = {
-        .entries = std::vector<std::string>{"Exit view", "Previous Page", "Next Page"},
+        .entries = std::vector<std::string>{"Exit view"},
         .selected = &selected,
         .on_enter = [&]() { screen.Exit(); }
     };
     ftxui::Component menu = ftxui::Menu(menu_options);
-    int cur_page = 0;
-    do {
-        if (selected == 1) cur_page = std::max(0, cur_page - 1);
-        else if (selected == 2) cur_page = std::min(pages, cur_page + 1);
-        ftxui::Component render = ftxui::Renderer(
-            menu, [&] {
-            return ftxui::vbox({
-                getHeader(title + " (Page " + std::to_string(cur_page) + "/" + std::to_string(pages) + ")"),
-                ftxui::vbox(lines_per_page[cur_page]),
-                ftxui::filler(),
-                ftxui::separator(),
-                menu->Render(),
-                ftxui::separator()
-            });
-            }
-        );
-        screen.Loop(render);
-    } while (selected != 0);
+
+    int offset = 6;
+    size_t cur_focus = focus;
+    std::function<bool(ftxui::Event)> scrollableEventHdlr_inst = std::bind(scrollableEventHdlr, std::placeholders::_1, lines.size(), offset, &cur_focus);
+    ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(
+        menu, [&] {
+        return ftxui::vbox({
+            getHeader(title),
+            ftxui::vbox(lines) | ftxui::focusPosition(0, cur_focus) | ftxui::vscroll_indicator | ftxui::yframe | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, screen.dimy() - offset),
+            ftxui::filler(),
+            ftxui::separator(),
+            menu->Render(),
+            ftxui::separator()
+        });
+        }
+    ), scrollableEventHdlr_inst);
+    screen.Loop(render);
 }
 
 bool ShowMessageDetails(Json::Value msg) {
