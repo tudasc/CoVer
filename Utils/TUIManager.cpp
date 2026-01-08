@@ -174,7 +174,7 @@ bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, st
     }
 }
 
-void ShowContractDetails(ContractManagerAnalysis::Contract C) {
+bool ShowContractDetails(ContractManagerAnalysis::Contract C) {
     std::vector<std::string> menu_entries = {"Back to Listing"};
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
     for (int i = 0; i < C.Data.Pre.size(); i++) {
@@ -207,8 +207,8 @@ void ShowContractDetails(ContractManagerAnalysis::Contract C) {
         }
     );
     screen.Loop(render);
-    if (*menu_options.selected == 0) return;
-    ShowContractFormula(violated_formulas[*menu_options.selected-1], "Inspecting Contract Subformula for Function: " + C.F->getName().str());
+    if (*menu_options.selected == 0) return false;
+    return ShowContractFormula(violated_formulas[*menu_options.selected-1], "Inspecting Contract Subformula for Function: " + C.F->getName().str());
 }
 
 void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line) {
