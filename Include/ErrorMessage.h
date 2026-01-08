@@ -1,6 +1,6 @@
 #pragma once
 
-#include <list>
+#include <vector>
 #include <string>
 
 struct FileReference {
@@ -13,5 +13,5 @@ struct ErrorMessage {
     std::string type;
     std::string error_id;
     std::string text;
-    std::list<FileReference> references;
+    std::vector<FileReference> references;
 };
