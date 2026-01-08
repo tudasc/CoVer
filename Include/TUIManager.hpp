@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cassert>
+#include <filesystem>
 #include <format>
 #include <fstream>
 #include <ftxui/component/component.hpp>
@@ -85,7 +86,7 @@ std::vector<TUIManager::TraceBlock<T>> TUIManager::GetTraceList(TraceDB<T> trace
             end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc->getParent()->getParent(), false) + " (Function \"" + last_entry->loc->getParent()->getParent()->getName().str() + "\" entrypoint)";
         else
             end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc, false);
-        std::string full_line = traceKindToStr(cur_trace->kind) + " from " + start_loc + " to " + end_loc; // The same for all
+        std::string full_line = "From " + start_loc + " to " + end_loc; // The same for all
         if (preds != 0) full_line += " then " +  traceKindToStr(last_entry->kind) + (preds > 1 ? " [Viewing Child " + std::to_string(preds_select[last_entry]) + "/" + std::to_string(preds - 1) + "]" : "");
         trace_by_blocks.push_back({full_line, cur_trace, last_entry});
         //assert(preds != 1 && "buildTraceList returned #preds not eq 1!");
@@ -112,7 +113,7 @@ std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::functio
     if (translate) {
         if (!trace->loc->getDebugLoc()) return "";
         FileReference ref = ContractPassUtility::getFileReference(trace->loc);
-        return getSpecificLine(ref.file, ref.line);
+        return std::format("{:>15}:{:0>3} | {}", std::filesystem::path(ref.file).filename().string(), ref.line, getSpecificLine(ref.file, ref.line));
     } else {
         std::string out;
         raw_string_ostream strstream(out);
