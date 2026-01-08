@@ -217,7 +217,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 data.err.clear();
                 for (std::pair<const Instruction *, ReleaseStatus> x : WLRes.AnalysisInfo) {
                     if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) {
-                        std::function<void()> handleDebug_inst = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, C);
+                        ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, C);
                         WLRes.handleDebug = handleDebug_inst;
                         Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<ReleaseStatus>>(WLRes);
                         return ReleaseStatus::ERROR;

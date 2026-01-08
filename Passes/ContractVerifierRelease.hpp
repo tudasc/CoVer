@@ -33,7 +33,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
             }
         }
 
-        static void handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
+        static bool handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
             ContractPassUtility::JumpTraceEntry<ReleaseStatus>* startloc = nullptr;
             for (std::pair<const Instruction*, ReleaseStatus> AI : WLRes.AnalysisInfo) {
                 if (AI.second >= ReleaseStatus::ERROR_UNFULFILLED) {
@@ -42,7 +42,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
                     break;
                 }
             }
-            TUIManager::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, startloc, releaseStatusToStr);
+            return TUIManager::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, startloc, releaseStatusToStr);
         }
 };
 

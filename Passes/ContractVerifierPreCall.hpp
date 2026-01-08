@@ -40,7 +40,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
             }
         }
 
-        static void handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
+        static bool handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
             ContractPassUtility::JumpTraceEntry<CallStatus>* startloc;
             for (std::pair<const Instruction*, CallStatus> AI : WLRes.AnalysisInfo) {
                 if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
@@ -53,7 +53,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
                     }
                 }
             }
-            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
+            return TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
         }
 };
 

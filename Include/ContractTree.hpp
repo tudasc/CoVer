@@ -13,7 +13,12 @@
 #include <optional>
 #include <vector>
 
-namespace ContractPassUtility { struct GenericWLRes{std::function<void()> handleDebug = nullptr;}; }
+namespace ContractPassUtility {
+    using DebugHdlr = std::function<bool()>;
+    struct GenericWLRes{
+        DebugHdlr handleDebug = nullptr;
+    };
+}
 
 namespace ContractTree {
     enum struct OperationType { READ, WRITE, CALL, CALLTAG, RELEASE };

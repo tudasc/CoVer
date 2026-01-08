@@ -175,7 +175,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
             if (CB->getCalledFunction() == C.F) {
                 res = std::max(AI.second.CurVal, res);
                 if (AI.second.CurVal == CallStatusVal::ERROR) {
-                    std::function<void()> handleDebug_inst = std::bind(&ContractVerifierPreCallPass::handleDebug, WLRes, C);
+                    ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierPreCallPass::handleDebug, WLRes, C);
                     WLRes.handleDebug = handleDebug_inst;
                     Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<CallStatus>>(WLRes);
                 }

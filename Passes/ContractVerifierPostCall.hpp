@@ -32,7 +32,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
             }
         }
 
-        static void handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
+        static bool handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
             ContractPassUtility::JumpTraceEntry<CallStatus>* startloc = nullptr;
             for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
                 if (isa<ReturnInst>(x.first) && x.first->getParent()->getParent()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
@@ -40,7 +40,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
                     break;
                 }
             }
-            TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
+            return TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
         }
 };
 

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <format>
 #include <fstream>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_base.hpp>
@@ -18,6 +19,7 @@
 
 #include "../Passes/ContractManager.hpp"
 #include "ContractTree.hpp"
+#include "ErrorMessage.h"
 
 namespace TUIManager {
 
@@ -137,12 +139,12 @@ void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB) {
     }
 }
 
-void ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, std::string title) {
+bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, std::string title) {
     int selected = 0;
     std::vector<std::string> menu_entries = {"Exit debugger"};
     if (Form->Children.empty() && std::dynamic_pointer_cast<ContractExpression>(Form)->WorklistInfo) menu_entries.push_back("Inspect formula worklist analysis");
     for (std::shared_ptr<ContractFormula> subform : Form->Children) {
-        menu_entries.push_back("Inspect " + FulfillmentStr(*subform->Status) + " subformula: " + Form->ExprStr);
+        menu_entries.push_back("Inspect " + FulfillmentStr(*subform->Status) + " subformula: " + subform->ExprStr);
     }
     ftxui::MenuOption menu_options = {
         .entries = menu_entries,
@@ -163,12 +165,12 @@ void ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, st
         }
     );
     screen.Loop(render);
-    if (selected == 0) return;
+    if (selected == 0) return false;
     if (Form->Children.empty() && std::dynamic_pointer_cast<ContractExpression>(Form)->WorklistInfo) {
         std::shared_ptr<ContractExpression> Expr = std::dynamic_pointer_cast<ContractExpression>(Form);
-        Expr->WorklistInfo->handleDebug();
+        return Expr->WorklistInfo->handleDebug();
     } else {
-        ShowContractFormula(Form->Children[selected], title);
+        return ShowContractFormula(Form->Children[selected], title);
     }
 }
 
@@ -177,12 +179,12 @@ void ShowContractDetails(ContractManagerAnalysis::Contract C) {
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
     for (int i = 0; i < C.Data.Pre.size(); i++) {
         if (*C.Data.Pre[i]->Status != Fulfillment::BROKEN) continue;
-        menu_entries.push_back("Inspect " + FulfillmentStr(*C.Data.Pre[i]->Status) + " Precondition Subformula: " + C.Data.Pre[i]->ExprStr);
+        menu_entries.push_back(std::format("Inspect {} Precondition Subformula: {}", FulfillmentStr(*C.Data.Pre[i]->Status), C.Data.Pre[i]->ExprStr));
         violated_formulas.push_back(C.Data.Pre[i]);
     }
     for (int i = 0; i < C.Data.Post.size(); i++) {
         if (*C.Data.Post[i]->Status != Fulfillment::BROKEN) continue;
-        menu_entries.push_back("Inspect Postcondition Subformula: " + C.Data.Post[i]->ExprStr);
+        menu_entries.push_back(std::format("Inspect {} Postcondition Subformula: {}", FulfillmentStr(*C.Data.Post[i]->Status), C.Data.Post[i]->ExprStr));
         violated_formulas.push_back(C.Data.Post[i]);
     }
     int selected = 0;
@@ -255,14 +257,17 @@ void ShowLines(std::vector<ftxui::Element> lines, std::string title, int focus) 
     screen.Loop(render);
 }
 
-bool ShowMessageDetails(Json::Value msg) {
+bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form) {
     std::vector<std::string> choices;
     choices.push_back("Back to Listing");
     choices.push_back("Launch Debugger");
 
-    std::vector<ftxui::Element> ref_nodes;
-    for (Json::Value ref : msg["references"]) {
-        choices.push_back("View Reference: " + ref["file"].asString() + ":" + ref["line"].asString() + ":" + ref["column"].asString());
+    std::vector<FileReference> refs;
+    for (ErrorMessage const& err : *form->ErrorInfo) {
+        for (FileReference const& ref : err.references) {
+            choices.push_back(std::format("View Reference: {}:{}:{}", ref.file, ref.line, ref.column));
+            refs.push_back(ref);
+        }
     }
 
     int selected = 0;
@@ -276,11 +281,10 @@ bool ShowMessageDetails(Json::Value msg) {
     ftxui::Component render = ftxui::Renderer(
         menu, [&] {
            return ftxui::vbox({
-            getHeader("Report Details: " + msg["type"].asString()),
+            getHeader("Report Details: " + (*form->ErrorInfo)[0].text),
             ftxui::text("Full Report:"),
-            ftxui::text(msg["text"].asString()),
+            ftxui::text((*form->ErrorInfo)[0].text),
             ftxui::separator(),
-            ftxui::vbox(ref_nodes),
             menu->Render(),
             ftxui::separator()
            });
@@ -289,31 +293,38 @@ bool ShowMessageDetails(Json::Value msg) {
     screen.Loop(render);
     int choice = *menu_options.selected;
     while (choice > 1) { // File Reference Inspection
-        std::string file = msg["references"][choice-2]["file"].asString();
-        int line = msg["references"][choice-2]["line"].asInt();
-        ShowFile(file, {{line, ftxui::Color::Red}}, line);
+        int line = refs[choice-2].line;
+        ShowFile(refs[choice-2].file, {{line, ftxui::Color::Red}}, line);
         screen.Loop(render);
         choice = *menu_options.selected;
     }
     return choice == 1; // Debug or no debug
 }
 
-void ResultsScreen(Json::Value res, std::map<Json::Value, const Contract> JsonMsgToContr) {
-    std::vector<std::string> message_titles;
-    message_titles.push_back("Exit Tool");
-    for (Json::Value message : res["messages"]) {
-        std::string msg_type = message["type"].asString();
-        message_titles.push_back(msg_type);
+void ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
+    std::vector<std::string> violations;
+    std::vector<std::pair<std::shared_ptr<ContractFormula>, Contract>> formulas;
+    violations.push_back("Exit Tool");
+    for (Contract const& C : ViolatedContracts) {
+        for (std::shared_ptr<ContractFormula> const& form : C.Data.Pre) {
+            if (*form->Status != Fulfillment::FULFILLED) {
+                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? form->Message->text : form->ExprStr));
+                formulas.push_back({form, C});
+            }
+        }
+        for (std::shared_ptr<ContractFormula> const& form : C.Data.Post) {
+            if (*form->Status != Fulfillment::FULFILLED) {
+                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? form->Message->text : form->ExprStr));
+                formulas.push_back({form, C});
+            }
+        }
     }
     int choice = 0;
     do {
-        choice = RenderMenu(message_titles, "Reported Errors");
+        choice = RenderMenu(violations, "Reported Errors");
         if (choice != 0) {
-            bool debug = ShowMessageDetails(res["messages"][choice-1]);
-            if (debug) {
-                Contract C = JsonMsgToContr[res["messages"][choice-1]];
-                ShowContractDetails(C);
-            }
+            bool debug = ShowViolationDetails(formulas[choice-1].first);
+            if (debug) ShowContractDetails(formulas[choice-1].second);
         }
     } while (choice != 0);
 }

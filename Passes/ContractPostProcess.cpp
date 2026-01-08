@@ -59,7 +59,6 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const Co
                     j["references"].append(json_ref);
                 }
                 json_messages["messages"].append(j);
-                JsonMsgToContr.insert({j,C});
             }
         }
     }
@@ -89,6 +88,7 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     printMsg() << "--> Contract: " << C.ContractString << "\n";
 
     if (s > Fulfillment::FULFILLED) {
+        ViolatedContracts.push_back(C);
         outputSubformulaErrs("Precondition", C, reasons);
         outputSubformulaErrs("Postcondition", C, reasons);
     }
@@ -164,7 +164,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
     printMsg() << s.str();
 
-    if (isInteractive) TUIManager::ResultsScreen(json_messages, JsonMsgToContr);
+    if (isInteractive) TUIManager::ResultsScreen(ViolatedContracts);
 
     // Write json to file
     if (!ClPrintJsonReports.empty()) {
