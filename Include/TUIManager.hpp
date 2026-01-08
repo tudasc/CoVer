@@ -34,7 +34,7 @@ using Contract = llvm::ContractManagerAnalysis::Contract;
 
 namespace TUIManager {
     void StartMenu(ContractManagerAnalysis::ContractDatabase DB);
-    void ShowContractDetails(ContractManagerAnalysis::Contract C);
+    bool ShowContractDetails(ContractManagerAnalysis::Contract C);
     void ResultsScreen(std::vector<Contract> const& ViolatedContracts);
 
     template<typename T>
