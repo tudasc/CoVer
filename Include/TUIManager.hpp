@@ -11,8 +11,10 @@
 #include <ftxui/screen/color.hpp>
 #include <json/value.h>
 #include <llvm/IR/DebugLoc.h>
+#include <llvm/IR/Module.h>
 #include <llvm/Support/raw_ostream.h>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "../Passes/ContractManager.hpp"
@@ -35,7 +37,7 @@ using Contract = llvm::ContractManagerAnalysis::Contract;
 namespace TUIManager {
     void StartMenu(ContractManagerAnalysis::ContractDatabase DB);
     bool ShowContractDetails(ContractManagerAnalysis::Contract C);
-    void ResultsScreen(std::vector<Contract> const& ViolatedContracts);
+    bool ResultsScreen(std::vector<Contract> const& ViolatedContracts);
 
     template<typename T>
     bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr);
@@ -156,6 +158,10 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
         std::string input = RenderTxtEntry(full_trace, "JumpTrace", last_res);
         if (input == "exit" || input == "quit") return false;
         if (input == "reanalyse") {
+            const llvm::Module* M = trace->loc->getModule();
+            std::error_code rc;
+            llvm::raw_fd_stream reanalyse_file("CoVer_reanalyse.ll", rc);
+            M->print(reanalyse_file, nullptr);
             return true;
         }
         else if (input == "help") {
