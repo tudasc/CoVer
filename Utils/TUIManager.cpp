@@ -14,6 +14,7 @@
 #include <ftxui/screen/color.hpp>
 #include <functional>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -332,6 +333,22 @@ bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
         }
     } while (choice != 0);
     return false;
+}
+
+std::string verifyInputArgs(std::string cmd_name, std::string usage, std::string& input, std::vector<int>& args) {
+    if (input == cmd_name) return usage;
+    std::istringstream iss(input);
+    iss >> cmd_name;
+    try {
+        while (iss) {
+            int x;
+            iss >> x;
+            args.push_back(x);
+        }
+    } catch (...) {
+        return "Invalid syntax for " + cmd_name + " command. " + usage;
+    }
+    return "";
 }
 
 }
