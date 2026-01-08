@@ -61,6 +61,7 @@ namespace TUIManager {
     void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr);
 
     std::string traceKindToStr(TraceKind kind);
+    std::string verifyInputArgs(std::string cmd_name, std::string usage, std::string& input, std::vector<int>& args);
 }
 
 template<typename T>
@@ -125,28 +126,40 @@ std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::functio
 }
 
 template<typename T>
-void TUIManager::ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
-    std::vector<ftxui::Element> lines;
+std::vector<std::string> getBlockLines(TUIManager::TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
+    std::vector<std::string> lines;
     std::string last;
     for (JumpTraceEntry<T>* cur_trace = block.first_entry; cur_trace != block.last_entry; cur_trace = cur_trace->predecessors[0]) {
         std::string newline = getSourceLine(cur_trace, transToSource, infoToStr);
         if (newline.empty() || newline == last) continue;
-        lines.push_back(ftxui::hbox({ftxui::text(infoToStr(cur_trace->analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE), ftxui::text(" | " + newline)}));
+        lines.push_back(std::format("{:>{}} | {}", infoToStr(cur_trace->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, newline));
         last = newline;
     }
     // Print last
     std::string newline = getSourceLine(block.last_entry, transToSource, infoToStr);
     if (!newline.empty() && newline != last)
-        lines.push_back(ftxui::hbox({ftxui::text(infoToStr(block.last_entry->analysisInfo)) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, UI_ANALYSISINFO_PAD_SIZE), ftxui::text(" | " + newline)}));
+        lines.push_back(std::format("{:>{}} | {}", infoToStr(block.last_entry->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, newline));
+    return lines;
+}
+
+template<typename T>
+void TUIManager::ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
+    std::vector<std::string> lines = getBlockLines(block, transToSource, infoToStr);
+    std::vector<ftxui::Element> elems;
+    for (std::string line : lines) {
+        elems.push_back(ftxui::text(line));
+    }
+
     std::string title = "Block Preview";
     if (transToSource) title += ", Source Approx.";
     else title += ", LLVM IR";
-    ShowLines(lines, title);
+    ShowLines(elems, title);
 }
 
 template<typename T>
 bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
     std::map<JumpTraceEntry<T>*,int> sibling_select;
+    std::map<JumpTraceEntry<T>*,bool> expand_select;
     std::string last_res = "";
     while (true) {
         std::vector<TUIManager::TraceBlock<T>> trace_by_blocks = GetTraceList(traceDB, trace, infoToStr, sibling_select);
@@ -154,6 +167,10 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
         for (int i = 0; i < trace_by_blocks.size(); i++) {
             std::string trace_block_str = std::format("{:>3}: {:^{}} - {}", i, infoToStr(trace_by_blocks[i].first_entry->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, trace_by_blocks[i].trace_list);
             full_trace.push_back(trace_block_str);
+            if (expand_select.contains(trace_by_blocks[i].last_entry) && expand_select[trace_by_blocks[i].last_entry]) {
+                std::vector<std::string> block_lines = getBlockLines(trace_by_blocks[i], false, infoToStr);
+                full_trace.insert(full_trace.end(), block_lines.begin(), block_lines.end());
+            }
         }
         std::string input = RenderTxtEntry(full_trace, "JumpTrace", last_res);
         if (input == "exit" || input == "quit") return false;
@@ -175,29 +192,22 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
                 ftxui::text("        Show different predecessor blocks"),
                 ftxui::text("    view [source|ir] [block num]"),
                 ftxui::text("        Show instructions / approxmiate source and analysis information for block"),
+                ftxui::text("    expand [block num]"),
+                ftxui::text("        Show IR for block, and make available for annotation"),
+                ftxui::text("    collapse [block num]"),
+                ftxui::text("        Hide IR for block, making it unavailable for annotation"),
                 ftxui::text("    exit"),
                 ftxui::text("        Leave debugging interface"),
                 ftxui::text("    reanalyse"),
                 ftxui::text("        Re-run all analyses after adding instrumentation"),
             };
             ShowLines(lines, "Worklist Trace Help Menu");
-        } else if (input.starts_with("jump ")) {
-
         } else if (input.starts_with("child")) {
-            if (input == "child") {
-                last_res = "Usage: child [block num] [child num]";
-                continue;
-            }
-            std::string args = input.substr(6); // length of "child "
-            int block, child;
-            try {
-                block = std::stoi(args.substr(0, args.find(" ")));
-                args = args.substr(args.find(" "));
-                child = std::stoi(args);
-            } catch (...) {
-                last_res = "Invalid syntax for child select command. Usage: child [block num] [child num]";
-                continue;
-            }
+            std::vector<int> args;
+            last_res = verifyInputArgs("child", "Usage: child [block num] [child num]", input, args);
+            int block = args[0];
+            int child = args[1];
+            if (!last_res.empty()) continue;
             if (block < 0 || block >= trace_by_blocks.size() - 1) {
                 last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 2);
                 continue;
@@ -239,6 +249,28 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
             last_res = "";
             TraceBlock<T> selected_block = trace_by_blocks[block];
             ShowBlock(selected_block, showSource, infoToStr);
+        } else if (input.starts_with("expand")) {
+            std::vector<int> args;
+            last_res = verifyInputArgs("child", "Usage: child [block num] [child num]", input, args);
+            int block = args[0];
+            if (!last_res.empty()) continue;
+            if (block < 0 || block >= trace_by_blocks.size()) {
+                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
+                continue;
+            }
+            last_res = "";
+            expand_select[trace_by_blocks[block].last_entry] = true;
+        } else if (input.starts_with("collapse")) {
+            std::vector<int> args;
+            last_res = verifyInputArgs("child", "Usage: child [block num] [child num]", input, args);
+            int block = args[0];
+            if (!last_res.empty()) continue;
+            if (block < 0 || block >= trace_by_blocks.size()) {
+                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
+                continue;
+            }
+            last_res = "";
+            expand_select[trace_by_blocks[block].last_entry] = false;
         } else {
             last_res = "Unknown command: " + input;
         }
