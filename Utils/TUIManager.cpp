@@ -134,6 +134,7 @@ void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB) {
         }
         while (choice != 0) {
             choice = RenderMenu(contr_funcs, "Contract Listing (Read " + std::to_string(DB.Contracts.size()) + " Contracts)");
+            // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
             if (choice != 0) ShowContractDetails(DB.Contracts[choice-1]);
         }
     }
@@ -301,7 +302,7 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form) {
     return choice == 1; // Debug or no debug
 }
 
-void ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
+bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
     std::vector<std::string> violations;
     std::vector<std::pair<std::shared_ptr<ContractFormula>, Contract>> formulas;
     violations.push_back("Exit Tool");
@@ -324,9 +325,13 @@ void ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
         choice = RenderMenu(violations, "Reported Errors");
         if (choice != 0) {
             bool debug = ShowViolationDetails(formulas[choice-1].first);
-            if (debug) ShowContractDetails(formulas[choice-1].second);
+            if (debug) {
+                bool reanalyse = ShowContractDetails(formulas[choice-1].second);
+                if (reanalyse) return true;
+            }
         }
     } while (choice != 0);
+    return false;
 }
 
 }

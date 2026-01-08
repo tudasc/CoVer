@@ -313,7 +313,10 @@ int main(int argc, const char** argv) {
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
-    execSafe(DebuggerCoVerPlugin + " opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
+    do {
+        std::string target_file = std::filesystem::exists("CoVer_reanalyse.ll") ? "CoVer_reanalyse.ll" : tmpfile;
+        execSafe(DebuggerCoVerPlugin + "opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + target_file + " -o " + tmpfile + ".opt");
+    } while (std::filesystem::exists("CoVer_reanalyse.ll"));
     close(fd);
 
     // Finalize executable
