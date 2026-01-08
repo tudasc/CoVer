@@ -8,6 +8,7 @@
 #include <json/value.h>
 #include <fstream>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Analysis.h>
 #include <llvm/Support/Error.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/WithColor.h>
@@ -164,7 +165,10 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
     printMsg() << s.str();
 
-    if (isInteractive) TUIManager::ResultsScreen(ViolatedContracts);
+    if (isInteractive) {
+        bool reanalyse = TUIManager::ResultsScreen(ViolatedContracts);
+        if (!reanalyse) std::filesystem::remove("CoVer_reanalyse.ll");
+    }
 
     // Write json to file
     if (!ClPrintJsonReports.empty()) {
