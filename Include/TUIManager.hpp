@@ -35,7 +35,7 @@ using Contract = llvm::ContractManagerAnalysis::Contract;
 namespace TUIManager {
     void StartMenu(ContractManagerAnalysis::ContractDatabase DB);
     void ShowContractDetails(ContractManagerAnalysis::Contract C);
-    void ResultsScreen(Json::Value res, std::map<Json::Value, const Contract> JsonMsgToContr);
+    void ResultsScreen(std::vector<Contract> const& ViolatedContracts);
 
     template<typename T>
     bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr);
@@ -86,8 +86,8 @@ std::vector<TUIManager::TraceBlock<T>> TUIManager::GetTraceList(TraceDB<T> trace
             end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc->getParent()->getParent(), false) + " (Function \"" + last_entry->loc->getParent()->getParent()->getName().str() + "\" entrypoint)";
         else
             end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc, false);
-        std::string full_line = "From " + start_loc + " to " + end_loc; // The same for all
-        if (preds != 0) full_line += " then " +  traceKindToStr(last_entry->kind) + (preds > 1 ? " [Viewing Child " + std::to_string(preds_select[last_entry]) + "/" + std::to_string(preds - 1) + "]" : "");
+        std::string full_line = std::format("From {} to {}", start_loc, end_loc); // The same for all
+        if (preds != 0) full_line += std::format(" then {}", traceKindToStr(last_entry->kind)) + (preds > 1 ? std::format(" [Viewing Child {}/{}]", preds_select[last_entry], preds-1) : "");
         trace_by_blocks.push_back({full_line, cur_trace, last_entry});
         //assert(preds != 1 && "buildTraceList returned #preds not eq 1!");
         if (preds >= 1) {
@@ -155,7 +155,9 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
         }
         std::string input = RenderTxtEntry(full_trace, "JumpTrace", last_res);
         if (input == "exit" || input == "quit") return false;
-        if (input == "reanalyse") return true;
+        if (input == "reanalyse") {
+            return true;
+        }
         else if (input == "help") {
             // Show help
             std::vector<ftxui::Element> lines;

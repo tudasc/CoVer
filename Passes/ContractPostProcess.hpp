@@ -26,7 +26,7 @@ class ContractPostProcessingPass : public PassInfoMixin<ContractPostProcessingPa
         Json::Value json_messages;
         Json::FastWriter json_writer;
 
-        std::map<Json::Value, const ContractManagerAnalysis::Contract> JsonMsgToContr;
+        std::vector<ContractManagerAnalysis::Contract> ViolatedContracts;
 
         bool isInteractive;
 };
