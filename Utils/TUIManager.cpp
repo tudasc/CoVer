@@ -13,9 +13,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <functional>
-#include <ios>
 #include <memory>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -25,20 +23,21 @@
 
 namespace TUIManager {
 
+std::string getSpecificLine(std::string file, int line) {
+    std::ifstream filestream(file);
+    std::string out;
+    int cur_line = 0;
+    for (int i = 0; i < line; i++) {
+        std::getline(filestream, out);
+    }
+    return out;
+}
+
 ftxui::Decorator FulfillmentColor(Fulfillment f) {
     switch (f) {
         case Fulfillment::FULFILLED: return ftxui::bgcolor(ftxui::Color::Green);
         case Fulfillment::UNKNOWN: return ftxui::bgcolor(ftxui::Color::Yellow);
         case Fulfillment::BROKEN: return ftxui::bgcolor(ftxui::Color::Red);
-    }
-}
-
-std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
-    switch (kind) {
-        case ContractPassUtility::TraceKind::LINEAR: return "LINEAR";
-        case ContractPassUtility::TraceKind::BRANCH: return "BRANCH";
-        case ContractPassUtility::TraceKind::FUNCENTRY: return "FUNCENTRY";
-        case ContractPassUtility::TraceKind::FUNCEXIT: return "FUNCEXIT";
     }
 }
 
@@ -92,7 +91,7 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
     return *menu_options.selected;
 }
 
-std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, std::string last_res) {
+std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res) {
     std::string input_str;
     ftxui::InputOption input_options = {
         .content = &input_str,
@@ -101,18 +100,14 @@ std::string RenderTxtEntry(std::vector<std::string> lines, std::string title, st
         .on_enter = [&]() { screen.Exit(); }
     };
     ftxui::Component input_comp = ftxui::Input(input_options);
-    std::vector<ftxui::Element> full_lines;
-    for (std::string line : lines) {
-        full_lines.push_back(ftxui::text(line));
-    }
     size_t offset = 7; // Number of lines taken by decorations, input, etc. excluding trace itself
     size_t cur_focus = 0;
-    std::function<bool(ftxui::Event)> scrollableEventHdlr_inst = std::bind(scrollableEventHdlr, std::placeholders::_1, full_lines.size(), offset, &cur_focus);
+    std::function<bool(ftxui::Event)> scrollableEventHdlr_inst = std::bind(scrollableEventHdlr, std::placeholders::_1, lines.size(), offset, &cur_focus);
     ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(
         input_comp, [&] {
            return ftxui::vbox({
             getHeader(title),
-            ftxui::vbox(full_lines) | ftxui::focusPosition(0, cur_focus) | ftxui::vscroll_indicator | ftxui::yframe | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, screen.dimy() - offset),
+            ftxui::vbox(lines) | ftxui::focusPosition(0, cur_focus) | ftxui::vscroll_indicator | ftxui::yframe | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, screen.dimy() - offset),
             ftxui::separator(),
             ftxui::text(last_res),
             ftxui::hbox(ftxui::text(">>> "), input_comp->Render())
@@ -334,20 +329,6 @@ bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
         }
     } while (choice != 0);
     return false;
-}
-
-std::string verifyInputArgs(std::string const& usage, std::string const& input, std::vector<int>& args, int const& num_inputs) {
-    std::istringstream iss(input);
-    // Throw away first input, which is the command itself
-    iss.ignore(std::numeric_limits<std::streamsize>::max(), ' ');
-    while (iss && args.size() <= num_inputs) {
-        int x;
-        iss >> x;
-        if (!iss) break;
-        args.push_back(x);
-    }
-    if (args.size() != num_inputs)  return "Invalid syntax for command. " + usage;
-    return "";
 }
 
 }
