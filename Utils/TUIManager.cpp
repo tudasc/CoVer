@@ -13,6 +13,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <functional>
+#include <ios>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -335,19 +336,17 @@ bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
     return false;
 }
 
-std::string verifyInputArgs(std::string cmd_name, std::string usage, std::string& input, std::vector<int>& args) {
-    if (input == cmd_name) return usage;
+std::string verifyInputArgs(std::string const& usage, std::string const& input, std::vector<int>& args, int const& num_inputs) {
     std::istringstream iss(input);
-    iss >> cmd_name;
-    try {
-        while (iss) {
-            int x;
-            iss >> x;
-            args.push_back(x);
-        }
-    } catch (...) {
-        return "Invalid syntax for " + cmd_name + " command. " + usage;
+    // Throw away first input, which is the command itself
+    iss.ignore(std::numeric_limits<std::streamsize>::max(), ' ');
+    while (iss && args.size() <= num_inputs) {
+        int x;
+        iss >> x;
+        if (!iss) break;
+        args.push_back(x);
     }
+    if (args.size() != num_inputs)  return "Invalid syntax for command. " + usage;
     return "";
 }
 
