@@ -1,11 +1,15 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
+#include <format>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <string>
+#include <vector>
 #include "ContractPassUtility.hpp"
 #include "TUIManager.hpp"
 
@@ -26,8 +30,26 @@ struct TraceBlock {
     JumpTraceEntry<T>* last_entry;
 };
 
-std::string verifyInputArgs(std::string const& usage, std::string const& input, std::vector<int>& args, int const& num_inputs);
+struct CmdInfo {
+    std::string_view name;
+    std::string_view usage;
+    std::string_view helptext;
+    int num_params;
+};
+
+bool verifyInputArgs(std::string_view const& usage, std::string_view const& input, std::vector<std::string>& args, int const& num_inputs);
 std::string traceKindToStr(TraceKind kind);
+
+constexpr auto TraceCommands = std::to_array<CmdInfo>({
+    {"collapse",  "[block num]",             "Hide IR for block, making it unavailable for annotation", 1},
+    {"expand",    "[block num]",             "Show IR for block, and make available for annotation", 1},
+    {"child",     "[block num] [child num]", "Show different predecessor blocks", 2},
+    {"view",      "[source|ir] [block num]", "Present a preview of IR or a source code approximation of a block", 2},
+    {"reanalyse", "",                        "Re-run all analyses (e.g. after adding annotations)", 0},
+    {"exit",      "",                        "Exit the debugger", 0},
+    {"quit",      "",                        "Exit the debugger", 0},
+    {"help",      "",                        "Show this help text", 0},
+});
 
 template<typename T>
 std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::function<std::string(T)> infoToStr) {
@@ -132,6 +154,22 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             }
         }
         std::string input = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
+
+        // Verify input
+        auto used_cmd = std::find_if(TraceCommands.begin(), TraceCommands.end(), [&](CmdInfo const& cmd){
+            return input.starts_with(cmd.name);
+        });
+        if (used_cmd == TraceCommands.end()) {
+            last_res = "Unknown command: " + input;
+            continue;
+        }
+        std::vector<std::string> args;
+        if (!verifyInputArgs(used_cmd->name, input, args, used_cmd->num_params)) {
+            last_res = std::format("Invalid syntax. Usage: {} {}", used_cmd->name, used_cmd->usage);
+            continue;
+        }
+
+        // Execute command
         if (input == "exit" || input == "quit") return false;
         if (input == "reanalyse") {
             const llvm::Module* M = trace->loc->getModule();
@@ -147,26 +185,21 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
                 ftxui::text("Trace debug menu"),
                 ftxui::text(""),
                 ftxui::text("Commands:"),
-                ftxui::text("    child [block num] [child num]"),
-                ftxui::text("        Show different predecessor blocks"),
-                ftxui::text("    view [source|ir] [block num]"),
-                ftxui::text("        Show instructions / approxmiate source and analysis information for block"),
-                ftxui::text("    expand [block num]"),
-                ftxui::text("        Show IR for block, and make available for annotation"),
-                ftxui::text("    collapse [block num]"),
-                ftxui::text("        Hide IR for block, making it unavailable for annotation"),
-                ftxui::text("    exit"),
-                ftxui::text("        Leave debugging interface"),
-                ftxui::text("    reanalyse"),
-                ftxui::text("        Re-run all analyses after adding instrumentation"),
             };
+            for (CmdInfo const& cmd : TraceCommands) {
+                lines.push_back(ftxui::text(std::format("    {} {}", cmd.name, cmd.usage)));
+                lines.push_back(ftxui::text(std::format("        {}", cmd.helptext)));
+            }
             TUIManager::ShowLines(lines, "Worklist Trace Help Menu");
         } else if (input.starts_with("child")) {
-            std::vector<int> args;
-            last_res = verifyInputArgs("Usage: child [block num] [child num]", input, args, 2);
-            if (!last_res.empty()) continue;
-            int block = args[0];
-            int child = args[1];
+            int block, child;
+            try {
+                block = std::stoi(args[0]);
+                child = std::stoi(args[1]);
+            } catch (...) {
+                last_res = "Argument(s) are not numbers!";
+                continue;
+            }
             if (block < 0 || block >= trace_by_blocks.size() - 1) {
                 last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 2);
                 continue;
@@ -179,26 +212,15 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             last_res = "Switching child view for block " + std::to_string(block) + " to child " + std::to_string(child);
             sibling_select[selected_block.last_entry] = child;
         } else if (input.starts_with("view")) {
-            if (input == "view") {
-                last_res = "Usage: view [source|ir] [block num]";
-                continue;
-            }
-            std::string args = input.substr(5); // length of "view "
-            bool showSource = false;
-            if (args.starts_with("source")) {
-                showSource = true;
-                args = args.substr(6); // Length of "source"
-            } else if (args.starts_with("ir")) {
-                args = args.substr(2); // Length of "ir"
-            } else {
-                last_res = "Invalid syntax for view command.";
+            if (args[0] != "source" && args[0] != "ir") {
+                last_res = "Unknown source representation: " + args[0];
                 continue;
             }
             int block;
             try {
-                block = std::stoi(args);
+                block = std::stoi(args[1]);
             } catch (...) {
-                last_res = "Invalid syntax for view command.";
+                last_res = "Second Argument not a number!";
                 continue;
             }
             if (block < 0 || block >= trace_by_blocks.size()) {
@@ -207,12 +229,15 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             }
             last_res = "";
             TraceBlock<T> selected_block = trace_by_blocks[block];
-            ShowBlock(selected_block, showSource, infoToStr);
+            ShowBlock(selected_block, args[0] == "source", infoToStr);
         } else if (input.starts_with("expand")) {
-            std::vector<int> args;
-            last_res = verifyInputArgs("Usage: expand [block num]", input, args, 1);
-            if (!last_res.empty()) continue;
-            int block = args[0];
+            int block;
+            try {
+                block = std::stoi(args[0]);
+            } catch (...) {
+                last_res = "Argument is not a number!";
+                continue;
+            }
             if (block < 0 || block >= trace_by_blocks.size()) {
                 last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
                 continue;
@@ -220,10 +245,13 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             last_res = "Expanding block " + std::to_string(block);
             expand_select[trace_by_blocks[block].last_entry] = true;
         } else if (input.starts_with("collapse")) {
-            std::vector<int> args;
-            last_res = verifyInputArgs("Usage: collapse [block num]", input, args, 1);
-            if (!last_res.empty()) continue;
-            int block = args[0];
+            int block;
+            try {
+                block = std::stoi(args[0]);
+            } catch (...) {
+                last_res = "Argument is not a number!";
+                continue;
+            }
             if (block < 0 || block >= trace_by_blocks.size()) {
                 last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
                 continue;
