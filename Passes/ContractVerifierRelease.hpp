@@ -6,7 +6,7 @@
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 #include "ErrorMessage.h"
-#include "TUIManager.hpp"
+#include "TUITrace.hpp"
 
 namespace llvm {
 
@@ -42,7 +42,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
                     break;
                 }
             }
-            return TUIManager::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, startloc, releaseStatusToStr);
+            return TUITrace::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, startloc, releaseStatusToStr);
         }
 };
 

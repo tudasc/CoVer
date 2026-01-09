@@ -4,7 +4,7 @@
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 #include "ErrorMessage.h"
-#include "TUIManager.hpp"
+#include "TUITrace.hpp"
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
@@ -40,7 +40,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
                     break;
                 }
             }
-            return TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
+            return TUITrace::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
         }
 };
 

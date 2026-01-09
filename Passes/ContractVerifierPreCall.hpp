@@ -7,7 +7,7 @@
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
 #include <map>
-#include "TUIManager.hpp"
+#include "TUITrace.hpp"
 #include <set>
 #include <vector>
 
@@ -53,7 +53,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
                     }
                 }
             }
-            return TUIManager::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
+            return TUITrace::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
         }
 };
 
