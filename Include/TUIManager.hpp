@@ -61,7 +61,7 @@ namespace TUIManager {
     void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr);
 
     std::string traceKindToStr(TraceKind kind);
-    std::string verifyInputArgs(std::string cmd_name, std::string usage, std::string& input, std::vector<int>& args);
+    std::string verifyInputArgs(std::string const& usage, std::string const& input, std::vector<int>& args, int const& num_inputs);
 }
 
 template<typename T>
@@ -204,10 +204,10 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
             ShowLines(lines, "Worklist Trace Help Menu");
         } else if (input.starts_with("child")) {
             std::vector<int> args;
-            last_res = verifyInputArgs("child", "Usage: child [block num] [child num]", input, args);
+            last_res = verifyInputArgs("Usage: child [block num] [child num]", input, args, 2);
+            if (!last_res.empty()) continue;
             int block = args[0];
             int child = args[1];
-            if (!last_res.empty()) continue;
             if (block < 0 || block >= trace_by_blocks.size() - 1) {
                 last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 2);
                 continue;
@@ -251,25 +251,25 @@ bool TUIManager::ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::fu
             ShowBlock(selected_block, showSource, infoToStr);
         } else if (input.starts_with("expand")) {
             std::vector<int> args;
-            last_res = verifyInputArgs("child", "Usage: child [block num] [child num]", input, args);
-            int block = args[0];
+            last_res = verifyInputArgs("Usage: expand [block num]", input, args, 1);
             if (!last_res.empty()) continue;
+            int block = args[0];
             if (block < 0 || block >= trace_by_blocks.size()) {
                 last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
                 continue;
             }
-            last_res = "";
+            last_res = "Expanding block " + std::to_string(block);
             expand_select[trace_by_blocks[block].last_entry] = true;
         } else if (input.starts_with("collapse")) {
             std::vector<int> args;
-            last_res = verifyInputArgs("child", "Usage: child [block num] [child num]", input, args);
-            int block = args[0];
+            last_res = verifyInputArgs("Usage: collapse [block num]", input, args, 1);
             if (!last_res.empty()) continue;
+            int block = args[0];
             if (block < 0 || block >= trace_by_blocks.size()) {
                 last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
                 continue;
             }
-            last_res = "";
+            last_res = "Collapsing block " + std::to_string(block);
             expand_select[trace_by_blocks[block].last_entry] = false;
         } else {
             last_res = "Unknown command: " + input;
