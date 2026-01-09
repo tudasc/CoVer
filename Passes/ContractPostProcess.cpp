@@ -16,6 +16,7 @@
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <filesystem>
 #include <string>
 #include <system_error>
 #include <vector>

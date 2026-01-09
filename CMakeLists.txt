@@ -86,6 +86,7 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractPostProcess.cpp
   Utils/ContractPassUtility.cpp
   Utils/TUIManager.cpp
+  Utils/TUITrace.cpp
   Include/ContractPassUtility.hpp
 )
 
