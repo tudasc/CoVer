@@ -151,12 +151,12 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallP
 }
 
 ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation* cOP, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error) {
-    const Function* mainF = M.getFunction("main");
+    Function* mainF = M.getFunction("main");
     if (!mainF) {
         error = "Cannot find main function, cannot construct path to check precall!";
         return CallStatusVal::ERROR;
     }
-    const Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
+    Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
 
     IterTypePreCall data = { {}, {}, cOP->Function, C.F, cOP->Params, isTag, Tags };
     CallStatus init = { CallStatusVal::NOTCALLED, {}};

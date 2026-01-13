@@ -132,8 +132,8 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
     ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPostCallPass::transferPostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPostCallPass::mergePostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
 
-    for (const User* U : C.F->users()) {
-        if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+    for (User* U : C.F->users()) {
+        if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand() == C.F) {
                 data.callsite = CB;
                 ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transfer, merge, &data, CallStatus::NOTCALLED);

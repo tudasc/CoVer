@@ -8,6 +8,9 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Instructions.h>
+#include <llvm/Support/Casting.h>
 #include <string>
 #include <vector>
 #include "ContractPassUtility.hpp"
@@ -45,6 +48,7 @@ constexpr auto TraceCommands = std::to_array<CmdInfo>({
     {"expand",    "[block num]",             "Show IR for block, and make available for annotation", 1},
     {"child",     "[block num] [child num]", "Show different predecessor blocks", 2},
     {"view",      "[source|ir] [block num]", "Present a preview of IR or a source code approximation of a block", 2},
+    {"fp-target", "[block num] [instr num]", "Annotate possible function pointer target(s)", 2},
     {"reanalyse", "",                        "Re-run all analyses (e.g. after adding annotations)", 0},
     {"exit",      "",                        "Exit the debugger", 0},
     {"quit",      "",                        "Exit the debugger", 0},
@@ -258,6 +262,51 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             }
             last_res = "Collapsing block " + std::to_string(block);
             expand_select[trace_by_blocks[block].last_entry] = false;
+        } else if (input.starts_with("fp-target")) {
+            int block, instr;
+            try {
+                block = std::stoi(args[0]);
+                instr = std::stoi(args[1]);
+            } catch (...) {
+                last_res = "Argument(s) are not numbers!";
+                continue;
+            }
+            if (block < 0 || block >= trace_by_blocks.size()) {
+                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
+                continue;
+            }
+            std::vector<ftxui::Element> elem;
+            int count = 0;
+            JumpTraceEntry<T>* selected_trace = nullptr;
+            JumpTraceEntry<T>* cur_trace = trace_by_blocks[block].first_entry;
+            for (JumpTraceEntry<T>* cur_trace = trace_by_blocks[block].first_entry;; cur_trace = cur_trace->predecessors[0]) {
+                if (count == instr) {
+                    selected_trace = cur_trace;
+                    break;
+                }
+                if (cur_trace == trace_by_blocks[block].last_entry) break;
+                count++;
+            }
+            if (selected_trace == nullptr) {
+                last_res = "No such instruction!";
+                continue;
+            }
+            if (!isa<CallBase>(selected_trace->loc) || !dyn_cast<CallBase>(selected_trace->loc)->isIndirectCall()) {
+                last_res = "Instruction is not an indirect function call!";
+                continue;
+            }
+            std::vector<std::string> funcs;
+            Module* M = selected_trace->loc->getModule();
+            for (Function const& F : M->functions()) {
+                std::string funcname = F.getName().str();
+                if (funcname.starts_with("CoVer_")) continue;
+                funcs.push_back(funcname);
+            }
+            std::string selected_func = funcs[TUIManager::RenderMenu(funcs, "Select Function Target")];
+            FunctionCallee const& AnnotF = M->getOrInsertFunction("CoVer_FPAnnot", Type::getVoidTy(M->getContext()), PointerType::get(M->getContext(), 0));
+            CallInst* CI = CallInst::Create(AnnotF, {M->getFunction(selected_func)});
+            CI->insertBefore(selected_trace->loc->getIterator());
+            last_res = std::format("Added possible target \"{}\" to {}.{}", selected_func, block, instr);
         } else {
             last_res = "Unknown command: " + input;
         }
