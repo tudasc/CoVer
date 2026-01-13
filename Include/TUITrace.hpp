@@ -303,9 +303,7 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
                 funcs.push_back(funcname);
             }
             std::string selected_func = funcs[TUIManager::RenderMenu(funcs, "Select Function Target")];
-            FunctionCallee const& AnnotF = M->getOrInsertFunction("CoVer_FPAnnot", Type::getVoidTy(M->getContext()), PointerType::get(M->getContext(), 0));
-            CallInst* CI = CallInst::Create(AnnotF, {M->getFunction(selected_func)});
-            CI->insertBefore(selected_trace->loc->getIterator());
+            selected_trace->loc->addAnnotationMetadata(std::format("CoVer_AnnotFP|{}", selected_func));
             last_res = std::format("Added possible target \"{}\" to {}.{}", selected_func, block, instr);
         } else {
             last_res = "Unknown command: " + input;
