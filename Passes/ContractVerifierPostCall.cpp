@@ -129,8 +129,8 @@ std::pair<ContractVerifierPostCallPass::CallStatus,bool> mergePostCallStat(Contr
 ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error) {
     IterTypePostCall data = { {}, {}, cOP->Function, nullptr, cOP->Params, isTag, Tags };
 
-    for (const User* U : C.F->users()) {
-        if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+    for (User* U : C.F->users()) {
+        if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledFunction() == C.F) {
                 data.callsite = CB;
                 ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transferPostCallStat, mergePostCallStat, &data, CallStatus::NOTCALLED);

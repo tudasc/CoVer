@@ -38,21 +38,21 @@ namespace ContractPassUtility {
     template<typename T>
     struct JumpTraceEntry {
         JumpTraceEntry<T>() {}
-        JumpTraceEntry<T>(T ai, const Instruction* I, TraceKind k, std::vector<JumpTraceEntry<T>*> preds) : analysisInfo{ai}, loc{I}, kind{k}, predecessors{preds} {}
+        JumpTraceEntry<T>(T ai, Instruction* I, TraceKind k, std::vector<JumpTraceEntry<T>*> preds) : analysisInfo{ai}, loc{I}, kind{k}, predecessors{preds} {}
         T analysisInfo;
-        const Instruction* loc;
+        Instruction* loc;
         TraceKind kind;
         std::vector<JumpTraceEntry<T>*> predecessors;
         bool operator<(const JumpTraceEntry<T> other) const { return loc < other.loc; };
     };
     template<typename T>
-    struct TraceDB : std::shared_ptr<std::map<const Instruction*, JumpTraceEntry<T>>> {
-        TraceDB<T>() : std::shared_ptr<std::map<const Instruction*, JumpTraceEntry<T>>>(std::make_shared<std::map<const Instruction*, JumpTraceEntry<T>>>()) {}
-        JumpTraceEntry<T>* operator[](const Instruction* I) const { return &(**this)[I]; }
+    struct TraceDB : std::shared_ptr<std::map<Instruction*, JumpTraceEntry<T>>> {
+        TraceDB<T>() : std::shared_ptr<std::map<Instruction*, JumpTraceEntry<T>>>(std::make_shared<std::map<Instruction*, JumpTraceEntry<T>>>()) {}
+        JumpTraceEntry<T>* operator[](Instruction* I) const { return &(**this)[I]; }
     };
     template<typename T>
     struct WorklistResult : GenericWLRes {
-        std::map<const Instruction*, T> AnalysisInfo;
+        std::map<Instruction*, T> AnalysisInfo;
         TraceDB<T> JumpTraces;
         std::function<std::string(T)> AnalysisInfoToStr = nullptr;
     };
@@ -62,7 +62,7 @@ namespace ContractPassUtility {
     * Need Start param to make sure that the initialization of parameters does not count as operation
     */
     template <typename T>
-    WorklistResult<T> GenericWorklist(const Instruction* Start,  TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init);
+    WorklistResult<T> GenericWorklist(Instruction* Start,  TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init);
 
     /*
     * Get line number, or get a string representation of the location
@@ -91,13 +91,13 @@ namespace ContractPassUtility {
 
 template<typename T>
 struct WorklistEntry {
-    const Instruction* start;
+    Instruction* start;
     T initial;
-    std::stack<const CallBase*> stack;
+    std::stack<CallBase*> stack;
 };
 
 template<typename T>
-void updateJumpTrace(ContractPassUtility::TraceDB<T> trace, const Instruction* cur, const Instruction* prev, ContractPassUtility::TraceKind kind, T analysisInfo) {
+void updateJumpTrace(ContractPassUtility::TraceDB<T> trace, Instruction* cur, Instruction* prev, ContractPassUtility::TraceKind kind, T analysisInfo) {
     if (trace->contains(cur)) {
         if (std::find(trace[cur]->predecessors.begin(), trace[cur]->predecessors.end(), trace[prev]) == trace[cur]->predecessors.end())
             trace[cur]->predecessors.push_back(trace[prev]);
@@ -109,7 +109,7 @@ void updateJumpTrace(ContractPassUtility::TraceDB<T> trace, const Instruction* c
 }
 
 template <typename T>
-std::pair<T, bool> getMergeResult(std::map<const Instruction*, T>& AI, ContractPassUtility::TraceDB<T> trace, T prevInfo, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, const Instruction* cur, void* data) {
+std::pair<T, bool> getMergeResult(std::map<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> trace, T prevInfo, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, Instruction* cur, void* data) {
     bool resume = true;
     T info;
     if (!AI.contains(cur)) {
@@ -128,13 +128,13 @@ std::pair<T, bool> getMergeResult(std::map<const Instruction*, T>& AI, ContractP
  * Need Start param to make sure that the initialization of parameters does not count as operation
  */
 template <typename T>
-ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(const Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
+ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
     // Jumptrace
     TraceDB<T> jumptraces;
     updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
 
     // Analysis Info mapping
-    std::map<const Instruction*, T> postAccess;
+    std::map<Instruction*, T> postAccess;
 
     // Worklist
     std::queue<WorklistEntry<T>> todoList;
@@ -145,9 +145,9 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(cons
 
     // Start of worklist algorithm
     while (!todoList.empty()) {
-        const Instruction* cur = todoList.front().start;
+        Instruction* cur = todoList.front().start;
         T prevInfo = todoList.front().initial;
-        std::stack<const CallBase*> stack = todoList.front().stack;
+        std::stack<CallBase*> stack = todoList.front().stack;
 
         while (cur != nullptr) {
             // Add previous info depending on following conditions:
@@ -158,7 +158,7 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(cons
             if (!mergeRes.second) {
                 // Already visited and analysis does not wish to pursue further.
                 // Remove from worklist, or pop stack
-                const Instruction* tmpNext = nullptr;
+                Instruction* tmpNext = nullptr;
                 while (!tmpNext && !stack.empty()) {
                     tmpNext = stack.top()->getNextNonDebugInstruction();
                     stack.pop();
@@ -176,16 +176,16 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(cons
             // Check for branching / terminating instructions
             // Missing because not sure if needed / relevant / used / too little info / lazy:
             // CleanupReturnInst, CatchReturnInst, CatchSwitchInst, CallBrInst, ResumeInst, InvokeInst, IndirectBrInst
-            if (const BranchInst* BR = dyn_cast<BranchInst>(cur)) {
-                for (const BasicBlock* alt : BR->successors()) {
+            if (BranchInst* BR = dyn_cast<BranchInst>(cur)) {
+                for (BasicBlock* alt : BR->successors()) {
                     updateJumpTrace(jumptraces, &alt->front(), cur, TraceKind::BRANCH, postAccess[cur]);
                     todoList.push( {&alt->front(), postAccess[cur], stack} );
                 }
                 break;
             }
-            if (const SwitchInst* SI = dyn_cast<SwitchInst>(cur)) {
+            if (SwitchInst* SI = dyn_cast<SwitchInst>(cur)) {
                 for (int i = 0; i < SI->getNumSuccessors(); i++) {
-                    const BasicBlock* alt = SI->getSuccessor(i);
+                    BasicBlock* alt = SI->getSuccessor(i);
                     todoList.push( {&alt->front(), postAccess[cur], stack} );
                 }
             }
@@ -195,16 +195,16 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(cons
 
             // Check if function call: If it is, jump to function body
             // If not, continue with normal next instruction
-            const Instruction* next = nullptr;
+            Instruction* next = nullptr;
             TraceKind next_trace_entry;
-            if (const CallBase* CB = dyn_cast<CallBase>(cur)) {
+            if (CallBase* CB = dyn_cast<CallBase>(cur)) {
                 if (CB->getCalledFunction() && (OMPNames.contains(CB->getCalledFunction()->getName()) || !CB->getCalledFunction()->isDeclaration())) {
                     stack.push(CB);
                     if (!OMPNames.contains(CB->getCalledFunction()->getName())) {
                         next = &CB->getCalledFunction()->getEntryBlock().front();
                         next_trace_entry = TraceKind::FUNCENTRY;
                     } else {
-                        if (const Function* ompFunc = dyn_cast<Function>(CB->getArgOperand(OMPNames[CB->getCalledFunction()->getName()]))) {
+                        if (Function* ompFunc = dyn_cast<Function>(CB->getArgOperand(OMPNames[CB->getCalledFunction()->getName()]))) {
                             if (!ompFunc->isDeclaration())
                                 next = &ompFunc->getEntryBlock().front();
                         }
@@ -228,9 +228,9 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(cons
                 next_trace_entry = TraceKind::FUNCEXIT;
             } else if (!next) {
                 // Stack is empty. But if we started inside a function, context includes all callsites
-                const Function* func = cur->getParent()->getParent();
-                for (const User* U : func->users()) {
-                    if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                Function* func = cur->getParent()->getParent();
+                for (User* U : func->users()) {
+                    if (CallBase* CB = dyn_cast<CallBase>(U)) {
                         // Add callsite next to todoList
                         todoList.push( {CB->getNextNonDebugInstruction(), postAccess[cur], stack} );
                     }

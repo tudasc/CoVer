@@ -207,8 +207,8 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
 
     // Get all call sites of function, and run analysis
     ReleaseStatus result = ReleaseStatus::FORBIDDEN;
-    for (const User* U : C.F->users()) {
-        if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+    for (User* U : C.F->users()) {
+        if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledFunction() == C.F) {
                 data.callsite = CB;
                 ContractPassUtility::WorklistResult<ReleaseStatus> WLRes = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB->getNextNode(), transfer, merge, &data, ReleaseStatus::FORBIDDEN);

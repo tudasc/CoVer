@@ -19,13 +19,13 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         static inline llvm::AnalysisKey Key;
 
         struct Contract {
-            Function* F;
+            Function* const F;
             const StringRef ContractString;
             const ContractData Data;
             std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
         };
         struct LinearizedContract {
-            const Function* const F;
+            Function* const F;
             const StringRef ContractString;
             const std::vector<std::shared_ptr<ContractExpression>> Pre;
             const std::vector<std::shared_ptr<ContractExpression>> Post;

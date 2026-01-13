@@ -42,8 +42,8 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
 
         static bool handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
             ContractPassUtility::JumpTraceEntry<CallStatus>* startloc;
-            for (std::pair<const Instruction*, CallStatus> AI : WLRes.AnalysisInfo) {
-                if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
+            for (std::pair<Instruction*, CallStatus> AI : WLRes.AnalysisInfo) {
+                if (CallBase* CB = dyn_cast<CallBase>(AI.first)) {
                     if (CB->getCalledFunction() == C.F) {
                         if (AI.second.CurVal == CallStatusVal::ERROR) {
                             // nextnondbg exists, supplier is always a CB so next will at least be block terminator
