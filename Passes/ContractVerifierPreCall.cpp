@@ -140,14 +140,15 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallP
     std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
                  std::inserter(intersect, intersect.begin()));
     ContractVerifierPreCallPass::CallStatus cs;
-    cs.candidate = intersect;
+    cs.candidate = prev.candidate;
+    cs.candidate.insert(cur.candidate.begin(), cur.candidate.end());
     cs.CurVal = std::max(prev.CurVal, cur.CurVal);
     if ((prev.CurVal == CallStatusVal::CALLED || cur.CurVal == CallStatusVal::CALLED) &&
          cs.CurVal != CallStatusVal::CALLED) {
         IterTypePreCall* Data = static_cast<IterTypePreCall*>(data);
         Data->dbg.push_back("[ContractVerifierPreCall] NOTE: Successful fulfillment was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
     }
-    return { cs, cs.CurVal > prev.CurVal };
+    return { cs, cs.CurVal > cur.CurVal };
 }
 
 ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPreCall(const CallOperation* cOP, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error) {

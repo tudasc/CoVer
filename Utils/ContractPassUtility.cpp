@@ -25,6 +25,9 @@ using namespace llvm;
 // To only warn once if a CB is calling an unknown function
 static std::set<const CallBase*> UnknownCalledParam;
 
+// Map from function to indirect calls to it, as gotten by annotations
+std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
+
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
     if (!isa<Instruction>(Ip)) return {};
     std::set<std::pair<const Instruction*,int>> candidates = {{dyn_cast<Instruction>(Ip), 0}};
@@ -58,6 +61,15 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
                             if (CB->getCalledFunction()->getName() == "__kmpc_fork_call")
                                 offset = 1;
                             if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(i + offset))) {
+                                if (!candidatesConsidered.contains(cI)) {
+                                    candidates.insert({cI, --curSteps});   
+                                }
+                            }
+                        }
+                    }
+                    if (AnnotFuncReverse.contains(tmp)) {
+                        for (CallBase* indirectCall : AnnotFuncReverse[tmp]) {
+                            if (const Instruction* cI = dyn_cast<Instruction>(indirectCall->getArgOperand(i))) {
                                 if (!candidatesConsidered.contains(cI)) {
                                     candidates.insert({cI, --curSteps});   
                                 }
