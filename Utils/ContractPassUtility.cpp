@@ -41,6 +41,8 @@ const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
     }
     return b;
 }
+// Map from function to indirect calls to it, as gotten by annotations
+std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
 
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
     if (!isa<Instruction>(Ip)) return {};
@@ -75,6 +77,15 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
                             if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "__kmpc_fork_call")
                                 offset = 1;
                             if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(i + offset))) {
+                                if (!candidatesConsidered.contains(cI)) {
+                                    candidates.insert({cI, --curSteps});   
+                                }
+                            }
+                        }
+                    }
+                    if (AnnotFuncReverse.contains(tmp)) {
+                        for (CallBase* indirectCall : AnnotFuncReverse[tmp]) {
+                            if (const Instruction* cI = dyn_cast<Instruction>(indirectCall->getArgOperand(i))) {
                                 if (!candidatesConsidered.contains(cI)) {
                                     candidates.insert({cI, --curSteps});   
                                 }

@@ -10,14 +10,17 @@
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
+#include <llvm/IR/Module.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
 #include <memory>
 #include <queue>
+#include <set>
 #include <stack>
 #include <string>
 #include <optional>
@@ -35,6 +38,7 @@ namespace ContractPassUtility {
     using TransferFunction = std::function<T(T,const Instruction*,void*)>;
     template<typename T>
     using MergeFunction = std::function<std::pair<T,bool>(T,T,const Instruction*,void*)>;
+
     enum struct TraceKind { LINEAR, BRANCH, FUNCENTRY, FUNCEXIT };
     template<typename T>
     struct JumpTraceEntry {
@@ -94,6 +98,8 @@ namespace ContractPassUtility {
     */
     const Value* betterGetPointerOperand(const Value* V);
 };
+
+extern std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
 
 template<typename T>
 struct WorklistEntry {
@@ -219,6 +225,26 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
                             stack.pop();
                         }
                     }
+                } else {
+                    // Check for annotations
+                    if (MDNode* Existing = CB->getMetadata(LLVMContext::MD_annotation)) {
+                        MDTuple* Tuple = cast<MDTuple>(Existing);
+                        bool foundnext = false;
+                        for (MDOperand const& N : Tuple->operands()) {
+                            if (isa<MDString>(N.get()) && cast<MDString>(N.get())->getString().starts_with("CoVer_AnnotFP")) {
+                                // Funcptr annotation exists! Add to todoList. May be multiple so cant just set next
+                                std::string fp_annot = cast<MDString>(N.get())->getString().str();
+                                Function* target_func = CB->getModule()->getFunction(fp_annot.substr(fp_annot.find("|") + 1));
+                                std::stack<CallBase*> new_stack = stack;
+                                new_stack.push(CB);
+                                AnnotFuncReverse[target_func].insert(CB);
+                                updateJumpTrace(jumptraces, &target_func->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, postAccess[cur]);
+                                todoList.push( {&target_func->getEntryBlock().front(), postAccess[cur], new_stack} );
+                                foundnext = true;
+                            }
+                        }
+                        if (foundnext) goto next_iter;
+                    }
                 }
             }
             if (!next && !isa<ReturnInst>(cur)) {
@@ -251,6 +277,7 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
             // Know next instruction, continue loop or iter is null and we are done
             cur = next;
         }
+        next_iter:
         todoList.pop();
     }
     return {{}, postAccess, jumptraces, nullptr};

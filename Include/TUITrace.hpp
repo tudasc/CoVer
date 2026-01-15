@@ -11,6 +11,7 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/Support/Casting.h>
+#include <set>
 #include <string>
 #include <vector>
 #include "ContractPassUtility.hpp"
@@ -77,27 +78,37 @@ JumpTraceEntry<T>* getLinearTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, 
     do {
         siblings = cur_trace->predecessors.size();
         if (siblings == 1) cur_trace = cur_trace->predecessors[0];
-    } while  (siblings == 1 && cur_trace->kind != TraceKind::FUNCEXIT && cur_trace->kind != TraceKind::FUNCENTRY); // Always show funcentry
+    } while  (siblings == 1 && (cur_trace->kind != TraceKind::FUNCEXIT && cur_trace->kind != TraceKind::FUNCENTRY)); // Always show funcentry
     return cur_trace;
 }
 
 template<typename T>
 std::vector<TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>*,int> preds_select) {
     std::vector<TraceBlock<T>> trace_by_blocks;
+    std::map<JumpTraceEntry<T>*,int> trace_to_block;
     JumpTraceEntry<T>* cur_trace = trace;
     int preds = 0;
     do {
         JumpTraceEntry<T>* last_entry = getLinearTrace(traceDB, cur_trace, infoToStr, preds);
         std::string start_loc = ContractPassUtility::getInstrLocStr(cur_trace->loc, false);
+        if (start_loc == "UNKNOWN") start_loc = ContractPassUtility::getInstrLocStr(&*(--cur_trace->loc->getIterator()), false); // Second try
         std::string end_loc;
         if (&*last_entry->loc->getParent()->getParent()->getEntryBlock().begin() == last_entry->loc) // Function begin does not have dbg info, but header does
             end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc->getParent()->getParent(), false) + " (Function \"" + last_entry->loc->getParent()->getParent()->getName().str() + "\" entrypoint)";
         else
             end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc, false);
-        std::string full_line = std::format("From {} to {}", start_loc, end_loc); // The same for all
-        if (preds != 0) full_line += std::format(" then {}", traceKindToStr(last_entry->kind)) + (preds > 1 ? std::format(" [Viewing Child {}/{}]", preds_select[last_entry], preds-1) : "");
+        std::string full_line;
+        if (trace_to_block.contains(cur_trace)) {
+            // There is a loop or goto to earlier block
+            full_line = std::format("From {} to {} then jump to block {}", start_loc, end_loc, trace_to_block[cur_trace]);
+            preds = 0;
+        } else {
+            // Linear execution
+            full_line = std::format("From {} to {}", start_loc, end_loc); // The same for all
+            if (preds != 0) full_line += std::format(" then {}", traceKindToStr(last_entry->kind)) + (preds > 1 ? std::format(" [Viewing Child {}/{}]", preds_select[last_entry], preds-1) : "");
+        }
         trace_by_blocks.push_back({full_line, cur_trace, last_entry});
-        //assert(preds != 1 && "buildTraceList returned #preds not eq 1!");
+        trace_to_block.insert({cur_trace, trace_by_blocks.size()-1});
         if (preds >= 1) {
             if (!preds_select.contains(last_entry)) preds_select[last_entry] = 0;
             cur_trace = last_entry->predecessors[preds_select[last_entry]];
