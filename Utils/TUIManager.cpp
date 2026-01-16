@@ -13,7 +13,9 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <functional>
+#include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -89,6 +91,35 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
     );
     screen.Loop(render);
     return *menu_options.selected;
+}
+std::vector<std::string> RenderMultiMenu(std::vector<std::string> choices, std::string title, std::set<std::string> already_selected) {
+    std::map<std::string, bool> sel_choices;
+    std::vector<ftxui::Component> elems;
+    for (std::string choice : choices) {
+        sel_choices[choice] = already_selected.contains(choice);
+        elems.push_back(ftxui::Checkbox(choice, &sel_choices[choice]));
+    }
+    auto list = ftxui::Container::Vertical(elems);
+    ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(
+        list, [&] {
+           return ftxui::vbox({
+            getHeader(title),
+            list->Render() | ftxui::vscroll_indicator | ftxui::yframe | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, screen.dimy() - 6),
+            ftxui::separator(),
+            ftxui::text("Space to select, enter to confirm"),
+            ftxui::separator()
+           });
+        }
+    ), [&](ftxui::Event const& e) {
+        if (e == ftxui::Event::Return) {screen.Exit(); return true;}
+        return false;
+    });
+    screen.Loop(render);
+    std::vector<std::string> act_choices;
+    for (std::pair<std::string, bool> act_choice : sel_choices) {
+        if (act_choice.second) act_choices.push_back(act_choice.first);
+    }
+    return act_choices;
 }
 
 std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res) {

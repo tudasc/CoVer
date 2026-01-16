@@ -7,6 +7,7 @@
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Support/raw_ostream.h>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -25,6 +26,7 @@ namespace TUIManager {
 
     std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res);
     int RenderMenu(std::vector<std::string> choices, std::string title);
+    std::vector<std::string> RenderMultiMenu(std::vector<std::string> choices, std::string title, std::set<std::string> already_selected = {});
     void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line = -1);
     void ShowLines(std::vector<ftxui::Element> lines, std::string title, int focus = 0);
 

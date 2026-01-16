@@ -10,6 +10,8 @@
 #include <ftxui/screen/color.hpp>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/LLVMContext.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/Support/Casting.h>
 #include <set>
 #include <string>
@@ -309,13 +311,31 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             std::vector<std::string> funcs;
             Module* M = selected_trace->loc->getModule();
             for (Function const& F : M->functions()) {
-                std::string funcname = F.getName().str();
-                if (funcname.starts_with("CoVer_")) continue;
-                funcs.push_back(funcname);
+                funcs.push_back(F.getName().str());
             }
-            std::string selected_func = funcs[TUIManager::RenderMenu(funcs, "Select Function Target")];
-            selected_trace->loc->addAnnotationMetadata(std::format("CoVer_AnnotFP|{}", selected_func));
-            last_res = std::format("Added possible target \"{}\" to {}.{}", selected_func, block, instr);
+            std::vector<std::string> existing_annots = ContractPassUtility::getCoVerAnnotations(selected_trace->loc);
+            std::set<std::string> previously_selected;
+            for (std::string annot : existing_annots) {
+                if (annot.starts_with("CoVer_AnnotFP")) {
+                    previously_selected.insert(annot.substr(annot.find("|") + 1));
+                }
+            }
+            std::vector<std::string> sel_funcs = TUIManager::RenderMultiMenu(funcs, "Select Function Target", previously_selected);
+            selected_trace->loc->eraseMetadataIf([](uint kind, MDNode* node) {
+                if (kind != LLVMContext::MD_annotation) return false;
+                MDTuple* Tuple = cast<MDTuple>(node);
+                for (MDOperand const& N : Tuple->operands()) {
+                    if (isa<MDString>(N.get())) {
+                        std::string annot = cast<MDString>(N.get())->getString().str();
+                        if (annot.starts_with("CoVer_AnnotFP")) return true;
+                    }
+                }
+                return false;
+            });
+            for (std::string func : sel_funcs) {
+                selected_trace->loc->addAnnotationMetadata(std::format("CoVer_AnnotFP|{}", func));
+            }
+            last_res = std::format("Added {} possible target(s) to {}.{}", sel_funcs.size(), block, instr);
         } else {
             last_res = "Unknown command: " + input;
         }
