@@ -82,7 +82,7 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
         menu, [&] {
            return ftxui::vbox({
             getHeader(title),
-            ftxui::yframe(menu->Render()),
+            menu->Render() | ftxui::vscroll_indicator | ftxui::yframe | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, screen.dimy() - 5),
             ftxui::separator()
            });
         }
