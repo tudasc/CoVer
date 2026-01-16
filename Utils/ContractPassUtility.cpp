@@ -172,6 +172,20 @@ bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag
     }
 }
 
+std::vector<std::string> getCoVerAnnotations(Instruction* I) {
+    std::vector<std::string> cover_annots;
+    if (MDNode* Existing = I->getMetadata(LLVMContext::MD_annotation)) {
+        MDTuple* Tuple = cast<MDTuple>(Existing);
+        for (MDOperand const& N : Tuple->operands()) {
+            if (isa<MDString>(N.get())) {
+                std::string annot = cast<MDString>(N.get())->getString().str();
+                if (annot.starts_with("CoVer_Annot")) cover_annots.push_back(annot);
+            }
+        }
+    }
+    return cover_annots;
+}
+
 bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc) {
     const Value* source = contrP;
     const Value* target = callP;

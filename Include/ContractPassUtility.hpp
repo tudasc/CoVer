@@ -91,6 +91,11 @@ namespace ContractPassUtility {
     * Check if two calls match by contract definition
     */
     bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+
+    /*
+    * Get annotations used by CoVer
+    */
+    std::vector<std::string> getCoVerAnnotations(Instruction* I);
 };
 
 extern std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
@@ -221,24 +226,20 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
                     }
                 } else {
                     // Check for annotations
-                    if (MDNode* Existing = CB->getMetadata(LLVMContext::MD_annotation)) {
-                        MDTuple* Tuple = cast<MDTuple>(Existing);
-                        bool foundnext = false;
-                        for (MDOperand const& N : Tuple->operands()) {
-                            if (isa<MDString>(N.get()) && cast<MDString>(N.get())->getString().starts_with("CoVer_AnnotFP")) {
-                                // Funcptr annotation exists! Add to todoList. May be multiple so cant just set next
-                                std::string fp_annot = cast<MDString>(N.get())->getString().str();
-                                Function* target_func = CB->getModule()->getFunction(fp_annot.substr(fp_annot.find("|") + 1));
-                                std::stack<CallBase*> new_stack = stack;
-                                new_stack.push(CB);
-                                AnnotFuncReverse[target_func].insert(CB);
-                                updateJumpTrace(jumptraces, &target_func->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, postAccess[cur]);
-                                todoList.push( {&target_func->getEntryBlock().front(), postAccess[cur], new_stack} );
-                                foundnext = true;
-                            }
+                    std::vector<std::string> annots = getCoVerAnnotations(CB);
+                    bool foundnext = false;
+                    for (std::string annot : annots) {
+                        if (annot.starts_with("CoVer_AnnotFP")) {
+                            Function* target_func = CB->getModule()->getFunction(annot.substr(annot.find("|") + 1));
+                            std::stack<CallBase*> new_stack = stack;
+                            new_stack.push(CB);
+                            AnnotFuncReverse[target_func].insert(CB);
+                            updateJumpTrace(jumptraces, &target_func->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, postAccess[cur]);
+                            todoList.push( {&target_func->getEntryBlock().front(), postAccess[cur], new_stack} );
+                            foundnext = true;
                         }
-                        if (foundnext) goto next_iter;
                     }
+                    if (foundnext) goto next_iter;
                 }
             }
             if (!next) {
