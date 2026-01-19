@@ -64,6 +64,8 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* Ref_Type;
         Constant* Null_Const;
 
+        bool isC = true;
+
         std::vector<ErrorMessage> err_msgs;
         std::unordered_set<Instruction*> instrument_ignore;
 

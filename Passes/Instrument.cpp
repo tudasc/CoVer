@@ -3,6 +3,7 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <json/reader.h>
@@ -13,11 +14,13 @@
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
+#include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Demangle/Demangle.h>
@@ -46,6 +49,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
 
     Function* mainF = M.getFunction("main");
     if (!mainF) return PreservedAnalyses::all(); // No point
+    if (M.getFunction("_QQmain")) isC = false; // TODO: Switch to DISourceLanguage check once released
 
     // Read detJson
     Json::Value detJson;
@@ -407,18 +411,33 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
         params.push_back(ConstantInt::get(Int_Type, callsite->arg_size()));
         for (Use& U : callsite->args()) {
-            // Store size of data type
-            params.push_back(ConstantInt::get(Int_Type, callsite->getModule()->getDataLayout().getTypeStoreSizeInBits(U->getType())));
-
-            // Store actual parameter, making sure to cast if necessary
             Value* actual_param = U;
-            if (!U->getType()->isPointerTy()) {
-                if (U->getType()->isFloatingPointTy()) {
-                    actual_param = CastInst::Create(Instruction::CastOps::BitCast, actual_param, Int_Type, "", callsite->getIterator());
+
+            // Store size of data type
+            if (isC) {
+                params.push_back(ConstantInt::get(Int_Type, callsite->getModule()->getDataLayout().getTypeStoreSizeInBits(U->getType())));
+                // Store actual parameter, making sure to cast if necessary
+                if (!U->getType()->isPointerTy()) {
+                    if (U->getType()->isFloatingPointTy()) {
+                        actual_param = CastInst::Create(Instruction::CastOps::BitCast, actual_param, Int_Type, "", callsite->getIterator());
+                    }
+                    // Now, actual pointer cast
+                    actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Ptr_Type, "", callsite->getIterator());
                 }
-                // Now, actual pointer cast
-                actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Ptr_Type, "", callsite->getIterator());
-            }
+            } else {
+                if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
+                    DISubprogram const* Dbg = F->getSubprogram();
+                    uint64_t size = Dbg->getType()->getTypeArray()[callsite->getArgOperandNo(&U) + 1]->getSizeInBits(); // Offset by one, first is ret val
+                    params.push_back(ConstantInt::get(Int_Type, size == 0 || isa<GlobalValue>(actual_param) ? 64 : size));
+                    // On Fortran, deref always except if its a global
+                    if (!isa<GlobalValue>(actual_param)) {
+                        // Not a global, so have to check.   
+                        actual_param = new LoadInst(Ptr_Type, actual_param, "", callsite->getIterator());
+                    }
+                } else {
+                    errs() << "ERROR: Could not perform instrumentation! Unable to get debug info for function \"" << callsite->getCalledOperand()->getName() << "\"";
+                }
+            } 
             params.push_back(actual_param);
         }
         insertCBIfNeeded(callbackFuncCallee, params, callsite);
