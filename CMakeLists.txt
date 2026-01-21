@@ -127,6 +127,7 @@ install(
     Include/ContractTree.hpp
     Include/Contracts.h
     Include/DynamicAnalysis.h
+    Include/Contracts.F90
     Passes/ContractManager.hpp
   DESTINATION include
   PERMISSIONS
@@ -211,11 +212,13 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   install(TARGETS ${WRAPPER_NAME})
 endfunction()
 
-set(C_HEADER_FILES mpi_contracts.h)
-if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
-  set(C_HEADER_FILES mpi_contracts.h;shmem_contracts.h)
-endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+if (MPI_C_FOUND)
+  set(C_HEADER_FILES mpi_contracts.h)
+  if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+    set(C_HEADER_FILES mpi_contracts.h;shmem_contracts.h)
+  endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+endif (MPI_C_FOUND)
 
 create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "${C_HEADER_FILES}" "")
 create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "${C_HEADER_FILES}" "")
-create_compile_wrapper("flangContracts" "mpif90" ".*(\\\\.f90|\\\\.F90)$" "" "mpi_contracts.f90;mpi_contracts_f08ts.f90")
+create_compile_wrapper("flangContracts" "mpif90" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08ts.f90")

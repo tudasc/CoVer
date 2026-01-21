@@ -318,15 +318,6 @@ boilerplate_header_fort = f"""
 ! Instead of modifying this file, consider modifying the generation script
 ! Identifier: {ver_identifier}
 
-module contract_helper
-    interface
-        subroutine Declare_Contract(funcPtr, contrString)
-            procedure() :: funcPtr
-            character(len=*), intent(in) :: contrString
-        end subroutine
-    end interface
-end module
-
 subroutine CONTRACT_DEFINITIONS_FORT_@RANDOM_UNIQUE@
     use contract_helper
 """
