@@ -368,7 +368,7 @@ def create_f08_contract(func: str, contract: str, support_ts: bool):
         suffix = "_f08ts" if support_ts and has_buffer(func_callop) else "_f08"
         contract_str_fort_f08 = re.sub("call!\\(([A-z_0-9]+)\\)", r"call!(\1" + suffix + ")", contract)
     contract_func_suffix = "_f08ts" if has_buffer(func) and support_ts else "_f08"
-    return f"    call Declare_Contract({func}{contract_func_suffix}, \"CONTRACT{{{contract_str_fort_f08}}}\")\n"
+    return f"    call Declare_Contract({func}{contract_func_suffix}, \"{contract_str_fort_f08}\")\n"
 
 for func, contrs in function_contracts.items():
     if not contrs["PRE"] and not contrs["POST"] and not contrs["TAGS"]:
@@ -384,7 +384,7 @@ for func, contrs in function_contracts.items():
     if func in exclude_fortran or "c2f" in func or "f2c" in func or "f082c" in func or "c2f08" in func or func.endswith("_c"): continue # Only defined for C
     # Now: Fortran
     contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "").replace("*", "").replace("&", "").replace("read!(", "read!(*").replace("write!(", "write!(*")
-    header_output_fort += "    call Declare_Contract(" + func + ", \"CONTRACT{" + contract_str_fort + "}\")\n"
+    header_output_fort += "    call Declare_Contract(" + func + ", \"" + contract_str_fort + "\")\n"
     # Fortran f08(ts)
     header_output_fort_f08 += create_f08_contract(func, contract_str_fort, False)
     header_output_fort_f08ts += create_f08_contract(func, contract_str_fort, True)

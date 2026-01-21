@@ -7,6 +7,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "ContractTree.hpp"
@@ -21,13 +22,13 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
 
         struct Contract {
             Function* F;
-            const StringRef ContractString;
+            const std::string ContractString;
             const ContractData Data;
             std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
         };
         struct LinearizedContract {
             Function* F;
-            const StringRef ContractString;
+            const std::string ContractString;
             const std::vector<std::shared_ptr<ContractExpression>> Pre;
             const std::vector<std::shared_ptr<ContractExpression>> Post;
             std::shared_ptr<std::vector<std::string>> DebugInfo;
@@ -53,7 +54,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         void extractFromAnnotations(const Module& M); // C/C++ Attributes
         void extractFromFunction(Module& M); // Fortran Workaround
 
-        void addContract(StringRef contract, Function* F);
+        void addContract(std::string contract, Function* F);
 };
 
 } // namespace llvm

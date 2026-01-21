@@ -17,6 +17,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <memory>
 
+#include <string>
 #include <vector>
 #include "../LangCode/ContractDataExtractor.hpp"
 #include "ContractTree.hpp"
@@ -70,7 +71,7 @@ void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
         ConstantStruct *ANN = dyn_cast<ConstantStruct>(annUse);
         StringRef ANNStr = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(1))->getInitializer())->getAsCString();
         Function* F =  dyn_cast<Function>(ANN->getOperand(0));
-        addContract(ANNStr, F);
+        addContract(ANNStr.str(), F);
     }
 }
 
@@ -88,7 +89,9 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                     // Only care about this intrinsic
                     #warning TODO probably should figure out a less hacky way.
                     if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64" && CB->getCalledFunction()->getName() != "llvm.memcpy.p0.p0.i64") continue;
-                    StringRef CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString();
+                    // Add CONTRACT { ... } brace. Its explicitly needed for C(++) to make sure we are not parsing irrelevant stuff,
+                    // but for fortran its already implicit in declare_contract, making it superfluous
+                    std::string CallStr = "CONTRACT { " + ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString().str() + " }";
                     // Call is from memmove -> insertvalue -> extractvalue -> funccall. on -O0, and memcpy -> funccall on -O1 and above
                     const CallBase* ContrCall = (CallBase*)(isa<CallBase>(*CB->getArgOperand(0)->user_begin()) ? *CB->getArgOperand(0)->user_begin() : *CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin());
                     if (ContrCall->getCalledOperand()->getName() == "declare_contract_") {
@@ -117,9 +120,8 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
         F->eraseFromParent();
 }
 
-void ContractManagerAnalysis::addContract(StringRef contract, Function* F) {
-
-    std::optional<ContractData> Data = getContractData(contract.str());
+void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
+    std::optional<ContractData> Data = getContractData(contract);
     if (!Data) return;
     if (IS_DEBUG) errs() << "Found contract for function " << F->getName() << " with content: " << contract << "\n";
 
