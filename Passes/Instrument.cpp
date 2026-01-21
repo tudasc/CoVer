@@ -407,11 +407,14 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         }
     }
     for (CallBase* callsite : callsites) {
+        int skipnum = 0;
         std::vector<Value*> params;
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
         params.push_back(ConstantInt::get(Int_Type, callsite->arg_size()));
-        for (Use& U : callsite->args()) {
+        for (Use const& U : callsite->args()) {
             Value* actual_param = U;
+            int const cur_argno = callsite->getArgOperandNo(&U);
+            if (cur_argno >= callsite->arg_size() - skipnum) break;
 
             // Store size of data type
             if (isC) {
@@ -427,7 +430,8 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             } else {
                 if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
                     DISubprogram const* Dbg = F->getSubprogram();
-                    uint64_t size = Dbg->getType()->getTypeArray()[callsite->getArgOperandNo(&U) + 1]->getSizeInBits(); // Offset by one, first is ret val
+                    if (checkIsStrParam(U)) skipnum++;
+                    uint64_t size = Dbg->getType()->getTypeArray()[cur_argno + 1]->getSizeInBits(); // Offset by one, first is ret val
                     params.push_back(ConstantInt::get(Int_Type, size == 0 || isa<GlobalValue>(actual_param) ? 64 : size));
                     // On Fortran, deref always except if its a global
                     if (!isa<GlobalValue>(actual_param)) {
@@ -437,7 +441,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                 } else {
                     errs() << "ERROR: Could not perform instrumentation! Unable to get debug info for function \"" << callsite->getCalledOperand()->getName() << "\"";
                 }
-            } 
+            }
             params.push_back(actual_param);
         }
         insertCBIfNeeded(callbackFuncCallee, params, callsite);
@@ -457,6 +461,29 @@ bool InstrumentPass::isRelevant(Instruction const* I) const {
     FileReference f = ContractPassUtility::getFileReference(I);
     for (ErrorMessage const& msg : err_msgs) {
         for (FileReference const& ref : msg.references) if (ref == f) return true;
+    }
+    return false;
+}
+
+bool InstrumentPass::checkIsStrParam(Value const* V) {
+    // We want to check if I is a string param. If so, instrumentation should omit the string size arg
+    // Lowered FIR does not make this easy.
+    // If its a str var, its just some global, then the str size appended as another (fake) param
+    // Otherwise, its "fun" with extract and insert value insts.
+    // Need to use a heuristic approach to check
+    if (ExtractValueInst const* EV = dyn_cast<ExtractValueInst>(V)) {
+        // String operand extract...
+        // Also, check if its operand 0 (1 would be str len)
+        if (EV->getNumIndices() != 1 || EV->getIndices()[0] != 0) return false;
+        if (InsertValueInst const* IV = dyn_cast<InsertValueInst>(EV->getAggregateOperand())) {
+            // Insertion of size...
+            if (InsertValueInst const* IV2 = dyn_cast<InsertValueInst>(IV->getAggregateOperand())) {
+                // Insertion of str... seems legit
+                // Final Check: Struct of the type we expect
+                StructType const* T = dyn_cast<StructType>(IV2->getType());
+                return T->getElementType(0)->isPointerTy() && T->getElementType(1)->isIntegerTy(64);
+            }
+        }
     }
     return false;
 }

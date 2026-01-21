@@ -64,6 +64,10 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* Ref_Type;
         Constant* Null_Const;
 
+        // Helpers
+        bool checkIsStrParam(Value const* I);
+
+        // Misc
         bool isC = true;
 
         std::vector<ErrorMessage> err_msgs;
