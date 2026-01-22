@@ -418,7 +418,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
 
             // Store size of data type
             if (isC) {
-                params.push_back(ConstantInt::get(Int_Type, callsite->getModule()->getDataLayout().getTypeStoreSizeInBits(U->getType())));
+                params.push_back(ConstantInt::get(Int_Type, callsite->getDataLayout().getTypeStoreSizeInBits(U->getType())));
                 // Store actual parameter, making sure to cast if necessary
                 if (!U->getType()->isPointerTy()) {
                     if (U->getType()->isFloatingPointTy()) {
