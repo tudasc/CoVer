@@ -481,9 +481,15 @@ bool InstrumentPass::checkIsStrParam(Value const* V) {
                 // Insertion of str... seems legit
                 // Final Check: Struct of the type we expect
                 StructType const* T = dyn_cast<StructType>(IV2->getType());
-                return T->getElementType(0)->isPointerTy() && T->getElementType(1)->isIntegerTy(64);
+                return T && T->getElementType(0)->isPointerTy() && T->getElementType(1)->isIntegerTy(64);
             }
         }
+    }
+
+    // Now, check if its a global string
+    if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
+        Constant const* Init = GV->getInitializer();
+        return Init && isa<ArrayType>(Init->getType()) && dyn_cast<ArrayType>(Init->getType())->getElementType() == IntegerType::get(V->getContext(), 8);
     }
     return false;
 }
