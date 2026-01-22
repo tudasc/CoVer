@@ -141,12 +141,11 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             bitcode_files += " " + arg;
         } else if (arg == "-MT") {
             rem_args_compile += " " + arg + " " + all_args[++i];
+        } else if (arg.starts_with("-O")) {
+            opt_level = arg;
         } else {
             rem_args_link += " " + arg;
             rem_args_compile += " " + arg;
-            if (arg.starts_with("-O")) {
-                opt_level = " " + arg;
-            }
         }
     }
 
@@ -244,11 +243,14 @@ int main(int argc, const char** argv) {
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
+    if (!opt_level.empty()) {
+        passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
+    }
     execSafe("opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
 
     // Finalize executable
-    execSafe("llc -filetype=obj --relocation-model=pic" + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
+    execSafe("llc -filetype=obj --relocation-model=pic " + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
     execSafe(wrap_target + " -fPIC -lm -ldl -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o" + dest_arg);
     return 0;
 }
