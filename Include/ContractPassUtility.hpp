@@ -168,7 +168,7 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                 }
             }
             if (!iter && !isa<ReturnInst>(next)) {
-                iter = next->getNextNonDebugInstruction();
+                iter = next->getNextNode();
             }
 
             // Check if returning from function
@@ -182,7 +182,7 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                 for (const User* U : func->users()) {
                     if (const CallBase* CB = dyn_cast<CallBase>(U)) {
                         // Add callsite next to todoList
-                        todoList.push_back( {CB->getNextNonDebugInstruction(), postAccess[next], stack} );
+                        todoList.push_back( {CB->getNextNode(), postAccess[next], stack} );
                     }
                 }
             }
