@@ -181,7 +181,6 @@ Module* getModule(Value const* V) {
 bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM) {
     const Value* source = contrP;
     const Value* target = callP;
-    std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
     int diff = 0;
 
     constexpr bool use_dsa = true;
@@ -222,6 +221,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     if (source == target) return true;
 
     if (use_dsa) {
+        std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
         if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
             DSNodeHandle sourceNode = steens->getNodeForValue(source);
             DSNodeHandle targetNode = steens->getNodeForValue(target);
