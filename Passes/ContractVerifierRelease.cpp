@@ -204,7 +204,6 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     ContractPassUtility::MergeFunction<ReleaseStatus> merge = std::bind(&ContractVerifierReleasePass::mergeRelease, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
 
     // Get all call sites of function, and run analysis
-    ReleaseStatus result = ReleaseStatus::FORBIDDEN;
     for (const User* U : C.F->users()) {
         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand() == C.F) {

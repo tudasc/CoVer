@@ -89,17 +89,20 @@ add_llvm_pass_plugin(CoVerPlugin
 target_include_directories(CoVerPlugin
   PUBLIC
     Include/
-    Externals/llvm-dsa/include
+    Externals/SVF/svf/include/
+    Externals/SVF/svf-llvm/include/
+    ${CMAKE_CURRENT_BINARY_DIR}/Externals/SVF/include
 )
 
-add_subdirectory(Externals/llvm-dsa)
+add_subdirectory(Externals/SVF)
 
 ##
 ## Runtime Dependencies
 ##
 
 target_link_libraries(ContractLanguage PRIVATE "${ANTLR4_LIBRARY}")
-target_link_libraries(CoVerPlugin PRIVATE ContractLanguage)
+target_link_libraries(CoVerPlugin PRIVATE ContractLanguage SvfLLVM)
+add_compile_definitions(SVF_EXTBC_PATH="${CMAKE_INSTALL_PREFIX}/lib/extapi.bc")
 
 # Attempt finding system version of JsonCpp
 find_package(PkgConfig)

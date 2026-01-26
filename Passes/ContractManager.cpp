@@ -23,6 +23,10 @@
 #include "ContractTree.hpp"
 
 #include "ContractPassUtility.hpp"
+#include "MemoryModel/PointerAnalysis.h"
+#include "Util/ExtAPI.h"
+
+#include <SVF-LLVM/LLVMModule.h>
 
 using namespace llvm;
 
@@ -30,17 +34,6 @@ static cl::opt<bool> ClMultiReports(
     "cover-allow-multireports", cl::init(false),
     cl::desc("Allow multiple error reports of the same contract"),
     cl::Hidden);
-
-static std::optional<std::string> getFuncName(CallBase* FuncCall) {
-    if (!FuncCall->getCalledFunction()) {
-        if (!FuncCall->getCalledOperand()->getName().empty()) {
-            return FuncCall->getCalledOperand()->getName().data();
-        } else {
-            return std::nullopt;
-        }
-    }
-    return FuncCall->getCalledFunction()->getName().data();
-}
 
 ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
     curDatabase.start_time = std::chrono::system_clock::now();
@@ -54,6 +47,9 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     std::stringstream s;
     s << "CoVer: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";
     errs() << s.str();
+
+    SVF::ExtAPI::setExtBcPath(SVF_EXTBC_PATH);
+    SVF::LLVMModuleSet::buildSVFModule(M);
 
     return curDatabase;
 }
@@ -87,7 +83,7 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
             for (const Instruction& I : BB) {
                 if (const CallBase* CB = dyn_cast<CallBase>(&I)) {
                     // Only care about this intrinsic
-                    #warning TODO probably should figure out a less hacky way.
+                    //#warning TODO probably should figure out a less hacky way.
                     if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64" && CB->getCalledFunction()->getName() != "llvm.memcpy.p0.p0.i64") continue;
                     // Add CONTRACT { ... } brace. Its explicitly needed for C(++) to make sure we are not parsing irrelevant stuff,
                     // but for fortran its already implicit in declare_contract, making it superfluous
@@ -133,12 +129,12 @@ void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
 
     // Create and add Linearized Contract
     std::vector<std::shared_ptr<ContractExpression>> PreLin;
-    for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Pre) {
+    for (std::shared_ptr<ContractFormula> const& contrF : newCtr.Data.Pre) {
         std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
         PreLin.insert( PreLin.end(), contrFLin.begin(), contrFLin.end() );
     }
     std::vector<std::shared_ptr<ContractExpression>> PostLin;
-    for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Post) {
+    for (std::shared_ptr<ContractFormula> const& contrF : newCtr.Data.Post) {
         std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
         PostLin.insert( PostLin.end(), contrFLin.begin(), contrFLin.end() );
     }

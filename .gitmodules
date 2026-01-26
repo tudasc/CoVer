@@ -1,6 +1,6 @@
 [submodule "Externals/jsoncpp"]
 	path = Externals/jsoncpp
 	url = https://github.com/open-source-parsers/jsoncpp
-[submodule "Externals/llvm-dsa"]
-	path = Externals/llvm-dsa
-	url = https://github.com/N00byKing/llvm-dsa
+[submodule "Externals/SVF"]
+	path = Externals/SVF
+	url = git@github.com:SVF-tools/SVF/

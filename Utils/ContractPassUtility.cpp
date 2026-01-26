@@ -1,7 +1,16 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
+#include "SVF-LLVM/BasicTypes.h"
+#include "SVF-LLVM/LLVMModule.h"
+#include "SVFIR/SVFIR.h"
+#include "SVFIR/SVFType.h"
+#include "WPA/Andersen.h"
+#include "WPA/FlowSensitive.h"
+#include "WPA/TypeAnalysis.h"
+#include "WPA/VersionedFlowSensitive.h"
 #include <climits>
+#include <fstream>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Demangle/Demangle.h>
@@ -17,17 +26,14 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
-#include <memory>
 #include <set>
 #include <string>
 #include <optional>
 #include <sys/types.h>
 #include <vector>
 
-#include "dsa/DSNode.h"
-#include "dsa/DSSupport.h"
-#include "dsa/Steensgaard.hh"
-#include "dsa/DSGraph.h"
+#include <WPA/Steensgaard.h>
+#include <SVF-LLVM/SVFIRBuilder.h>
 
 using namespace llvm;
 
@@ -163,7 +169,7 @@ bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, 
     } else {
         Function* F = (Function*)CB->getCalledOperand(); // Dirty cast ok, no member access. Needed because of fortran non-matching param
         if (!Tags.contains(F)) return false;
-        for (const ContractTree::TagUnit tag : Tags[F]) {
+        for (ContractTree::TagUnit const& tag : Tags[F]) {
             if (tag.tag == Target) {
                 return true;
             }
@@ -221,16 +227,17 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     if (source == target) return true;
 
     if (use_dsa) {
-        std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
-        if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
-            DSNodeHandle sourceNode = steens->getNodeForValue(source);
-            DSNodeHandle targetNode = steens->getNodeForValue(target);
-            while (sourceNode.getNode()->isCollapsedNode())
-                sourceNode = sourceNode.getNode()->edge_begin()->second;
-            while (targetNode.getNode()->isCollapsedNode())
-                targetNode = targetNode.getNode()->edge_begin()->second;
-            return sourceNode == targetNode;
+        static SVF::Steensgaard* steens = nullptr;
+        static SVF::SVFIRBuilder builder;
+        if (!steens) {
+            SVF::SVFIR* svf_ir = builder.build();
+            steens = SVF::Steensgaard::createSteensgaard(svf_ir);
         }
+        source = getLoadStorePointerOperand(source) ? getLoadStorePointerOperand(source) : source;
+        target = getLoadStorePointerOperand(target) ? getLoadStorePointerOperand(target) : target;
+        auto src = SVF::LLVMModuleSet::getLLVMModuleSet()->getValueNode(source);
+        auto tgt = SVF::LLVMModuleSet::getLLVMModuleSet()->getValueNode(target);
+        return steens->alias(src, tgt) >= SVF::AliasResult::MayAlias;
     } else {
         // Now, need to check if they are equal / aliases
         while (true) {

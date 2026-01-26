@@ -246,7 +246,7 @@ int main(int argc, const char** argv) {
     if (!opt_level.empty()) {
         passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
     }
-    execSafe("opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
+    execSafe("opt --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
 
     // Finalize executable
