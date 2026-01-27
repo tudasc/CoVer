@@ -29,6 +29,7 @@
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Support/WithColor.h>
+#include "dwarf.h"
 #include <memory>
 #include <string>
 #include <tuple>
@@ -139,9 +140,9 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     callbackW->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create callbacks
-    instrumentFunctions(M);
     if (ClInstrumentType != "funconly")
         instrumentRW(M);
+    instrumentFunctions(M);
 
     return PreservedAnalyses::none();
 }
@@ -431,11 +432,11 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                 if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
                     DISubprogram const* Dbg = F->getSubprogram();
                     if (checkIsStrParam(U)) skipnum++;
-                    uint64_t size = Dbg->getType()->getTypeArray()[cur_argno + 1]->getSizeInBits(); // Offset by one, first is ret val
-                    params.push_back(ConstantInt::get(Int_Type, size == 0 || isa<GlobalValue>(actual_param) ? 64 : size));
-                    // On Fortran, deref always except if its a global
-                    if (!isa<GlobalValue>(actual_param)) {
-                        // Not a global, so have to check.   
+                    // All parameters are sent as pointers. Need to check exact size using dbg info
+                    DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
+                    params.push_back(ConstantInt::get(Int_Type, param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits()));
+                    // On Fortran, deref if param is an allocate/ptr buffer
+                    if (param_type->getTag() == (dwarf::Tag)DW_TAG_array_type) {
                         actual_param = new LoadInst(Ptr_Type, actual_param, "", callsite->getIterator());
                     }
                 } else {
