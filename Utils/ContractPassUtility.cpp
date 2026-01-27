@@ -183,7 +183,9 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     const Value* target = callP;
     int diff = 0;
 
-    constexpr bool use_dsa = true;
+    // Only use DSA for Fortran
+    const bool use_dsa = (isa<Instruction>(contrP) && dyn_cast<Instruction>(contrP)->getModule()->getFunction("_QQmain")) ||
+                         (isa<Instruction>(callP) && dyn_cast<Instruction>(callP)->getModule()->getFunction("_QQmain"));
     if (!use_dsa) {
         // Resolve function differences.
         // If one is a global, this does not matter, so check if they are instructions first
