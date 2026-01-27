@@ -183,6 +183,12 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     const Value* target = callP;
     int diff = 0;
 
+    // Filter out new instr from sroa
+    if (isa<StoreInst>(callP) && dyn_cast<StoreInst>(callP)->getPointerOperand()->getName().starts_with(".fca.") ||
+        isa<StoreInst>(contrP) && dyn_cast<StoreInst>(contrP)->getPointerOperand()->getName().starts_with(".fca.")) {
+        return false;
+    }
+
     // Only use DSA for Fortran
     const bool use_dsa = (isa<Instruction>(contrP) && dyn_cast<Instruction>(contrP)->getModule()->getFunction("_QQmain")) ||
                          (isa<Instruction>(callP) && dyn_cast<Instruction>(callP)->getModule()->getFunction("_QQmain"));
