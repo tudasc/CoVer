@@ -361,12 +361,12 @@ def has_buffer(func: str) -> bool:
     return False
 
 def create_f08_contract(func: str, contract: str, support_ts: bool):
-    call_op = re.search("call!\\(([A-z_0-9]+)\\)", contract)
+    call_op = re.search("call!\\(([^),]+)([^)]*)\\)", contract)
     contract_str_fort_f08 = contract
     if call_op:
         func_callop = call_op.group(1)
         suffix = "_f08ts" if support_ts and has_buffer(func_callop) else "_f08"
-        contract_str_fort_f08 = re.sub("call!\\(([A-z_0-9]+)\\)", r"call!(\1" + suffix + ")", contract)
+        contract_str_fort_f08 = re.sub("call!\\(([^),]+)([^)]*)\\)", r"call!(\1" + suffix + r"\2)", contract)
     contract_func_suffix = "_f08ts" if has_buffer(func) and support_ts else "_f08"
     return f"    call Declare_Contract({func}{contract_func_suffix}, \"{contract_str_fort_f08}\")\n"
 
