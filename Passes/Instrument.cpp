@@ -10,6 +10,7 @@
 #include <json/value.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constant.h>
@@ -260,8 +261,9 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         }
         case OperationType::CALL: {
             std::shared_ptr<const CallOperation> cOP = static_pointer_cast<const CallOperation>(op);
-            Function* F = M.getFunction(cOP->Function);
-            if (!F) errs() << "Warning: Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module\nThis may cause issues for instrumentation.\n";
+            Function* F = M.getFunction(cOP->Function) ? M.getFunction(cOP->Function) : M.getFunction(StringRef(cOP->Function).lower() + "_");
+            if (!F) WithColor::warning() << "Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module. This may cause issues for instrumentation.\n";
+            else mentioned_funcs.push_back(F);
             Constant* funcStr = ConstantDataArray::getString(M.getContext(), cOP->Function);
             std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
             data = ConstantStruct::get(CallOp_Type, {createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + cOP->Function), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second), F ? F : Null_Const});
@@ -346,30 +348,19 @@ void InstrumentPass::createTypes(Module& M) {
 }
 
 void InstrumentPass::instrumentFunctions(Module &M) {
+    // All functions with attached contracts
     for (ContractManagerAnalysis::Contract C : DB->Contracts) {
-        // All functions with attached contracts
         insertFunctionInstrCallback(C.F);
-    }
-
-    // All functions referenced by name
-    for (ContractManagerAnalysis::LinearizedContract C : DB->LinearizedContracts) {
-        for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
-            if (Expr->OP->type() == OperationType::CALL) {
-                std::shared_ptr<const CallOperation> cOP = std::static_pointer_cast<const CallOperation>(Expr->OP);
-                if (M.getFunction(cOP->Function)) insertFunctionInstrCallback(M.getFunction(cOP->Function));
-            }
-        }
-        for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
-            if (Expr->OP->type() == OperationType::CALL) {
-                std::shared_ptr<const CallOperation> cOP = std::static_pointer_cast<const CallOperation>(Expr->OP);
-                if (M.getFunction(cOP->Function)) insertFunctionInstrCallback(M.getFunction(cOP->Function));
-            }
-        }
     }
 
     // All functions referenced in tags
     for (std::pair<Function*, std::vector<TagUnit>> tag : DB->Tags) {
         insertFunctionInstrCallback(tag.first);
+    }
+
+    // All functions referenced by name
+    for (Function* F : mentioned_funcs) {
+        insertFunctionInstrCallback(F);
     }
 }
 
