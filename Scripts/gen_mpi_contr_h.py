@@ -336,6 +336,10 @@ exclude_fortran = [
     "MPI_Status_set_source",
     "MPI_Status_get_tag",
     "MPI_Status_set_tag",
+    "MPI_Status_f2f08",
+    "MPI_Status_f082f",
+    "MPI_Pcontrol",
+    "MPI_DUP_FN"
 ] # HACK: Not currently implemented for fortran in major mpi impls
 
 with open("apis.json", "r") as api_file:
@@ -381,7 +385,7 @@ for func, contrs in function_contracts.items():
     header_output_c += new_decl + " CONTRACT(\n"
     header_output_c += contract_str
     header_output_c += ");\n\n"
-    if func in exclude_fortran or "c2f" in func or "f2c" in func or "f082c" in func or "c2f08" in func or func.endswith("_c"): continue # Only defined for C
+    if func in exclude_fortran or "c2f" in func or "f2c" in func or "f082c" in func or "c2f08" in func or func.endswith("_c") or func.endswith("_fromint") or func.endswith("_toint"): continue # Only defined for C
     # Now: Fortran
     contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "").replace("*", "").replace("&", "").replace("read!(", "read!(*").replace("write!(", "write!(*")
     header_output_fort += "    call Declare_Contract(" + func + ", \"" + contract_str_fort + "\")\n"
