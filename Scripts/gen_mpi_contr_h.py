@@ -341,6 +341,10 @@ exclude_fortran = [
     "MPI_Pcontrol",
     "MPI_DUP_FN"
 ] # HACK: Not currently implemented for fortran in major mpi impls
+exclude_fortran_nof08 = [
+    "MPI_Comm_attach_buffer",
+    "MPI_Session_attach_buffer"
+] # Only supported in modern MPI
 
 with open("apis.json", "r") as api_file:
     mpi_funcs = json.load(api_file)
@@ -388,7 +392,8 @@ for func, contrs in function_contracts.items():
     if func in exclude_fortran or "c2f" in func or "f2c" in func or "f082c" in func or "c2f08" in func or func.endswith("_c") or func.endswith("_fromint") or func.endswith("_toint"): continue # Only defined for C
     # Now: Fortran
     contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "").replace("*", "").replace("&", "").replace("read!(", "read!(*").replace("write!(", "write!(*")
-    header_output_fort += "    call Declare_Contract(" + func + ", \"" + contract_str_fort + "\")\n"
+    if func not in exclude_fortran_nof08:
+        header_output_fort += "    call Declare_Contract(" + func + ", \"" + contract_str_fort + "\")\n"
     # Fortran f08(ts)
     header_output_fort_f08 += create_f08_contract(func, contract_str_fort, False)
     header_output_fort_f08ts += create_f08_contract(func, contract_str_fort, True)
