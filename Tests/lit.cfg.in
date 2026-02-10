@@ -1,0 +1,15 @@
+import lit.formats
+
+config.binaries = "@COVER_INSTALLED_BINARIES_DIR@"
+config.test_format = lit.formats.ShTest("0")
+config.suffixes = {".c", ".F90", ".f90"}
+
+config.substitutions.append(("%binaries", config.binaries))
+
+config.environment["OMPI_CC"] = "clang"
+config.environment["OMPI_FC"] = "flang"
+
+for var in ['OMPI_CC', 'OMPI_CXX', 'MPICH_CC', 'MPICH_CXX']:
+    if var in os.environ: config.environment[var] = os.environ[var]
+
+config.name = "test-suite"

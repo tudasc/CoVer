@@ -1,0 +1,5 @@
+{
+  "cmake.configureArgs": [
+    "-DMPI_HOME=/home/archuser/Desktop/ompi/install"
+  ]
+}

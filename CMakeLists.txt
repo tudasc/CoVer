@@ -223,3 +223,13 @@ create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "${C_HEADER_FILES}" 
 create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "${C_HEADER_FILES}" "")
 create_compile_wrapper("flangContracts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08ts.f90")
 create_compile_wrapper("flangContracts-no-ts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08.f90")
+
+##
+## Testing
+##
+
+option(ENABLE_TESTS "Enable testing" OFF)
+if (ENABLE_TESTS)
+  enable_testing()
+  add_subdirectory(Tests/)
+endif(ENABLE_TESTS)
