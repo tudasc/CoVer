@@ -146,7 +146,7 @@ add_subdirectory(Dynamic)
 ## Premade MPI header for convenience and quick testing
 ##
 
-execute_process(COMMAND git log --pretty=format:%h -n 1 OUTPUT_VARIABLE GIT_REV)
+execute_process(COMMAND git log --pretty=format:%h -n 1 OUTPUT_VARIABLE GIT_REV WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 find_package(MPI COMPONENTS C)
 find_package(Python COMPONENTS Interpreter)
