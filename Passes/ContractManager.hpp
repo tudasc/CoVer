@@ -42,6 +42,9 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             std::chrono::time_point<std::chrono::system_clock> start_time;
             bool allowMultiReports = false;
             Json::Value processedReports;
+            bool invalidate(Module &, PreservedAnalyses const&, ModuleAnalysisManager::Invalidator const&) const {
+                return false;
+            }
         } typedef ContractDatabase;
 
         // Run Pass
