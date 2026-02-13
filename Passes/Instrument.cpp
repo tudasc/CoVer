@@ -423,6 +423,11 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                 if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
                     DISubprogram const* Dbg = F->getSubprogram();
                     if (checkIsStrParam(U)) skipnum++;
+                    if (Dbg->getType()->getTypeArray()->getNumOperands() <= cur_argno + 1) {
+                        errs() << "Warning: During instrumentation, likely string param missed during detection. Normal if optimizations enabled.\n";
+                        errs() << "If unsure, check if function " << F->getName() << " has more than " << skipnum << " string arguments.\n";
+                        break;
+                    }
                     // All parameters are sent as pointers. Need to check exact size using dbg info
                     DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
                     params.push_back(ConstantInt::get(Int_Type, param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits()));
