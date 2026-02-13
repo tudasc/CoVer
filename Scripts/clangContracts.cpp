@@ -17,18 +17,20 @@ LinkKind cur_linkkind = LinkKind::LINK;
 std::string dest_arg;
 std::string opt_level;
 
-std::regex link_file_ending(".*(\\.a|\\.so)");
+std::regex const link_file_ending(".*(\\.a|\\.so)");
 
 std::string wrap_target = "@COMPILER_WRAP_TARGET@";
 
-std::vector<std::string> predefined_contract_includes = {"@PREMADE_CONTRACT_INCLUDES@"};
-std::vector<std::string> predefined_contract_sources = {"@PREMADE_CONTRACT_SOURCES@"};
+std::string compiler_ident;
 
-std::regex llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
+auto constexpr predefined_contract_includes = std::to_array({"@PREMADE_CONTRACT_INCLUDES@"});
+auto constexpr predefined_contract_sources = std::to_array({"@PREMADE_CONTRACT_SOURCES@"});
 
-std::regex source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
+std::regex const llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
+
+std::regex const source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
 std::string source_file_paths;
-std::regex obj_file_ending(".*(\\.o)");
+std::regex const obj_file_ending(".*(\\.o)");
 std::string bitcode_files;
 std::vector<std::string> source_file_names;
 std::vector<std::string> link_time_sources; // For predef fort contracts
@@ -157,9 +159,9 @@ void sanityCheckCompiler() {
 
     // Check for LLVM-based compiler
     cmd = wrap_target + " --version | head -n 1";
-    std::string res  = exec(cmd);
-    if (res.find("clang") == std::string::npos && res.find("flang") == std::string::npos) {
-        std::cerr << "Unknown compiler \"" << res.substr(0, res.size()-1) << "\"!\n";
+    compiler_ident  = exec(cmd);
+    if (compiler_ident.find("clang") == std::string::npos && compiler_ident.find("flang") == std::string::npos) {
+        std::cerr << "Unknown compiler \"" << compiler_ident.substr(0, compiler_ident.size()-1) << "\"!\n";
         std::cerr << "Make sure to use an LLVM-based compiler that supports outputting bitcode.\n";
         std::cerr << "The wrapper will now exit\n";
         exit(-1);
@@ -167,7 +169,7 @@ void sanityCheckCompiler() {
 
     // Check for LLVM version
     std::smatch matches;
-    std::regex_search(res, matches, llvm_version_regex);
+    std::regex_search(compiler_ident, matches, llvm_version_regex);
     if (matches.size() < 2) {
         std::cerr << "Unknown LLVM Version! This may cause issues!\n";
     } else if (std::stoi(matches[1]) < std::stoi("@LLVM_VERSION_MIN@")) { // Ugly, but avoids linter error and is compiled away in O3 anyway
@@ -190,7 +192,7 @@ int main(int argc, const char** argv) {
 
     // Generate IR for source files
     if (!source_file_paths.empty()) {
-        std::string common_options = " -fPIC -g -emit-llvm ";
+        std::string common_options = " -fPIC -g -emit-llvm " + std::string(compiler_ident.find("clang") != std::string::npos ? "-Xclang -disable-O0-optnone " : "");
         execSafe(wrap_target + common_options + (cur_linkkind < LinkKind::ONLY_PREPROCESS ? "-c" : "-E") + " -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LinkKind::LINK ? dest_arg : ""));
 
         if (cur_linkkind == LinkKind::ONLY_COMPILE && dest_arg.empty()) {
