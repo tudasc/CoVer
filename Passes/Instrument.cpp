@@ -25,6 +25,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Operator.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/ErrorHandling.h>
@@ -371,6 +372,16 @@ void InstrumentPass::instrumentRW(Module &M) {
                 if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
                     if (instrument_ignore.contains(&I)) continue;
                     Value* V = getLoadStorePointerOperand(&I);
+                    // Fortran: Check if reading array metadata, and skip callback if so
+                    if (GEPOperator const* GEPOp = dyn_cast<GEPOperator>(V)) {
+                        if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(GEPOp->getPointerOperand())) {
+                            SmallVector<DIGlobalVariableExpression*> dbg_arr;
+                            GV->getDebugInfo(dbg_arr);
+                            if (!isC && !dbg_arr.empty() && dbg_arr[0]->getVariable()->getType()->getTag() == (dwarf::Tag)DW_TAG_array_type) {
+                                continue;
+                            }
+                        }
+                    }
                     insertCBIfNeeded(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V}, &I);
                 }
             }
