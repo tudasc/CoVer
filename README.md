@@ -9,7 +9,7 @@ See [Usage](./Docs/Usage.md)
 
 ## Prerequisites
 
-- LLVM 18 or newer
+- LLVM 21 or newer
 - Java (Build dependency only)
 - dwarf.h (Ubuntu: libdw-dev, build dependency only)
 
