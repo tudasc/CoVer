@@ -13,7 +13,7 @@ jobs:
           submodules: 'recursive'
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo apt install default-jre libdwarf-dev
+          sudo apt update && sudo apt install default-jre libdw-dev
       - name: CMake configure
         run: |
           mkdir build
