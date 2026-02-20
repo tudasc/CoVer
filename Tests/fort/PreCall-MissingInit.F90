@@ -15,4 +15,4 @@ end program PreCallMissingInit
 ! CHECK-LABEL: CoVer-Dynamic: Initializing...
 ! CHECK: Contract violation detected!
 ! CHECK: Missing Initialization call
-! Dont check for analysis finished, MPI implementation might crash.
+! Dont check if analysis finished, MPI implementation might crash.

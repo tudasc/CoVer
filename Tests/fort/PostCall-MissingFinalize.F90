@@ -15,4 +15,4 @@ end program PostCallMissingFinalize
 ! CHECK-LABEL: CoVer-Dynamic: Initializing...
 ! CHECK: Contract violation detected!
 ! CHECK: Missing Finalization call
-! Dont check for analysis finished, MPI implementation might crash.
+! Dont check if analysis finished, MPI implementation might crash.
