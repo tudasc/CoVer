@@ -13,7 +13,11 @@ jobs:
           submodules: 'recursive'
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin llvm-20 llvm-20-dev
+          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin
+      - name: Install LLVM
+        uses: KyleMayes/install-llvm-action@v2
+        with:
+          version: "21.1"
       - name: CMake configure
         run: |
           mkdir build
