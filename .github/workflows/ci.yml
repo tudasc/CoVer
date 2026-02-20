@@ -1,0 +1,25 @@
+name: CI
+
+# Trigger this workflow on push or pull request
+on: [push, pull_request]
+
+jobs:
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+      - name: Install Dependencies
+        run: |
+          sudo apt update && sudo apt install default-jre
+      - name: CMake configure
+        run: |
+          mkdir build
+          cd build
+          cmake ..
+      - name: Build
+        run: |
+          cd build
+          cmake --build .
