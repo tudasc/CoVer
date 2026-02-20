@@ -30,7 +30,7 @@ jobs:
       - name: Run CTest
         run: |
           cd build
-          ctest --output-on-failure
+          ctest --output-on-failure --output-junit report.xml
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
         if: success() || failure() # Run even if tests fail
