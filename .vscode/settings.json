@@ -1,5 +1,6 @@
 {
   "cmake.configureArgs": [
-    "-DMPI_HOME=/home/archuser/Desktop/ompi/install"
+    "-DMPI_HOME=/home/archuser/Desktop/ompi/install",
+    "-DENABLE_TESTS=ON",
   ]
 }

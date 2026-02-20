@@ -9,6 +9,8 @@
 #include <utility>
 #include <vector>
 
+#define SET_FROM_ENV(x,y) (std::getenv(y) ? std::getenv(y) : x)
+
 enum struct ExecKind { NORMAL, VERBOSE, DRY };
 ExecKind cur_execkind = ExecKind::NORMAL;
 enum struct LinkKind { LINK, ONLY_COMPILE, ONLY_PREPROCESS };
@@ -19,7 +21,7 @@ std::string opt_level;
 
 std::regex const link_file_ending(".*(\\.a|\\.so)");
 
-std::string wrap_target = "@COMPILER_WRAP_TARGET@";
+std::string wrap_target = SET_FROM_ENV("@COMPILER_WRAP_TARGET@","COVER_WRAP_TARGET_@COMPILER_WRAP_TARGET@");
 
 std::string compiler_ident;
 
