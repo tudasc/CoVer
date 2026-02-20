@@ -1,4 +1,4 @@
 Output/
 .lit*
 lit.cfg
-test_out
+contract_helper.mod
