@@ -9,12 +9,11 @@ jobs:
     steps:
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin python3-pip
-          pip install lit --break-system-packages
+          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin
       - name: Install LLVM
-        uses: KyleMayes/install-llvm-action@v2
-        with:
-          version: "21.1"
+        run: |
+          wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 21
+          sudo apt install -y clang-21 flang-21 python3-lit
       - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
