@@ -13,7 +13,7 @@ jobs:
           submodules: 'recursive'
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin
+          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin llvm-20 llvm-20-dev
       - name: CMake configure
         run: |
           mkdir build
