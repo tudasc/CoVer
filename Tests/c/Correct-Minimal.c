@@ -1,4 +1,4 @@
-// RUN: %binaries/clangContracts --predefined-contracts --instrument-contracts %s -o %t.exe > %t.test_out 2>&1 && COVER_COVERAGE_FOLDER="%t_coverage" %t.exe >> %t.test_out 2>&1 && FileCheck %s < %t.test_out
+// RUN: %binaries/clangContracts %run_common
 
 #include "mpi_contracts.h"
 
