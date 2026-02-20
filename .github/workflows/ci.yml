@@ -15,6 +15,7 @@ jobs:
         run: |
           wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 21
           sudo ln -s /usr/lib/llvm-21/build/utils/lit/lit.py /usr/bin/lit
+          echo "/usr/lib/llvm-21/bin/" >> "$GITHUB_PATH"
       - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
