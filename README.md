@@ -11,7 +11,7 @@ See [Usage](./Docs/Usage.md)
 
 - LLVM 18 or newer
 - Java (Build dependency only)
-- dwarf.h (Ubuntu: libdwarf-dev, build dependency only)
+- dwarf.h (Ubuntu: libdw-dev, build dependency only)
 
 Optionally:
 - ANTLR4 (provided if not installed)
