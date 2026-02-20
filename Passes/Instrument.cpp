@@ -31,7 +31,7 @@
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Support/WithColor.h>
-#include "dwarf.h"
+#include <dwarf.h>
 #include <memory>
 #include <string>
 #include <tuple>
