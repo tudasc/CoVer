@@ -7,16 +7,17 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin
+          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin python3-pip
+          pip install lit --break-system-packages
       - name: Install LLVM
         uses: KyleMayes/install-llvm-action@v2
         with:
           version: "21.1"
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
       - name: CMake configure
         run: |
           mkdir build
