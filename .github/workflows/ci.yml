@@ -9,7 +9,8 @@ jobs:
     steps:
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin
+          sudo apt update && sudo apt install default-jre libdw-dev libopenmpi-dev openmpi-bin python3-pip
+          pip install lit --break-system-packages
       - name: Install LLVM
         uses: KyleMayes/install-llvm-action@v2
         with:
@@ -21,7 +22,7 @@ jobs:
         run: |
           mkdir build
           cd build
-          cmake .. -DENABLE_TESTS=ON
+          cmake .. -DENABLE_TESTS=ON -CMAKE_PREFIX_PATH="${{ env.LLVM_PATH }}"
       - name: Build
         run: |
           cd build
