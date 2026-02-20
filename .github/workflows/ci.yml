@@ -26,7 +26,8 @@ jobs:
       - name: Build
         run: |
           cd build
-          cmake --build . -j8 --target install
+          cmake --build . -j8
+          sudo cmake --build . --target install
       - name: Run CTest
         run: |
           cd build
