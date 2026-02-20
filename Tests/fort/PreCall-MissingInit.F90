@@ -1,4 +1,4 @@
-! RUN: %binaries/flangContracts --predefined-contracts --instrument-contracts %s -o %t.exe > %t.test_out 2>&1 && (COVER_COVERAGE_FOLDER="%t_coverage" %t.exe >> %t.test_out 2>&1 || true) && FileCheck %s < %t.test_out
+! RUN: %binaries/flangContracts %run_common
 
 program PreCallMissingInit
     use mpi_f08

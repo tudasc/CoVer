@@ -1,4 +1,4 @@
-! RUN: %binaries/flangContracts --predefined-contracts --instrument-contracts %s -o %t.exe > %t.test_out 2>&1 && COVER_COVERAGE_FOLDER="%t_coverage" %t.exe >> %t.test_out 2>&1 && FileCheck %s < %t.test_out
+! RUN: %binaries/flangContracts %run_common
 
 program CorrectMinimal
     use mpi_f08
