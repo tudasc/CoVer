@@ -20,10 +20,8 @@ jobs:
         run: |
           wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh ${{ env.LLVM_VER }} all
           sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/build/utils/lit/lit.py /usr/bin/lit
-          sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/bin/flang /usr/bin/flang
-          sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/bin/clang /usr/bin/clang
-          sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/bin/clang++ /usr/bin/clang++
           sudo apt install flang-${{ env.LLVM_VER }}
+          sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/bin/flang /usr/bin/flang
           echo "/usr/lib/llvm-${{ env.LLVM_VER }}/bin/" >> "$GITHUB_PATH"
       - name: Cache OpenMPI
         id: cache-openmpi
