@@ -27,16 +27,16 @@ def enrich_lit_xunit(xml_path):
                     subelem = ET.SubElement(testcase, output_redir[stream])
                     subelem.text = stream_out.group(1)
 
-            # Find failing CHECK line
+            # Find test case name
+            file_match = re.search(r'FAIL: test-suite :: (.*) \(1 of 1\)', output)
+            if not file_match: print("Error parsing test filename!")
+            else: testcase.set('file', "Tests/" + file_match.group(1))
+
+            # Find failing CHECK line, if it exists
             line_match = re.search(r'(Tests/.+):(\d+):(\d+): error: CHECK:', output)
-
             if line_match:
-                file = line_match.group(1)
                 line = line_match.group(2)
-                column = line_match.group(3)
-
                 testcase.set('line', line)
-                testcase.set('file', file)
             
     # Write the modified XML in-place
     tree.write(xml_path, encoding="UTF-8", xml_declaration=True)
