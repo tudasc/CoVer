@@ -7,6 +7,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <map>
 #include <memory>
+#include <string>
 #include <vector>
 
 #include "ContractTree.hpp"
@@ -21,13 +22,13 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
 
         struct Contract {
             Function* F;
-            const StringRef ContractString;
+            const std::string ContractString;
             const ContractData Data;
             std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
         };
         struct LinearizedContract {
             Function* F;
-            const StringRef ContractString;
+            const std::string ContractString;
             const std::vector<std::shared_ptr<ContractExpression>> Pre;
             const std::vector<std::shared_ptr<ContractExpression>> Post;
             std::shared_ptr<std::vector<std::string>> DebugInfo;
@@ -41,6 +42,9 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             std::chrono::time_point<std::chrono::system_clock> start_time;
             bool allowMultiReports = false;
             Json::Value processedReports;
+            bool invalidate(Module &, PreservedAnalyses const&, ModuleAnalysisManager::Invalidator const&) const {
+                return false;
+            }
         } typedef ContractDatabase;
 
         // Run Pass
@@ -51,9 +55,9 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF);
 
         void extractFromAnnotations(const Module& M); // C/C++ Attributes
-        void extractFromFunction(const Module& M); // Fortran Workaround
+        void extractFromFunction(Module& M); // Fortran Workaround
 
-        void addContract(StringRef contract, Function* F);
+        void addContract(std::string contract, Function* F);
 };
 
 } // namespace llvm

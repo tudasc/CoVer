@@ -35,7 +35,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         GlobalVariable* createConstantGlobal(Module& M, Constant* C, std::string name);
         void createTypes(Module& M);
 
-        // Function Instrumentation
+        // Instrumentation
         void instrumentFunctions(Module &M);
         void instrumentRW(Module &M);
         void insertFunctionInstrCallback(Function* CB);
@@ -45,6 +45,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         FunctionCallee callbackRCallee;
         FunctionCallee callbackWCallee;
         std::set<Function*> already_instrumented;
+        std::vector<Function*> mentioned_funcs; // Filled by callops (non-tag) in createOperation
 
         // Types
         PointerType* Ptr_Type;
@@ -63,6 +64,12 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* Contract_Type;
         StructType* Ref_Type;
         Constant* Null_Const;
+
+        // Helpers
+        bool checkIsStrParam(Value const* I);
+
+        // Misc
+        bool isC = true;
 
         std::vector<ErrorMessage> err_msgs;
         std::unordered_set<Instruction*> instrument_ignore;

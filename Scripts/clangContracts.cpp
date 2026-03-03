@@ -17,19 +17,23 @@ LinkKind cur_linkkind = LinkKind::LINK;
 std::string dest_arg;
 std::string opt_level;
 
-std::regex link_file_ending(".*(\\.a|\\.so)");
+std::regex const link_file_ending(".*(\\.a|\\.so)");
 
 std::string wrap_target = "@COMPILER_WRAP_TARGET@";
 
-std::vector<std::string> predefined_contracts = {"@PREMADE_CONTRACT_PATHS_EMBED@"};
+std::string compiler_ident;
 
-std::regex llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
+auto constexpr predefined_contract_includes = std::to_array({"@PREMADE_CONTRACT_INCLUDES@"});
+auto constexpr predefined_contract_sources = std::to_array({"@PREMADE_CONTRACT_SOURCES@"});
 
-std::regex source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
+std::regex const llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
+
+std::regex const source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
 std::string source_file_paths;
-std::regex obj_file_ending(".*(\\.o)");
-std::string llvmlink_obj_files = "";
+std::regex const obj_file_ending(".*(\\.o)");
+std::string bitcode_files;
 std::vector<std::string> source_file_names;
+std::vector<std::string> link_time_sources; // For predef fort contracts
 
 std::string opt_flags = "";
 
@@ -76,7 +80,9 @@ void printHelp() {
     printf("\n\t\t\"filtered[=<detection json>]\": Only instrument potential issues from static analysis. Defaults to CoVer static analysis, optionally give filepath to different detection json");
     printf("\n\t--verbose: Print commands to be executed");
     printf("\n\t--wrap-target: Set the compiler to wrap around");
-    printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions using the -include flag");
+    printf("\n\t--predefined-contracts: Automatically include the predefined contract definitions.");
+    printf("\n\t\tC/C++: Include contract headers using the -include flag");
+    printf("\n\t\tFortran: Add contract sources to analyse step. This option does NOT work if attempting to compile Fortran 2008 without TS29113!");
     printf("\n\t--allow-multireports: Allow multiple reports of same violated contract");
     printf("\n\n");
 }
@@ -118,10 +124,10 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             if (output_file.empty()) output_file = "contract_messages.json";
             opt_flags += " -cover-generate-json-report=" + output_file;
         } else if (arg == "--predefined-contracts") {
-            for (std::string path : predefined_contracts) {
-                rem_args_compile += " -include " + path;
-                rem_args_link += " -include " + path;
+            for (std::string path : predefined_contract_includes) {
+                rem_args_compile += !path.empty() ? " -include " + path : "";
             }
+            link_time_sources.insert(link_time_sources.end(), predefined_contract_sources.begin(), predefined_contract_sources.end());
         } else if (std::regex_match(arg, source_file_ending)) {
             source_file_paths += " " + arg;
             source_file_names.push_back(std::filesystem::path(arg).stem());
@@ -134,15 +140,14 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
         } else if (std::regex_match(arg, link_file_ending)) {
             rem_args_link += " " + arg;
         } else if (std::regex_match(arg, obj_file_ending)) {
-            llvmlink_obj_files += " " + arg;
+            bitcode_files += " " + arg;
         } else if (arg == "-MT") {
             rem_args_compile += " " + arg + " " + all_args[++i];
+        } else if (arg.starts_with("-O")) {
+            opt_level = arg;
         } else {
             rem_args_link += " " + arg;
             rem_args_compile += " " + arg;
-            if (arg.starts_with("-O")) {
-                opt_level = " " + arg;
-            }
         }
     }
 
@@ -154,9 +159,9 @@ void sanityCheckCompiler() {
 
     // Check for LLVM-based compiler
     cmd = wrap_target + " --version | head -n 1";
-    std::string res  = exec(cmd);
-    if (res.find("clang") == std::string::npos && res.find("flang") == std::string::npos) {
-        std::cerr << "Unknown compiler \"" << res.substr(0, res.size()-1) << "\"!\n";
+    compiler_ident  = exec(cmd);
+    if (compiler_ident.find("clang") == std::string::npos && compiler_ident.find("flang") == std::string::npos) {
+        std::cerr << "Unknown compiler \"" << compiler_ident.substr(0, compiler_ident.size()-1) << "\"!\n";
         std::cerr << "Make sure to use an LLVM-based compiler that supports outputting bitcode.\n";
         std::cerr << "The wrapper will now exit\n";
         exit(-1);
@@ -164,7 +169,7 @@ void sanityCheckCompiler() {
 
     // Check for LLVM version
     std::smatch matches;
-    std::regex_search(res, matches, llvm_version_regex);
+    std::regex_search(compiler_ident, matches, llvm_version_regex);
     if (matches.size() < 2) {
         std::cerr << "Unknown LLVM Version! This may cause issues!\n";
     } else if (std::stoi(matches[1]) < std::stoi("@LLVM_VERSION_MIN@")) { // Ugly, but avoids linter error and is compiled away in O3 anyway
@@ -186,9 +191,8 @@ int main(int argc, const char** argv) {
     sanityCheckCompiler();
 
     // Generate IR for source files
-    std::string bitcode_files;
     if (!source_file_paths.empty()) {
-        std::string common_options = " -fPIC -g -emit-llvm -Xclang -disable-O0-optnone ";
+        std::string common_options = " -fPIC -g -emit-llvm " + std::string(compiler_ident.find("clang") != std::string::npos ? "-Xclang -disable-O0-optnone " : "");
         execSafe(wrap_target + common_options + (cur_linkkind < LinkKind::ONLY_PREPROCESS ? "-c" : "-E") + " -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LinkKind::LINK ? dest_arg : ""));
 
         if (cur_linkkind == LinkKind::ONLY_COMPILE && dest_arg.empty()) {
@@ -219,24 +223,36 @@ int main(int argc, const char** argv) {
     // If not linking, return early
     if (cur_linkkind != LinkKind::LINK) return 0;
 
+    // Add source contract files if needed
+    for (std::string file : link_time_sources) {
+        if (file.empty()) continue;
+        std::string destination = std::filesystem::temp_directory_path().string() + "/contrPlugin_predef_XXXXXX";
+        int fd = mkstemp(destination.data());
+        execSafe(wrap_target + " -g -c -emit-llvm -I\"@CONTR_INCLUDE_PATH@\" " + file + " -o " + destination);
+        bitcode_files += " " + destination;
+    }
+
     // Perform link and analysis steps
     std::string tmpfile = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
     int fd = mkstemp(tmpfile.data());
-    execSafe("llvm-link" + bitcode_files + llvmlink_obj_files + " -o " + tmpfile);
+    execSafe("llvm-link" + bitcode_files + " -o " + tmpfile);
 
     // Call LLVM passes
-    std::string passlist = "contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
+    std::string passlist = "function(sroa),contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
+    if (!opt_level.empty()) {
+        passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
+    }
     if (instrument) {
         // Need instrumentation, so add instr pass...
         passlist += ",instrumentContracts";
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
-    execSafe("opt -load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
+    execSafe("opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
 
     // Finalize executable
-    execSafe("llc -filetype=obj --relocation-model=pic" + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
+    execSafe("llc -filetype=obj --relocation-model=pic " + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
     execSafe(wrap_target + " -fPIC -lm -ldl -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o" + dest_arg);
     return 0;
 }

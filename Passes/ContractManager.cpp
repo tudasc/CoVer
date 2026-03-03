@@ -11,13 +11,13 @@
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/CommandLine.h>
 #include <memory>
-#include <optional>
-#include <string>
 
+#include <string>
 #include <vector>
 #include "../LangCode/ContractDataExtractor.hpp"
 #include "ContractTree.hpp"
@@ -49,6 +49,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     errs() << "Running Contract Manager on Module: " << M.getName() << "\n";
 
     extractFromAnnotations(M);
+    extractFromFunction(M);
 
     std::stringstream s;
     s << "CoVer: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";
@@ -70,13 +71,57 @@ void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
         ConstantStruct *ANN = dyn_cast<ConstantStruct>(annUse);
         StringRef ANNStr = dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(ANN->getOperand(1))->getInitializer())->getAsCString();
         Function* F =  dyn_cast<Function>(ANN->getOperand(0));
-        addContract(ANNStr, F);
+        addContract(ANNStr.str(), F);
     }
 }
 
-void ContractManagerAnalysis::addContract(StringRef contract, Function* F) {
+void ContractManagerAnalysis::extractFromFunction(Module& M) {
+    std::vector<Function*> to_remove;
+    for (Function& F : M) {
+        if (F.getName().starts_with("contract_definitions_fort")) {
+            if (F.isDeclaration()) {
+                errs() << "Contract definition by function body failed, function body not found!\n";
+                continue;
+            }
+            const BasicBlock& BB = F.getEntryBlock(); // Exactly one basic block allowed, so this is ok
+            for (const Instruction& I : BB) {
+                if (const CallBase* CB = dyn_cast<CallBase>(&I)) {
+                    // Only care about this intrinsic
+                    #warning TODO probably should figure out a less hacky way.
+                    if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64" && CB->getCalledFunction()->getName() != "llvm.memcpy.p0.p0.i64") continue;
+                    // Add CONTRACT { ... } brace. Its explicitly needed for C(++) to make sure we are not parsing irrelevant stuff,
+                    // but for fortran its already implicit in declare_contract, making it superfluous
+                    std::string CallStr = "CONTRACT { " + ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString().str() + " }";
+                    // Call is from memmove -> insertvalue -> extractvalue -> funccall. on -O0, and memcpy -> funccall on -O1 and above
+                    const CallBase* ContrCall = (CallBase*)(isa<CallBase>(*CB->getArgOperand(0)->user_begin()) ? *CB->getArgOperand(0)->user_begin() : *CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin());
+                    if (ContrCall->getCalledOperand()->getName() == "declare_contract_") {
+                        const Function* ContrSup = (Function*)ContrCall->getArgOperand(0);
+                        if (ContrSup->hasOneUser()) continue; // Only used here where the contract is defined. No need to verify.
+                        bool has_callsite = false;
+                        for (const User* U : ContrSup->users() ) {
+                            if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                                if (CB->getCalledOperand() == ContrSup) {
+                                    has_callsite = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!has_callsite) continue;
+                        addContract(CallStr, (Function*)(ContrCall->getArgOperand(0)));
+                    }
+                }
+            }
+            // This function is unreachable, and should definitely not be analysed, so no need to compile. Drop it
+            to_remove.push_back(&F);
+        }
+    }
+    // Remove unneeded functions
+    for (Function* F : to_remove)
+        F->eraseFromParent();
+}
 
-    std::optional<ContractData> Data = getContractData(contract.str());
+void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
+    std::optional<ContractData> Data = getContractData(contract);
     if (!Data) return;
     if (IS_DEBUG) errs() << "Found contract for function " << F->getName() << " with content: " << contract << "\n";
 

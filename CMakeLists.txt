@@ -89,7 +89,10 @@ add_llvm_pass_plugin(CoVerPlugin
 target_include_directories(CoVerPlugin
   PUBLIC
     Include/
+    Externals/llvm-dsa/include
 )
+
+add_subdirectory(Externals/llvm-dsa)
 
 ##
 ## Runtime Dependencies
@@ -124,6 +127,7 @@ install(
     Include/ContractTree.hpp
     Include/Contracts.h
     Include/DynamicAnalysis.h
+    Include/Contracts.F90
     Passes/ContractManager.hpp
   DESTINATION include
   PERMISSIONS
@@ -142,7 +146,7 @@ add_subdirectory(Dynamic)
 ## Premade MPI header for convenience and quick testing
 ##
 
-execute_process(COMMAND git log --pretty=format:%h -n 1 OUTPUT_VARIABLE GIT_REV)
+execute_process(COMMAND git log --pretty=format:%h -n 1 OUTPUT_VARIABLE GIT_REV WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
 find_package(MPI COMPONENTS C)
 find_package(Python COMPONENTS Interpreter)
@@ -154,12 +158,13 @@ if (MPI_C_FOUND AND Python_FOUND)
     set(MPI_FUNC_DECLS_FILE "${MPI_C_HEADER_DIR}/mpi.h") # OpenMPI
   endif(EXISTS "${MPI_C_HEADER_DIR}/mpi_proto.h")
   message("Found MPI header with function definitions in ${MPI_FUNC_DECLS_FILE}, example MPI contracts will be generated.")
+  file(DOWNLOAD "https://github.com/mpi-forum/pympistandard/raw/refs/heads/develop/src/pympistandard/data/apis.json" "${CMAKE_CURRENT_BINARY_DIR}/apis.json")
   add_custom_target(
     genMPIContracts ALL
     SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
     COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_FUNC_DECLS_FILE}" "CoVer ${GIT_REV}"
   )
-  set(PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h")
+  set(PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h;${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.f90;${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts_f08.f90;${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts_f08ts.f90")
   if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h" OR DEFINED SHMEM_HEADER_PATH)
     if (DEFINED SHMEM_HEADER_PATH)
       message("Using manually specified OpenSHMEM header ${SHMEM_HEADER_PATH}, example OpenSHMEM contracts will be generated.")
@@ -191,32 +196,30 @@ endif(MPI_C_FOUND AND Python_FOUND)
 
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
 set(COVER_DYNAMIC_ANALYSER_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerDynamicAnalyzer.a)
+set(DSA_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/DSA.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include")
 
-# Replace build folder with install folder
-string(REPLACE "${CMAKE_CURRENT_BINARY_DIR}" "${CONTR_INCLUDE_PATH}" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_HEADERS}")
-# Fix formatting for embed
-string(REPLACE ";" "\", \"" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_PATHS_EMBED}")
+function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CONTRACT_INCLUDES PREMADE_CONTRACT_SOURCES)
+  list(TRANSFORM PREMADE_CONTRACT_INCLUDES PREPEND "${CONTR_INCLUDE_PATH}/" OUTPUT_VARIABLE PREMADE_CONTRACT_INCLUDES)
+  list(TRANSFORM PREMADE_CONTRACT_SOURCES PREPEND "${CONTR_INCLUDE_PATH}/" OUTPUT_VARIABLE PREMADE_CONTRACT_SOURCES)
+  string(REPLACE ";" "\", \"" PREMADE_CONTRACT_INCLUDES "${PREMADE_CONTRACT_INCLUDES}")
+  string(REPLACE ";" "\", \"" PREMADE_CONTRACT_SOURCES "${PREMADE_CONTRACT_SOURCES}")
+  set(COMPILER_WRAP_TARGET "${TARGET_NAME}")
+  set(COMPILE_SRC_FILE_ENDINGS "${FILE_ENDINGS}")
+  set(EXECUTABLE_WRAPPER_NAME "${WRAPPER_NAME}")
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
+  add_executable(${WRAPPER_NAME} "${WRAPPER_NAME}.cpp")
+  install(TARGETS ${WRAPPER_NAME})
+endfunction()
 
-set(COMPILER_WRAP_TARGET "mpicc")
-set(COMPILE_SRC_FILE_ENDINGS ".*\\\\.c$")
-set(EXECUTABLE_WRAPPER_NAME "clangContracts")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
-add_executable(clangContracts "clangContracts.cpp")
+if (MPI_C_FOUND)
+  set(C_HEADER_FILES mpi_contracts.h)
+  if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+    set(C_HEADER_FILES mpi_contracts.h;shmem_contracts.h)
+  endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+endif (MPI_C_FOUND)
 
-set(COMPILER_WRAP_TARGET "mpicxx")
-set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
-set(EXECUTABLE_WRAPPER_NAME "clangContracts++")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
-add_executable(clangContracts++ "clangContracts++.cpp")
-
-install(
-  FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts"
-    "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++"
-  DESTINATION bin
-  PERMISSIONS
-    OWNER_READ OWNER_WRITE OWNER_EXECUTE
-    GROUP_READ GROUP_EXECUTE
-    WORLD_READ WORLD_EXECUTE
-)
+create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "${C_HEADER_FILES}" "")
+create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "${C_HEADER_FILES}" "")
+create_compile_wrapper("flangContracts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08ts.f90")
+create_compile_wrapper("flangContracts-no-ts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08.f90")

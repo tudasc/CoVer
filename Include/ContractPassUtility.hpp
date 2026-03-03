@@ -12,6 +12,7 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
@@ -49,17 +50,22 @@ namespace ContractPassUtility {
     /*
     * Check if call applies to target (which may be a tag or function name)
     */
-    bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags);
 
     /*
     * Check if contract and call parameter fit
     */
-    bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc);
+    bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM);
 
     /*
     * Check if two calls match by contract definition
     */
-    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags, ModuleAnalysisManager* MAM);
+
+    /*
+    * Get Pointer operand of a load, store, GEPinst *or GEPOp*. Last one would not work on normal getPointerOperand!
+    */
+    const Value* betterGetPointerOperand(const Value* V);
 };
 
 template<typename T>
@@ -161,16 +167,16 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                     }
                 }
             }
-            if (!iter) {
+            if (!iter && !isa<ReturnInst>(next)) {
                 iter = next->getNextNode();
             }
 
             // Check if returning from function
-            if (!iter && !stack.empty()) {
+            if (isa<ReturnInst>(next) && !stack.empty()) {
                 // Forward to next from stack
                 iter = stack.top()->getNextNode();
                 stack.pop();
-            } else if (!iter) {
+            } else if (isa<ReturnInst>(next)) {
                 // Stack is empty. But if we started inside a function, context includes all callsites
                 const Function* func = next->getParent()->getParent();
                 for (const User* U : func->users()) {
