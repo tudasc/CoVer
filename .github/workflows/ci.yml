@@ -67,6 +67,7 @@ jobs:
       - name: Run CTest
         run: |
           cd build
+          export NO_TS29113=1
           ctest --output-on-failure --output-junit report.xml
       - name: Postprocess JUnit XML
         if: success() || failure() # Run even if tests fail

@@ -1,4 +1,4 @@
-! RUN: %binaries/flangContracts %run_common
+! RUN: %flangContracts %run_common
 
 program PostCallMissingFinalize
     use mpi_f08
