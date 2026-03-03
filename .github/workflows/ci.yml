@@ -13,6 +13,9 @@ jobs:
       LLVM_VER: "21"
       OPENMPI_VER: "5.0.10"
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
       - name: Install Dependencies
         run: |
           sudo apt update && sudo apt install default-jre libdw-dev wget ccache
@@ -36,14 +39,11 @@ jobs:
           tar xvf openmpi-${{ env.OPENMPI_VER }}.tar.bz2
           cd openmpi-${{ env.OPENMPI_VER }}
           ./configure CC=clang CXX=clang++ FC=flang --prefix=/usr
-          make -j
+          make -j8
       - name: Install OpenMPI
         run: |
           cd openmpi-${{ env.OPENMPI_VER }}
           sudo make install
-      - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
       - name: Cache ccache
         uses: actions/cache@v4
         with:
