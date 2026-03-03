@@ -1,0 +1,33 @@
+! RUN: %flangContracts %run_common
+
+program main
+    use mpi_f08
+    integer :: rank
+    integer, pointer :: buf(:)
+    type(MPI_Request) :: req
+
+    call MPI_Init()
+
+    call MPI_Comm_rank(MPI_COMM_WORLD, rank)
+
+    allocate(buf(1))
+    if (rank == 0) then
+        call MPI_Isend(buf, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, req)
+        buf(1) = 24
+    else
+        call MPI_Irecv(buf, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, req)
+    end if
+    call MPI_Wait(req, MPI_STATUS_IGNORE)
+
+    call MPI_Finalize()
+end program
+
+! CHECK-LABEL: Running Contract Manager on Module
+! CHECK: Contract violation detected!
+! CHECK: Local Data Race - Local write
+! CHECK: CoVer: Total Tool Runtime
+
+! CHECK-LABEL: CoVer-Dynamic: Initializing...
+! CHECK: Contract violation detected!
+! CHECK: Local Data Race - Local write
+! Dont check if analysis finished, MPI implementation might crash.
