@@ -1,6 +1,6 @@
 // RUN: %clangContracts %run_common
 
-#include "mpi_contracts.h"
+#include <mpi.h>
 
 int main(int argc, char** argv) {
     MPI_Init(NULL, NULL);
