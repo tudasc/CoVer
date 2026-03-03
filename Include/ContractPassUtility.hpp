@@ -49,7 +49,7 @@ namespace ContractPassUtility {
     /*
     * Check if call applies to target (which may be a tag or function name)
     */
-    bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags);
 
     /*
     * Check if contract and call parameter fit
@@ -59,7 +59,7 @@ namespace ContractPassUtility {
     /*
     * Check if two calls match by contract definition
     */
-    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<const Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags);
 };
 
 template<typename T>
@@ -106,7 +106,7 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                     const Instruction* tmpNext = nullptr;
                     while (!tmpNext) {
                         if (stack.empty()) break;
-                        tmpNext = stack.top()->getNextNonDebugInstruction();
+                        tmpNext = stack.top()->getNextNode();
                         stack.pop();
                     }
                     // Either tmpNext is set, or null because tail-call stack end or stack was empty
@@ -162,13 +162,13 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                 }
             }
             if (!iter) {
-                iter = next->getNextNonDebugInstruction();
+                iter = next->getNextNode();
             }
 
             // Check if returning from function
             if (!iter && !stack.empty()) {
                 // Forward to next from stack
-                iter = stack.top()->getNextNonDebugInstruction();
+                iter = stack.top()->getNextNode();
                 stack.pop();
             } else if (!iter) {
                 // Stack is empty. But if we started inside a function, context includes all callsites
@@ -176,7 +176,7 @@ std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instr
                 for (const User* U : func->users()) {
                     if (const CallBase* CB = dyn_cast<CallBase>(U)) {
                         // Add callsite next to todoList
-                        todoList.push_back( {CB->getNextNonDebugInstruction(), postAccess[next], stack} );
+                        todoList.push_back( {CB->getNextNode(), postAccess[next], stack} );
                     }
                 }
             }

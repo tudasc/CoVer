@@ -20,7 +20,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
 
     private:
         CallStatus checkPostCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression const& Expr, const bool isTag, const Module& M, std::string& error);
-        std::map<const Function*, std::vector<TagUnit>> Tags;
+        std::map<Function*, std::vector<TagUnit>> Tags;
 };
 
 } // namespace llvm

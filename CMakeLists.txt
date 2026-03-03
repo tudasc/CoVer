@@ -45,7 +45,7 @@ else()
 endif(NOT antlr4-generator_FOUND)
 
 ##
-## Configure main project
+## Configure static analysis project
 ##
 
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
@@ -80,6 +80,7 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractVerifierPreCall.cpp
   Passes/ContractVerifierPostCall.cpp
   Passes/ContractVerifierRelease.cpp
+  Passes/Instrument.cpp
   Passes/ContractPostProcess.cpp
   Utils/ContractPassUtility.cpp
   Include/ContractPassUtility.hpp
@@ -122,6 +123,7 @@ install(
   FILES
     Include/ContractTree.hpp
     Include/Contracts.h
+    Include/DynamicAnalysis.h
     Passes/ContractManager.hpp
   DESTINATION include
   PERMISSIONS
@@ -129,6 +131,12 @@ install(
     GROUP_READ
     WORLD_READ
 )
+
+##
+## Dynamic project
+##
+
+add_subdirectory(Dynamic)
 
 ##
 ## Premade MPI header for convenience and quick testing
@@ -145,20 +153,27 @@ if (MPI_C_FOUND AND Python_FOUND)
   else()
     set(MPI_FUNC_DECLS_FILE "${MPI_C_HEADER_DIR}/mpi.h") # OpenMPI
   endif(EXISTS "${MPI_C_HEADER_DIR}/mpi_proto.h")
+  message("Found MPI header with function definitions in ${MPI_FUNC_DECLS_FILE}, example MPI contracts will be generated.")
   add_custom_target(
     genMPIContracts ALL
     SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py"
     COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_mpi_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_FUNC_DECLS_FILE}" "CoVer ${GIT_REV}"
   )
   set(PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/mpi_contracts.h")
-  if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+  if (EXISTS "${MPI_C_HEADER_DIR}/shmem.h" OR DEFINED SHMEM_HEADER_PATH)
+    if (DEFINED SHMEM_HEADER_PATH)
+      message("Using manually specified OpenSHMEM header ${SHMEM_HEADER_PATH}, example OpenSHMEM contracts will be generated.")
+    else()
+      set(SHMEM_HEADER_PATH "${MPI_C_HEADER_DIR}/shmem.h")
+      message("Found OpenSHMEM header in ${SHMEM_HEADER_PATH}, example OpenSHMEM contracts will be generated.")
+    endif(DEFINED SHMEM_HEADER_PATH)
     add_custom_target(
       genSHMEMContracts ALL
       SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py"
-      COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${MPI_C_HEADER_DIR}/shmem.h" "CoVer ${GIT_REV}"
+      COMMAND ${Python_EXECUTABLE} "${CMAKE_CURRENT_SOURCE_DIR}/Scripts/gen_shmem_contr_h.py" "${CMAKE_CURRENT_BINARY_DIR}" "${SHMEM_HEADER_PATH}" "CoVer ${GIT_REV}"
     )
     list(APPEND PREMADE_CONTRACT_HEADERS "${CMAKE_CURRENT_BINARY_DIR}/shmem_contracts.h") # Works for OpenMPI, enough for now
-  endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
+  endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h" OR DEFINED SHMEM_HEADER_PATH)
   install(
     FILES
       ${PREMADE_CONTRACT_HEADERS}
@@ -175,6 +190,7 @@ endif(MPI_C_FOUND AND Python_FOUND)
 ##
 
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
+set(COVER_DYNAMIC_ANALYSER_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerDynamicAnalyzer.a)
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include")
 
 # Replace build folder with install folder
@@ -185,13 +201,13 @@ string(REPLACE ";" "\", \"" PREMADE_CONTRACT_PATHS_EMBED "${PREMADE_CONTRACT_PAT
 set(COMPILER_WRAP_TARGET "mpicc")
 set(COMPILE_SRC_FILE_ENDINGS ".*\\\\.c$")
 set(EXECUTABLE_WRAPPER_NAME "clangContracts")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts.cpp" @ONLY)
 add_executable(clangContracts "clangContracts.cpp")
 
 set(COMPILER_WRAP_TARGET "mpicxx")
 set(COMPILE_SRC_FILE_ENDINGS ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$")
 set(EXECUTABLE_WRAPPER_NAME "clangContracts++")
-configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp.in" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/clangContracts++.cpp" @ONLY)
 add_executable(clangContracts++ "clangContracts++.cpp")
 
 install(

@@ -19,6 +19,11 @@ if len(sys.argv) > 3:
 # Deprecated / Ignored functions
 ignorelist = [
 ]
+safetylist = [
+    "shmem_swap",
+    "shmem_sync",
+    "shmem_wait_until",
+]
 
 
 function_decls = {}
@@ -28,7 +33,7 @@ function_contracts = {}
 with open(inputh_location) as f:
     h_iter = iter(f.readlines())
     for line in h_iter:
-        if re.match(r"[ \tA-z0-9()\"]+ .* shmem_[\w]+[ \t]*\(.*", line):
+        if re.match(r"[ \tA-z0-9()\"]+.* shmem_[\w]+[ \t]*\([^\(]*$", line):
             # Found a function definition. Get the function name
             res = re.search(r" (shmem_.*?)\(", line)
             funcname = res.group(1).strip()
@@ -40,10 +45,16 @@ with open(inputh_location) as f:
             # Extract full function
             funcdec = line
             while True:
-                if ";" in funcdec:
-                    break;
-                newline = next(h_iter)
-                funcdec += newline
+                if ";" in funcdec or "{" in funcdec:
+                    break
+                line = next(h_iter)
+                funcdec += line
+
+            # Check if definition, not declaration
+            if "{" in funcdec:
+                while not "}" in line:
+                    line = next(h_iter)
+                continue
 
             # Cleanup
 
@@ -52,11 +63,11 @@ with open(inputh_location) as f:
             # Only one space in param list
             funcdec = re.sub(",[ \t]*", ", ", funcdec)
             # Remove any postfixes
-            parammatch = re.match(r".* shmem_[\w]+[ \t]*(\(.*\))", funcdec)
+            parammatch = re.match(r".* shmem_[\w]+[ \t]*(\([^\(]*\))", funcdec)
             if parammatch:
-                funcdec = funcdec[1:parammatch.end():] + ";"
+                funcdec = funcdec[0:parammatch.end():] + ";"
             # Remove any prefixes
-            funcdec = re.sub(r".*? *(((un)?signed )?(long )?[\w*]+ shmem_[\w]+[ \t]*\(.*\))", r"\g<1>", funcdec)
+            funcdec = re.sub(r".*? *(((un)?signed )?(long )?[\w*]+ shmem_[A-z0-9_]+[ \t]*\(.*\))", r"\g<1>", funcdec)
             # Clear whitespace
             funcdec = funcdec.strip()
 
@@ -65,19 +76,24 @@ with open(inputh_location) as f:
             function_contracts[funcname] = { "PRE": [], "POST": [], "TAGS": []}
 
 # Finally, add contracts
+def add_contract(func: str, scope: str, contr: str):
+    if func in function_contracts:
+        function_contracts[func][scope].append(contr)
+    else:
+        print(f"WARNING: Function \"{func}\" not found in OpenSHMEM header! Probably an outdated OpenSHMEM implementation!", file=sys.stderr)
 
 # Call shmem_init
 for func in function_decls.keys():
     if func in ["shmem_init", "shmem_init_thread"]:
-        function_contracts[func]["TAGS"].append("shmem_init")
+        add_contract(func, "TAGS", "shmem_init")
         continue
-    function_contracts[func]["PRE"].append("call_tag!(shmem_init) MSG \"Missing Initialization call\"")
+    add_contract(func, "PRE", "call_tag!(shmem_init) MSG \"Missing Initialization call\"")
 
 # Call shmem_finalize
 for func in function_decls.keys():
     if func in ["shmem_finalize", "shmem_global_exit"]:
         continue
-    function_contracts[func]["POST"].append("call!(shmem_finalize) MSG \"Missing Finalization call\"")
+    add_contract(func, "POST", "call!(shmem_finalize) MSG \"Missing Finalization call\"")
 
 # Local data races
 tag_buf = [("shmem_int_put_nbi", 1, "W", "R"),
@@ -86,26 +102,38 @@ tag_buf = [("shmem_int_put_nbi", 1, "W", "R"),
            ("shmem_int_atomic_fetch_inc_nbi", 0, "RW", "RW"),
            ("shmem_int_atomic_fetch_nbi", 0, "RW", "RW"),
            ("shmem_int_atomic_compare_swap_nbi", 0, "RW", "RW"),
-            ]
+           ("shmem_int_broadcast", 1, "RW", "W"),
+           ("shmem_int_broadcast", 2, "W", "R"),
+           ("shmem_int_sum_reduce", 1, "RW", "W"),
+           ("shmem_int_sum_reduce", 2, "W", "R"),
+]
 for func, buf_idx, forbid, action in tag_buf:
     if "R" in forbid:
-        function_contracts[func]["POST"].append(f"no! (read!(*{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local read\"")
-        function_contracts[func]["POST"].append(f"no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local read by call\"")
+        add_contract(func, "POST", f"no! (read!(*{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local read\"")
+        add_contract(func, "POST", f"no! (call_tag!(buf_read,$:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local read by call\"")
     if "W" in forbid:
-        function_contracts[func]["POST"].append(f"no! (write!(*{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local write\"")
-        function_contracts[func]["POST"].append(f"no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local write by call\"")
+        add_contract(func, "POST", f"no! (write!(*{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local write\"")
+        add_contract(func, "POST", f"no! (call_tag!(buf_write,$:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Local Data Race - Local write by call\"")
     if "R" in action:
-        function_contracts[func]["TAGS"].append(f"buf_read({buf_idx})")
+        add_contract(func, "TAGS", f"buf_read({buf_idx})")
     if "W" in action:
-        function_contracts[func]["TAGS"].append(f"buf_write({buf_idx})")
+        add_contract(func, "TAGS", f"buf_write({buf_idx})")
 
-tag_shmemcomplete = [("shmem_barrier_all"), ("shmem_barrier"), ("shmem_quiet")]
+# *Blocking* buffer-accessing functions, i.e. lead to data race but not a release req
+tag_buf_blocking = [
+    ("shmem_int_get", 0, "W"),
+]
+for func, buf_idx, action in tag_buf_blocking:
+    if "R" in action: add_contract(func, "TAGS", f"buf_read({buf_idx})")
+    if "W" in action: add_contract(func, "TAGS", f"buf_write({buf_idx})")
+
+tag_shmemcomplete = [("shmem_barrier_all"), ("shmem_barrier"), ("shmem_quiet"), ("shmem_uint64_wait_until")]
 for func in tag_shmemcomplete:
-    function_contracts[func]["TAGS"].append(f"shmem_complete")
+    add_contract(func, "TAGS", f"shmem_complete")
 
 # No inflight calls when freeing
 for func, buf_idx, _, _ in tag_buf:
-    function_contracts[func]["POST"].append(f"no! (call!(shmem_free,0:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Possible inflight call at shmem_free\"")
+    add_contract(func, "POST", f"no! (call!(shmem_free,0:{buf_idx})) until! (call_tag!(shmem_complete)) MSG \"Possible inflight call at shmem_free\"")
 
 # Make sure contexts are created and freed
 tag_ctxuse = [("shmem_ctx_get8", 0), ("shmem_ctx_get16", 0), ("shmem_ctx_get32", 0), ("shmem_ctx_get64", 0), ("shmem_ctx_get128", 0), ("shmem_ctx_getmem", 0),
@@ -115,13 +143,13 @@ for func, ctx_idx in tag_ctxuse:
     tag_ctxuse_nbi.append((func + "_nbi", ctx_idx))
 tag_ctxuse += tag_ctxuse_nbi
 for func, ctx_idx in tag_ctxuse:
-    function_contracts[func]["PRE"].append(f"call!(shmem_ctx_create,1:&{ctx_idx})")
-function_contracts["shmem_ctx_create"]["POST"].append(f"call!(shmem_ctx_destroy,0:*1) MSG \"Context leak\"")
+    add_contract(func, "PRE", f"call!(shmem_ctx_create,1:&{ctx_idx})")
+add_contract("shmem_ctx_create", "POST", f"call!(shmem_ctx_destroy,0:*1) MSG \"Context leak\"")
 
 # Make sure teams are freed
 tag_teamcreate = [("shmem_team_split_strided", 6), ("shmem_team_split_2d", 4), ("shmem_team_split_2d", 7)]
 for func, team_idx in tag_teamcreate:
-    function_contracts[func]["POST"].append(f"call!(shmem_team_destroy,0:*{team_idx}) MSG \"Team leak\"")
+    add_contract(func, "POST", f"call!(shmem_team_destroy,0:*{team_idx}) MSG \"Team leak\"")
 
 # Output file
 boilerplate_header = f"""
@@ -132,6 +160,8 @@ boilerplate_header = f"""
 #pragma once
 #include "Contracts.h"
 #include <shmem.h>
+
+#define MACRO_SAFETY(x) (x)
 
 """
 
@@ -151,7 +181,10 @@ def create_contract_output_for_func(types, contrs):
 for func, contrs in function_contracts.items():
     if not contrs["PRE"] and not contrs["POST"] and not contrs["TAGS"]:
         continue # No contracts, no need to output
-    header_output += function_decls[func][:-1] + " CONTRACT(\n"
+    new_decl = function_decls[func][:-1]
+    if func in safetylist:
+        new_decl = new_decl.replace(func, f"MACRO_SAFETY({func})")
+    header_output += new_decl + " CONTRACT(\n"
     header_output += create_contract_output_for_func(contrs.keys(), contrs)
     header_output += ");\n\n"
 

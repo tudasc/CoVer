@@ -32,7 +32,7 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
     Tags = DB.Tags;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
-        for (const std::shared_ptr<ContractExpression> Expr : C.Pre) {
+        for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a precondition
             std::string err;
@@ -87,7 +87,7 @@ struct IterTypePreCall {
     const Function* F;
     const std::vector<CallParam> reqParams;
     const bool isTag;
-    std::map<const Function*, std::vector<TagUnit>> Tags;
+    std::map<Function*, std::vector<TagUnit>> Tags;
 };
 
 ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPreCallStat(CallStatus cur, const Instruction* I, void* data) {
