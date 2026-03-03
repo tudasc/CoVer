@@ -26,6 +26,8 @@ def enrich_lit_xunit(xml_path):
                     if prev_stream is not None: testcase.remove(prev_stream)
                     subelem = ET.SubElement(testcase, output_redir[stream])
                     subelem.text = stream_out.group(1)
+            stderr = testcase.find("system-err")
+            if stderr is not None: failure.text = stderr.text
 
             # Find test case name
             file_match = re.search(r'FAIL: test-suite :: (.*) \(1 of 1\)', output)
@@ -33,10 +35,12 @@ def enrich_lit_xunit(xml_path):
             else: testcase.set('file', "Tests/" + file_match.group(1))
 
             # Find failing CHECK line, if it exists
-            line_match = re.search(r'(Tests/.+):(\d+):(\d+): error: CHECK', output)
+            line_match = re.search(r'(Tests/.+):(\d+):(\d+): error: CHECK[^:]*: (.*)', output)
             if line_match:
                 line = line_match.group(2)
+                error = line_match.group(4)
                 testcase.set('line', line)
+                failure.set('message', error)
             
             # Remove classname
             testcase.attrib.pop('classname', None)
