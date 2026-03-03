@@ -2,6 +2,9 @@ name: CI
 
 on: [push, pull_request]
 
+permissions:
+  checks: write
+
 jobs:
   build-linux:
     name: Build
