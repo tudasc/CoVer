@@ -33,9 +33,12 @@ jobs:
         run: |
           cd build
           ctest --output-on-failure --output-junit report.xml
-          python ../Tests/enrich_xunit.py report.xml
+      - name: Postprocess JUnit output
+        if: success() || failure() # Run even if tests fail
+        run: |
+          python Tests/enrich_xunit.py build/report.xml
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4
-        if: success() || failure() # Run even if tests fail
+        if: success() || failure()
         with:
-          report_paths: '**/build/report.xml'
+          report_paths: build/report.xml
