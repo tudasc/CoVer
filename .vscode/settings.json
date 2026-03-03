@@ -2,5 +2,8 @@
   "cmake.configureArgs": [
     "-DMPI_HOME=/home/archuser/Desktop/ompi/install",
     "-DENABLE_TESTS=ON",
-  ]
+  ],
+  "cmake.testEnvironment": {
+    "COVER_WRAP_TARGET_mpifort": "~/Desktop/ompi/install/bin/mpifort",
+  },
 }
