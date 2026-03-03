@@ -9,6 +9,7 @@ int main(int argc, char** argv) {
 
 // CHECK-LABEL: Running Contract Manager on Module
 // CHECK: Contract violation detected!
+// CHECK: Missing Finalization call
 // CHECK: CoVer: Total Tool Runtime
 
 
