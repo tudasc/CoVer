@@ -7,7 +7,7 @@ permissions:
 
 jobs:
   build-linux:
-    name: Build
+    name: Build and Test
     runs-on: ubuntu-latest
     steps:
       - name: Install Dependencies
@@ -23,7 +23,10 @@ jobs:
         run: |
           wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.10.tar.bz2
           tar xvf openmpi-5.0.10.tar.bz2
-          cd openmpi-5.0.10 && ./configure CC=clang CXX=clang++ FC=flang && make install -j
+          cd openmpi-5.0.10
+          ./configure CC=clang CXX=clang++ FC=flang
+          make -j
+          sudo make install
       - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
