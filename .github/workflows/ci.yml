@@ -35,7 +35,7 @@ jobs:
           wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${{ env.OPENMPI_VER }}.tar.bz2
           tar xvf openmpi-${{ env.OPENMPI_VER }}.tar.bz2
           cd openmpi-${{ env.OPENMPI_VER }}
-          ./configure CC=clang CXX=clang++ FC=flang
+          ./configure CC=clang CXX=clang++ FC=flang --prefix=/usr
           make -j
       - name: Install OpenMPI
         run: |
@@ -57,8 +57,7 @@ jobs:
           ccache -M 1G
           mkdir build
           cd build
-          cmake .. -DENABLE_TESTS=ON -DCMAKE_PREFIX_PATH=/usr/lib/llvm-21/ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
-
+          cmake .. -DENABLE_TESTS=ON -DCMAKE_PREFIX_PATH=/usr/lib/llvm-${{ env.LLVM_VER }}/ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: Build
         run: |
           export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
