@@ -33,10 +33,13 @@ def enrich_lit_xunit(xml_path):
             else: testcase.set('file', "Tests/" + file_match.group(1))
 
             # Find failing CHECK line, if it exists
-            line_match = re.search(r'(Tests/.+):(\d+):(\d+): error: CHECK:', output)
+            line_match = re.search(r'(Tests/.+):(\d+):(\d+): error: CHECK', output)
             if line_match:
                 line = line_match.group(2)
                 testcase.set('line', line)
+            
+            # Remove classname
+            testcase.attrib.pop('classname', None)
             
     # Write the modified XML in-place
     tree.write(xml_path, encoding="UTF-8", xml_declaration=True)
