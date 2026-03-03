@@ -1,4 +1,4 @@
-! RUN: %binaries/flangContracts %run_common
+! RUN: %flangContracts %run_common
 
 program PreCallMissingInit
     use mpi_f08

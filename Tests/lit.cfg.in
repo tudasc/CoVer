@@ -6,9 +6,10 @@ config.suffixes = {".c", ".F90", ".f90"}
 
 config.substitutions += [
     ("%binaries", config.binaries),
+    ("%clangContracts", config.binaries + "/clangContracts"),
+    ("%flangContracts", config.binaries + ("/flangContracts" if not "NO_TS29113" in config.environment else "/flangContracts-no-ts")),
     ("%run_common", "--predefined-contracts --instrument-contracts %s -o %t.exe 2>&1 | tee %t.test_out && (COVER_COVERAGE_FOLDER='%t_coverage' %t.exe >> %t.test_out 2>&1 || true) && FileCheck %s < %t.test_out")
 ]
-
 
 config.environment["OMPI_CC"] = "clang"
 config.environment["OMPI_FC"] = "flang"

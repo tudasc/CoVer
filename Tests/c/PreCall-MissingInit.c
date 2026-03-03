@@ -1,4 +1,4 @@
-// RUN: %binaries/clangContracts %run_common
+// RUN: %clangContracts %run_common
 
 #include "mpi_contracts.h"
 
