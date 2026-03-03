@@ -10,6 +10,7 @@ end program PreCallMissingInit
 
 ! CHECK-LABEL: Running Contract Manager on Module
 ! CHECK: Contract violation detected!
+! CHECK: Missing Initialization call
 ! CHECK: CoVer: Total Tool Runtime
 
 ! CHECK-LABEL: CoVer-Dynamic: Initializing...
