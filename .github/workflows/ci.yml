@@ -9,34 +9,61 @@ jobs:
   build-linux:
     name: Build and Test
     runs-on: ubuntu-latest
+    env:
+      LLVM_VER: "21"
+      OPENMPI_VER: "5.0.10"
     steps:
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo apt install default-jre libdw-dev wget
+          sudo apt update && sudo apt install default-jre libdw-dev wget ccache
       - name: Install LLVM
         run: |
-          wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh 21 all
-          sudo ln -s /usr/lib/llvm-21/build/utils/lit/lit.py /usr/bin/lit
-          sudo apt install flang-21
-          echo "/usr/lib/llvm-21/bin/" >> "$GITHUB_PATH"
-      - name: Compile OpenMPI
+          wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh ${{ env.LLVM_VER }} all
+          sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/build/utils/lit/lit.py /usr/bin/lit
+          sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/bin/flang /usr/bin/flang
+          sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/bin/clang /usr/bin/clang
+          sudo ln -s /usr/lib/llvm-${{ env.LLVM_VER }}/bin/clang++ /usr/bin/clang++
+          sudo apt install flang-${{ env.LLVM_VER }}
+          echo "/usr/lib/llvm-${{ env.LLVM_VER }}/bin/" >> "$GITHUB_PATH"
+      - name: Cache OpenMPI
+        id: cache-openmpi
+        uses: actions/cache@v4
+        with:
+          path: openmpi-${{ env.OPENMPI_VER }}
+          key: ${{ runner.os }}-openmpi-llvm-${{ env.LLVM_VER }}
+      - name: Compile OpenMPI if not cached
+        if: steps.cache-openmpi.outputs.cache-hit != 'true'
         run: |
-          wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.10.tar.bz2
-          tar xvf openmpi-5.0.10.tar.bz2
-          cd openmpi-5.0.10
+          wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${{ env.OPENMPI_VER }}.tar.bz2
+          tar xvf openmpi-${{ env.OPENMPI_VER }}.tar.bz2
+          cd openmpi-${{ env.OPENMPI_VER }}
           ./configure CC=clang CXX=clang++ FC=flang
           make -j
+      - name: Install OpenMPI
+        run: |
+          cd openmpi-${{ env.OPENMPI_VER }}
           sudo make install
       - uses: actions/checkout@v4
         with:
           submodules: 'recursive'
+      - name: Cache ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ${{ runner.os }}-llvm-${{ env.LLVM_VER }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-llvm-${{ env.LLVM_VER }}-ccache-
       - name: CMake configure
         run: |
+          export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
+          ccache -M 1G
           mkdir build
           cd build
-          cmake .. -DENABLE_TESTS=ON -DCMAKE_PREFIX_PATH=/usr/lib/llvm-21/
+          cmake .. -DENABLE_TESTS=ON -DCMAKE_PREFIX_PATH=/usr/lib/llvm-21/ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
       - name: Build
         run: |
+          export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
           cd build
           cmake --build . -j8
           sudo cmake --build . --target install
