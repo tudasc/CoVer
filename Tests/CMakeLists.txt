@@ -7,6 +7,8 @@ function(add_cover_test TEST_NAME)
 endfunction()
 
 add_cover_test(Correct-Minimal)
+add_cover_test(Correct-P2P)
+
 add_cover_test(PostCall-MissingFinalize)
 add_cover_test(PreCall-MissingInit)
 add_cover_test(Release-DataRace)
