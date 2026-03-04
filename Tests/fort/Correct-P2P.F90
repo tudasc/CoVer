@@ -14,7 +14,7 @@ program main
     buf(1) = 42
     if (rank == 0) then
         call MPI_Isend(buf, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, req)
-        buf(1) = 24
+        print *, "Buf: ", buf(1)
     else
         call MPI_Irecv(buf, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, req)
     end if
@@ -24,11 +24,9 @@ program main
 end program
 
 ! CHECK-LABEL: Running Contract Manager on Module
-! CHECK: Contract violation detected!
-! CHECK: Local Data Race - Local write
+! CHECK-NOT: Contract violation detected!
 ! CHECK: CoVer: Total Tool Runtime
 
 ! CHECK-LABEL: CoVer-Dynamic: Initializing...
-! CHECK: Contract violation detected!
-! CHECK: Local Data Race - Local write
-! Dont check if analysis finished, MPI implementation might crash.
+! CHECK-NOT: Contract violation detected!
+! CHECK: Analysis finished.
