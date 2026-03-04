@@ -1,4 +1,14 @@
 {
+  "terminal.integrated.profiles.linux": {
+      "CoVer Wrapper Bash": {
+          "path": "bash",
+          "args": [
+              "--init-file",
+              "${workspaceFolder}/.vscode/bash_init.sh"
+          ]
+      }
+  },
+  "terminal.integrated.defaultProfile.linux": "CoVer Wrapper Bash",
   "cmake.configureArgs": [
     "-DMPI_HOME=/home/archuser/Desktop/ompi/install",
     "-DENABLE_TESTS=ON",
