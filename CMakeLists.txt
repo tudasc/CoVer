@@ -9,7 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 ##
 
 find_package(LLVM REQUIRED CONFIG)
-set(LLVM_VERSION_MIN 18)
+set(LLVM_VERSION_MIN 21)
 if (${LLVM_VERSION_MAJOR} LESS ${LLVM_VERSION_MIN})
   message(FATAL_ERROR "LLVM/Clang version ${LLVM_VERSION_MAJOR} is unsupported, minimum required is ${LLVM_VERSION_MIN}!")
 else()
@@ -209,7 +209,10 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   set(EXECUTABLE_WRAPPER_NAME "${WRAPPER_NAME}")
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
   add_executable(${WRAPPER_NAME} "${WRAPPER_NAME}.cpp")
+  target_link_libraries(${WRAPPER_NAME} LLVM)
   install(TARGETS ${WRAPPER_NAME})
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Utils/bash-autocomplete.sh" "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/completions/${WRAPPER_NAME}" @ONLY)
+  install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/" DESTINATION share/bash-completion)
 endfunction()
 
 if (MPI_C_FOUND)
