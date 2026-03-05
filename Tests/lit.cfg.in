@@ -15,7 +15,8 @@ config.environment["OMPI_CC"] = "clang"
 config.environment["OMPI_FC"] = "flang"
 
 for var in ['OMPI_CC', 'OMPI_CXX', 'OMPI_FC', 'MPICH_CC', 'MPICH_CXX', 'MPICH_FC',
-            'COVER_WRAP_TARGET_mpicc', 'COVER_WRAP_TARGET_mpicxx', 'COVER_WRAP_TARGET_mpifort']:
+            'COVER_WRAP_TARGET_mpicc', 'COVER_WRAP_TARGET_mpicxx', 'COVER_WRAP_TARGET_mpifort',
+            'OMPI_ALLOW_RUN_AS_ROOT', 'OMPI_ALLOW_RUN_AS_ROOT_CONFIRM']: # For Docker testing
     if var in os.environ: config.environment[var] = os.environ[var]
 
 config.name = "test-suite"
