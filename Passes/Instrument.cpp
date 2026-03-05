@@ -3,29 +3,35 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <json/reader.h>
 #include <json/value.h>
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/ArrayRef.h>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
+#include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Operator.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Support/WithColor.h>
+#include <dwarf.h>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -46,6 +52,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
 
     Function* mainF = M.getFunction("main");
     if (!mainF) return PreservedAnalyses::all(); // No point
+    if (M.getFunction("_QQmain")) isC = false; // TODO: Switch to DISourceLanguage check once released
 
     // Read detJson
     Json::Value detJson;
@@ -135,9 +142,9 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     callbackW->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create callbacks
-    instrumentFunctions(M);
     if (ClInstrumentType != "funconly")
         instrumentRW(M);
+    instrumentFunctions(M);
 
     return PreservedAnalyses::none();
 }
@@ -255,8 +262,9 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         }
         case OperationType::CALL: {
             std::shared_ptr<const CallOperation> cOP = static_pointer_cast<const CallOperation>(op);
-            Function* F = M.getFunction(cOP->Function);
-            if (!F) errs() << "Warning: Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module\nThis may cause issues for instrumentation.\n";
+            Function* F = M.getFunction(cOP->Function) ? M.getFunction(cOP->Function) : M.getFunction(StringRef(cOP->Function).lower() + "_");
+            if (!F) WithColor::warning() << "Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module. This may cause issues for instrumentation.\n";
+            else mentioned_funcs.push_back(F);
             Constant* funcStr = ConstantDataArray::getString(M.getContext(), cOP->Function);
             std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
             data = ConstantStruct::get(CallOp_Type, {createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + cOP->Function), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second), F ? F : Null_Const});
@@ -341,30 +349,19 @@ void InstrumentPass::createTypes(Module& M) {
 }
 
 void InstrumentPass::instrumentFunctions(Module &M) {
+    // All functions with attached contracts
     for (ContractManagerAnalysis::Contract C : DB->Contracts) {
-        // All functions with attached contracts
         insertFunctionInstrCallback(C.F);
-    }
-
-    // All functions referenced by name
-    for (ContractManagerAnalysis::LinearizedContract C : DB->LinearizedContracts) {
-        for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
-            if (Expr->OP->type() == OperationType::CALL) {
-                std::shared_ptr<const CallOperation> cOP = std::static_pointer_cast<const CallOperation>(Expr->OP);
-                if (M.getFunction(cOP->Function)) insertFunctionInstrCallback(M.getFunction(cOP->Function));
-            }
-        }
-        for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
-            if (Expr->OP->type() == OperationType::CALL) {
-                std::shared_ptr<const CallOperation> cOP = std::static_pointer_cast<const CallOperation>(Expr->OP);
-                if (M.getFunction(cOP->Function)) insertFunctionInstrCallback(M.getFunction(cOP->Function));
-            }
-        }
     }
 
     // All functions referenced in tags
     for (std::pair<Function*, std::vector<TagUnit>> tag : DB->Tags) {
         insertFunctionInstrCallback(tag.first);
+    }
+
+    // All functions referenced by name
+    for (Function* F : mentioned_funcs) {
+        insertFunctionInstrCallback(F);
     }
 }
 
@@ -375,6 +372,16 @@ void InstrumentPass::instrumentRW(Module &M) {
                 if (isa<LoadInst>(I) || isa<StoreInst>(I)) {
                     if (instrument_ignore.contains(&I)) continue;
                     Value* V = getLoadStorePointerOperand(&I);
+                    // Fortran: Check if reading array metadata, and skip callback if so
+                    if (GEPOperator const* GEPOp = dyn_cast<GEPOperator>(V)) {
+                        if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(GEPOp->getPointerOperand())) {
+                            SmallVector<DIGlobalVariableExpression*> dbg_arr;
+                            GV->getDebugInfo(dbg_arr);
+                            if (!isC && !dbg_arr.empty() && dbg_arr[0]->getVariable()->getType()->getTag() == (dwarf::Tag)DW_TAG_array_type) {
+                                continue;
+                            }
+                        }
+                    }
                     insertCBIfNeeded(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V}, &I);
                 }
             }
@@ -403,21 +410,45 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         }
     }
     for (CallBase* callsite : callsites) {
+        int skipnum = 0;
         std::vector<Value*> params;
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
         params.push_back(ConstantInt::get(Int_Type, callsite->arg_size()));
-        for (Use& U : callsite->args()) {
-            // Store size of data type
-            params.push_back(ConstantInt::get(Int_Type, callsite->getModule()->getDataLayout().getTypeStoreSizeInBits(U->getType())));
-
-            // Store actual parameter, making sure to cast if necessary
+        for (Use const& U : callsite->args()) {
             Value* actual_param = U;
-            if (!U->getType()->isPointerTy()) {
-                if (U->getType()->isFloatingPointTy()) {
-                    actual_param = CastInst::Create(Instruction::CastOps::BitCast, actual_param, Int_Type, "", callsite->getIterator());
+            int const cur_argno = callsite->getArgOperandNo(&U);
+            if (cur_argno >= callsite->arg_size() - skipnum) break;
+
+            // Store size of data type
+            if (isC) {
+                params.push_back(ConstantInt::get(Int_Type, callsite->getDataLayout().getTypeStoreSizeInBits(U->getType())));
+                // Store actual parameter, making sure to cast if necessary
+                if (!U->getType()->isPointerTy()) {
+                    if (U->getType()->isFloatingPointTy()) {
+                        actual_param = CastInst::Create(Instruction::CastOps::BitCast, actual_param, Int_Type, "", callsite->getIterator());
+                    }
+                    // Now, actual pointer cast
+                    actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Ptr_Type, "", callsite->getIterator());
                 }
-                // Now, actual pointer cast
-                actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Ptr_Type, "", callsite->getIterator());
+            } else {
+                if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
+                    DISubprogram const* Dbg = F->getSubprogram();
+                    if (checkIsStrParam(U)) skipnum++;
+                    if (Dbg->getType()->getTypeArray()->getNumOperands() <= cur_argno + 1) {
+                        errs() << "Warning: During instrumentation, likely string param missed during detection. Normal if optimizations enabled.\n";
+                        errs() << "If unsure, check if function " << F->getName() << " has more than " << skipnum << " string arguments.\n";
+                        break;
+                    }
+                    // All parameters are sent as pointers. Need to check exact size using dbg info
+                    DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
+                    params.push_back(ConstantInt::get(Int_Type, param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits()));
+                    // On Fortran, deref if param is an allocate/ptr buffer
+                    if (param_type->getTag() == (dwarf::Tag)DW_TAG_array_type) {
+                        actual_param = new LoadInst(Ptr_Type, actual_param, "", callsite->getIterator());
+                    }
+                } else {
+                    errs() << "ERROR: Could not perform instrumentation! Unable to get debug info for function \"" << callsite->getCalledOperand()->getName() << "\"";
+                }
             }
             params.push_back(actual_param);
         }
@@ -438,6 +469,35 @@ bool InstrumentPass::isRelevant(Instruction const* I) const {
     FileReference f = ContractPassUtility::getFileReference(I);
     for (ErrorMessage const& msg : err_msgs) {
         for (FileReference const& ref : msg.references) if (ref == f) return true;
+    }
+    return false;
+}
+
+bool InstrumentPass::checkIsStrParam(Value const* V) {
+    // We want to check if I is a string param. If so, instrumentation should omit the string size arg
+    // Lowered FIR does not make this easy.
+    // If its a str var, its just some global, then the str size appended as another (fake) param
+    // Otherwise, its "fun" with extract and insert value insts.
+    // Need to use a heuristic approach to check
+    if (ExtractValueInst const* EV = dyn_cast<ExtractValueInst>(V)) {
+        // String operand extract...
+        // Also, check if its operand 0 (1 would be str len)
+        if (EV->getNumIndices() != 1 || EV->getIndices()[0] != 0) return false;
+        if (InsertValueInst const* IV = dyn_cast<InsertValueInst>(EV->getAggregateOperand())) {
+            // Insertion of size...
+            if (InsertValueInst const* IV2 = dyn_cast<InsertValueInst>(IV->getAggregateOperand())) {
+                // Insertion of str... seems legit
+                // Final Check: Struct of the type we expect
+                StructType const* T = dyn_cast<StructType>(IV2->getType());
+                return T && T->getElementType(0)->isPointerTy() && T->getElementType(1)->isIntegerTy(64);
+            }
+        }
+    }
+
+    // Now, check if its a global string
+    if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
+        Constant const* Init = GV->getInitializer();
+        return Init && isa<ArrayType>(Init->getType()) && dyn_cast<ArrayType>(Init->getType())->getElementType() == IntegerType::get(V->getContext(), 8);
     }
     return false;
 }

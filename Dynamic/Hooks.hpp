@@ -1,3 +1,4 @@
+#include <filesystem>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -33,6 +34,8 @@ namespace {
     };
 
     std::unordered_set<void const*> visitedLocs;
+    
+    std::filesystem::path const& coverage_prefix = std::getenv("COVER_COVERAGE_FOLDER") ? std::filesystem::path(std::getenv("COVER_COVERAGE_FOLDER")) : std::filesystem::current_path();
 
     std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
     std::unordered_map<ContractFormula_t*, ContractFormula_t*> formula_parents;
@@ -212,7 +215,10 @@ namespace {
         std::srand(std::time({}) + getpid());
         std::stringstream file_suffix;
         file_suffix << std::hex << rand();
-        std::ofstream coverage_file("CoVerCoverage_" + file_suffix.str());
+        std::filesystem::create_directories(coverage_prefix);
+        std::string output_path = coverage_prefix / ("CoVerCoverage_" + file_suffix.str());
+        DynamicUtils::out() << "Writing coverage file to " << output_path << "\n";
+        std::ofstream coverage_file(output_path);
         for (void const* loc : visitedLocs) {
             std::optional<std::pair<std::string, const void *>> info = DynamicUtils::getDLInfo(loc);
             if (!info) continue;

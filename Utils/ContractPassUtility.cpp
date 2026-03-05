@@ -2,6 +2,7 @@
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
 #include <climits>
+#include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -11,19 +12,35 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Module.h>
+#include <llvm/IR/Operator.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <optional>
 #include <sys/types.h>
 #include <vector>
 
+#include "dsa/DSNode.h"
+#include "dsa/DSSupport.h"
+#include "dsa/Steensgaard.hh"
+#include "dsa/DSGraph.h"
+
 using namespace llvm;
 
 // To only warn once if a CB is calling an unknown function
 static std::set<const CallBase*> UnknownCalledParam;
+
+const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
+    const Value* b = getPointerOperand(V);
+    if (b == nullptr) {
+        if (const GEPOperator* GEPOp = dyn_cast<GEPOperator>(V)) b = GEPOp->getPointerOperand();
+    }
+    return b;
+}
 
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
     if (!isa<Instruction>(Ip)) return {};
@@ -34,13 +51,13 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
         int curSteps = candidates.begin()->second;
         candidatesConsidered.insert({candidates.begin()->first, candidates.begin()->second});
         candidates.erase(candidates.begin());
-        while (getPointerOperand(I) && (isa<GlobalValue>(getPointerOperand(I)) || isa<Instruction>(getPointerOperand(I)))) {
-            if (isa<GlobalValue>(getPointerOperand(I))) {
-                candidatesConsidered.insert({getPointerOperand(I), curSteps});
+        while (ContractPassUtility::betterGetPointerOperand(I) && (isa<GlobalValue>(ContractPassUtility::betterGetPointerOperand(I)) || isa<Instruction>(ContractPassUtility::betterGetPointerOperand(I)))) {
+            if (isa<GlobalValue>(ContractPassUtility::betterGetPointerOperand(I))) {
+                candidatesConsidered.insert({ContractPassUtility::betterGetPointerOperand(I), curSteps});
                 return candidatesConsidered;
             } else {
-                if (!isa<GetElementPtrInst>(getPointerOperand(I))) curSteps++;
-                I = dyn_cast<Instruction>(getPointerOperand(I));
+                if (!isa<GetElementPtrInst>(ContractPassUtility::betterGetPointerOperand(I))) curSteps++;
+                I = dyn_cast<Instruction>(ContractPassUtility::betterGetPointerOperand(I));
             }
         }
         if (const AllocaInst* AI = dyn_cast<AllocaInst>(I)) {
@@ -55,7 +72,7 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
                         if (const CallBase* CB = dyn_cast<CallBase>(U)) {
                             // Callsite with correct argument
                             int offset = 0;
-                            if (CB->getCalledFunction()->getName() == "__kmpc_fork_call")
+                            if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "__kmpc_fork_call")
                                 offset = 1;
                             if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(i + offset))) {
                                 if (!candidatesConsidered.contains(cI)) {
@@ -132,19 +149,21 @@ FileReference getFileReference(const Instruction* I) {
     };
 }
 
-bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
     if (!isTag) {
-        if (!CB->getCalledFunction()) {
+        if (CB->getCalledOperand()->getName().empty()) {
             if (!UnknownCalledParam.contains(CB)) {
                 errs() << "Could not get name for function at " << getInstrLocStr(CB) << "!\nAnalysis performance is impaired!\n";
                 UnknownCalledParam.insert(CB);
             }
             return false;
         }
-        return CB->getCalledFunction()->getName() == Target;
+        return CB->getCalledOperand()->getName() == Target ||  // C-style match
+               CB->getCalledOperand()->getName() == Target.lower() + "_"; // Fortran-style match
     } else {
-        if (!Tags.contains(CB->getCalledFunction())) return false;
-        for (const ContractTree::TagUnit tag : Tags[CB->getCalledFunction()]) {
+        Function* F = (Function*)CB->getCalledOperand(); // Dirty cast ok, no member access. Needed because of fortran non-matching param
+        if (!Tags.contains(F)) return false;
+        for (const ContractTree::TagUnit tag : Tags[F]) {
             if (tag.tag == Target) {
                 return true;
             }
@@ -153,21 +172,40 @@ bool checkCalledApplies(const CallBase* CB, const std::string Target, bool isTag
     }
 }
 
-bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc) {
+Module* getModule(Value const* V) {
+    if (Instruction const* I = dyn_cast<Instruction>(V)) return (Module*)I->getModule();
+    if (GlobalValue const* GV = dyn_cast<GlobalValue>(V)) return (Module*)GV->getParent();
+    return nullptr;
+}
+
+bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM) {
     const Value* source = contrP;
     const Value* target = callP;
     int diff = 0;
-    // Resolve function differences.
-    // If one is a global, this does not matter, so check if they are instructions first
-    if (isa<Instruction>(source) && isa<Instruction>(target)) {
-        const Function* Fs = {dyn_cast<Instruction>(source)->getParent()->getParent()};
-        const Function* Ft = {dyn_cast<Instruction>(target)->getParent()->getParent()};
-        if (Fs != Ft) {
-            // Definitely different functions
-            diff = resolveFunctionDifference(&source, &target);
-            if (diff == INT_MAX) return false;
+
+    // Filter out new instr from sroa
+    if (isa<StoreInst>(callP) && dyn_cast<StoreInst>(callP)->getPointerOperand()->getName().starts_with(".fca.") ||
+        isa<StoreInst>(contrP) && dyn_cast<StoreInst>(contrP)->getPointerOperand()->getName().starts_with(".fca.")) {
+        return false;
+    }
+
+    // Only use DSA for Fortran
+    const bool use_dsa = (isa<Instruction>(contrP) && dyn_cast<Instruction>(contrP)->getModule()->getFunction("_QQmain")) ||
+                         (isa<Instruction>(callP) && dyn_cast<Instruction>(callP)->getModule()->getFunction("_QQmain"));
+    if (!use_dsa) {
+        // Resolve function differences.
+        // If one is a global, this does not matter, so check if they are instructions first
+        if (isa<Instruction>(source) && isa<Instruction>(target)) {
+            const Function* Fs = {dyn_cast<Instruction>(source)->getParent()->getParent()};
+            const Function* Ft = {dyn_cast<Instruction>(target)->getParent()->getParent()};
+            if (Fs != Ft) {
+                // Definitely different functions
+                diff = resolveFunctionDifference(&source, &target);
+                if (diff == INT_MAX) return false;
+            }
         }
     }
+
     switch (acc) {
         case ContractTree::ParamAccess::NORMAL:
             if (diff != 0) return false; // Interproc with load inside
@@ -187,33 +225,50 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
             else if (diff != 1) return false;
             break;
     }
-    // Now, need to check if they are equal / aliases
-    while (true) {
-        // If either is null, paramerror or if one does not have a pointer operand, then they can not match
-        if (!source || !target) return false;
-        // If equal, success
-        if (source == target) return true;
-        // If one is a GEP, resolve "for free"
-        if (isa<GetElementPtrInst>(source))
+
+    if (source == target) return true;
+
+    if (use_dsa) {
+        std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
+        if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
+            DSNodeHandle sourceNode = steens->getNodeForValue(source);
+            DSNodeHandle targetNode = steens->getNodeForValue(target);
+            while (sourceNode.getNode()->isCollapsedNode())
+                sourceNode = sourceNode.getNode()->edge_begin()->second;
+            while (targetNode.getNode()->isCollapsedNode())
+                targetNode = targetNode.getNode()->edge_begin()->second;
+            return sourceNode == targetNode;
+        }
+    } else {
+        // Now, need to check if they are equal / aliases
+        while (true) {
+            // If either is null, paramerror or if one does not have a pointer operand, then they can not match
+            if (!source || !target) return false;
+            // If equal, success
+            if (source == target) return true;
+            // If one is a GEP, resolve "for free"
+            if (isa<GetElementPtrInst>(source))
+                source = getPointerOperand(source);
+            if (isa<GetElementPtrInst>(target))
+                target = getPointerOperand(target);
+            // Check again, may be equal if synchronized already (i.e. stack array)
+            if (source == target) return true;
+            // Get their ptr operands if they exist and check again
             source = getPointerOperand(source);
-        if (isa<GetElementPtrInst>(target))
             target = getPointerOperand(target);
-        // Check again, may be equal if synchronized already (i.e. stack array)
-        if (source == target) return true;
-        // Get their ptr operands if they exist and check again
-        source = getPointerOperand(source);
-        target = getPointerOperand(target);
+        }
     }
+    return false;
 }
 
-bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags, ModuleAnalysisManager* MAM) {
     std::vector<const Value*> candidateParams;
     const Value* sourceParam = Source->getArgOperand(P.contrP);
 
     if (!P.callPisTagVar) {
         candidateParams.push_back(Target->getArgOperand(P.callP));
     } else {
-        for (ContractTree::TagUnit TagU : Tags[Target->getCalledFunction()]) {
+        for (ContractTree::TagUnit TagU : Tags[(Function*)Target->getCalledOperand()]) {
             if (TagU.tag != TargetStr) continue;
             if (!TagU.param.has_value()) continue;
             candidateParams.push_back(Target->getArgOperand(*TagU.param));
@@ -223,7 +278,7 @@ bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const
     }
 
     for (const Value* candidateParam : candidateParams) {
-        return checkParamMatch(sourceParam, candidateParam, P.contrParamAccess);
+        return checkParamMatch(sourceParam, candidateParam, P.contrParamAccess, MAM);
     }
     return false;
 }
