@@ -7,7 +7,7 @@ add_library(CoVerDynamicAnalyzer STATIC
 )
 
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 20)
-set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD ON)
+set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD "$<NOT:$<CONFIG:Debug>>")
 target_include_directories(CoVerDynamicAnalyzer PUBLIC ../Include/)
 
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_VISIBILITY_PRESET hidden)
