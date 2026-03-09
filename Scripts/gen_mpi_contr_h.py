@@ -300,7 +300,9 @@ for func, tag_idx in tag_typeuse:
 # Parameter Errors
 paramerror_comm = [
     ("MPI_Send", 5),
+    ("MPI_Isend", 5),
     ("MPI_Recv", 5),
+    ("MPI_Irecv", 5),
     ("MPI_Sendrecv", 10),
     ("MPI_Allgather", 6),
     ("MPI_Cart_get", 0),
