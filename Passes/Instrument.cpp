@@ -248,19 +248,25 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
 
 Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const Operation> op) {
     Constant* data = Null_Const;
-    std::string name;
+    std::string name = "UNKNOWN";
     switch (op->type()) {
-        case OperationType::READ:
-        case OperationType::WRITE: {
+        case FormulaType::AND:
+        case FormulaType::OR:
+        case FormulaType::XOR:
+            // Should not happen here!
+            errs() << "Unexpected connective in createOperationGlobal!\n";
+            break;
+        case FormulaType::READ:
+        case FormulaType::WRITE: {
             std::shared_ptr<const RWOperation> rwOP = static_pointer_cast<const RWOperation>(op);
-            Constant* isWrite = ConstantInt::getBool(Bool_Type, op->type() == OperationType::WRITE);
+            Constant* isWrite = ConstantInt::getBool(Bool_Type, op->type() == FormulaType::WRITE);
             ConstantInt* const_paramacc = ConstantInt::get(Int_Type, (int)rwOP->contrParamAccess);
             ConstantInt* const_idx = ConstantInt::get(Int_Type, (int)rwOP->contrP);
             data = ConstantStruct::get(RWOp_Type, {const_idx, const_paramacc, isWrite});
             name = "CONTR_RWOP";
             break;
         }
-        case OperationType::CALL: {
+        case FormulaType::CALL: {
             std::shared_ptr<const CallOperation> cOP = static_pointer_cast<const CallOperation>(op);
             Function* F = M.getFunction(cOP->Function) ? M.getFunction(cOP->Function) : M.getFunction(StringRef(cOP->Function).lower() + "_");
             if (!F) WithColor::warning() << "Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module. This may cause issues for instrumentation.\n";
@@ -271,7 +277,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             name = "CONTR_CALLOP";
             break;
         }
-        case OperationType::CALLTAG: {
+        case FormulaType::CALLTAG: {
             std::shared_ptr<const CallOperation> cOP = static_pointer_cast<const CallOperation>(op);
             data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), cOP->Function), "CONTR_TAG_STR_" + cOP->Function);
             std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
@@ -279,7 +285,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             name = "CONTR_CALLTAGOP";
             break;
         }
-        case OperationType::RELEASE:
+        case FormulaType::RELEASE:
             std::shared_ptr<const ReleaseOperation> rOP = static_pointer_cast<const ReleaseOperation>(op);
             Constant* forbidden_op = createOperationGlobal(M, rOP->Forbidden);
             Constant* forb_type = ConstantInt::get(Int_Type, (int64_t)rOP->Forbidden->type());

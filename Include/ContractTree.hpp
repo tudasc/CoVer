@@ -14,11 +14,11 @@
 #include <vector>
 
 namespace ContractTree {
-    enum struct OperationType { READ, WRITE, ALLOC, CALL, CALLTAG, RELEASE, PARAM };
+    enum struct FormulaType { AND, OR, XOR, READ, WRITE, ALLOC, CALL, CALLTAG, RELEASE, PARAM };
     enum struct ParamAccess { NORMAL, DEREF, ADDROF };
     struct Operation {
         virtual ~Operation() = default;
-        virtual const OperationType type() const = 0;
+        virtual const FormulaType type() const = 0;
     };
     struct RWOperation : Operation {
         const int contrP;
@@ -28,15 +28,15 @@ namespace ContractTree {
     };
     struct ReadOperation : RWOperation {
         ReadOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
-        virtual const OperationType type() const override { return OperationType::READ; };
+        virtual const FormulaType type() const override { return FormulaType::READ; };
     };
     struct WriteOperation : RWOperation {
         WriteOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
-        virtual const OperationType type() const override { return OperationType::WRITE; };
+        virtual const FormulaType type() const override { return FormulaType::WRITE; };
     };
     struct AllocOperation : RWOperation {
         AllocOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
-        virtual const OperationType type() const override { return OperationType::ALLOC; };
+        virtual const FormulaType type() const override { return FormulaType::ALLOC; };
     };
     enum Comparator {
         NEQ, GT, GTEQ, LT, LTEQ, EXEQ
@@ -45,7 +45,7 @@ namespace ContractTree {
         ParamOperation(int _idx, std::vector<std::pair<const Comparator, const std::string>> _reqs) : idx{_idx}, reqs{_reqs} {};
         const int idx;
         const std::vector<std::pair<const Comparator, const std::string>> reqs;
-        virtual const OperationType type() const override { return OperationType::PARAM; };
+        virtual const FormulaType type() const override { return FormulaType::PARAM; };
     };
     struct CallParam {
         int callP;
@@ -57,22 +57,21 @@ namespace ContractTree {
         CallOperation(std::string _func, std::vector<CallParam> _params) : Function{_func}, Params{_params} {};
         const std::string Function;
         const std::vector<CallParam> Params;
-        virtual const OperationType type() const override { return OperationType::CALL; };
+        virtual const FormulaType type() const override { return FormulaType::CALL; };
     };
     struct CallTagOperation : CallOperation {
         CallTagOperation(std::string _func, std::vector<CallParam> _params) : CallOperation(_func, _params) {};
-        virtual const OperationType type() const override { return OperationType::CALLTAG; };
+        virtual const FormulaType type() const override { return FormulaType::CALLTAG; };
     };
     struct ReleaseOperation : Operation {
         ReleaseOperation(std::shared_ptr<const Operation> opNo, std::shared_ptr<const Operation> opUntil) : Forbidden{opNo}, Until{opUntil} {};
         const std::shared_ptr<const Operation> Forbidden;
         const std::shared_ptr<const Operation> Until;
-        virtual const OperationType type() const override { return OperationType::RELEASE; };
+        virtual const FormulaType type() const override { return FormulaType::RELEASE; };
     };
 
     enum struct Fulfillment { FULFILLED, UNKNOWN, BROKEN };
     inline const std::string FulfillmentStr(Fulfillment f) { return std::vector<std::string>{ "Fulfilled", "Unknown", "Violated"}[(int)f]; };
-    enum struct FormulaType { AND = 5, OR = 6, XOR = 7 };
     struct ContractFormula {
         ContractFormula(std::vector<std::shared_ptr<ContractFormula>> _cF, std::string _str, FormulaType _type) : Children(_cF), ExprStr(_str), type(_type) {}
         ContractFormula(std::string _str) : ExprStr(_str) {}

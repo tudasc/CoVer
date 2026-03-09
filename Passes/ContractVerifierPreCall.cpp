@@ -39,11 +39,11 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
             std::string err;
             CallStatusVal result;
             switch (Expr->OP->type()) {
-                case OperationType::CALL:
-                case OperationType::CALLTAG: {
+                case FormulaType::CALL:
+                case FormulaType::CALLTAG: {
                     const CallOperation* cOP = static_cast<const CallOperation*>(Expr->OP.get());
                     C.DebugInfo->push_back("[ContractVerifierPreCall] Attempting to verify expression: " + Expr->ExprStr);
-                    result = checkPreCall(cOP, C, *Expr, cOP->type() == OperationType::CALLTAG, M, err);
+                    result = checkPreCall(cOP, C, *Expr, cOP->type() == FormulaType::CALLTAG, M, err);
                     break;
                 }
                 default: continue;
