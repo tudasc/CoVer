@@ -54,7 +54,20 @@ struct ReleaseOp_t {
 };
 
 // Number must match those defined in enums in ContractTree.hpp (operation + connective)!
-enum ContractConnective : int32_t { UNARY_READ = 0, UNARY_WRITE = 1, UNARY_CALL = 2, UNARY_CALLTAG = 3, UNARY_RELEASE = 4, AND = 5, OR = 6, XOR = 7 };
+enum ContractConnective : int32_t {
+    // Connectives
+    AND,
+    OR,
+    XOR,
+    // Operations
+    UNARY_READ,
+    UNARY_WRITE,
+    UNARY_ALLOC,
+    UNARY_CALL,
+    UNARY_CALLTAG,
+    UNARY_RELEASE,
+    UNARY_PARAM
+};
 struct ContractFormula_t {
     ContractFormula_t* children;
     int32_t num_children;
