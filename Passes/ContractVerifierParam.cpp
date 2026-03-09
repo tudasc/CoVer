@@ -40,7 +40,7 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a precondition
             std::string err;
-            if (Expr->OP->type() != OperationType::PARAM) continue;
+            if (Expr->OP->type() != FormulaType::PARAM) continue;
             const ParamOperation* ParamOp = dynamic_cast<const ParamOperation*>(Expr->OP.get());
             C.DebugInfo->push_back("[ContractVerifierParam] Attempting to verify expression: " + Expr->ExprStr);
             Fulfillment resf = Fulfillment::FULFILLED;

@@ -21,7 +21,7 @@ PreservedAnalyses ContractVerifierAllocPass::run(Module &M,
     // First, build list of all allocating funcs
     for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
         for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
-            if (Expr->OP->type() != OperationType::ALLOC) continue;
+            if (Expr->OP->type() != FormulaType::ALLOC) continue;
             const AllocOperation* AllocOp = dynamic_cast<const AllocOperation*>(Expr->OP.get());
             if (!AllocFuncs.contains(C.F)) AllocFuncs[C.F] = {};
             AllocFuncs[C.F].insert(AllocOp);
@@ -34,7 +34,7 @@ PreservedAnalyses ContractVerifierAllocPass::run(Module &M,
         for (const std::shared_ptr<ContractExpression> Expr : C.Pre) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a precondition
-            if (Expr->OP->type() != OperationType::ALLOC) continue;
+            if (Expr->OP->type() != FormulaType::ALLOC) continue;
             const AllocOperation* AllocOp = dynamic_cast<const AllocOperation*>(Expr->OP.get());
             C.DebugInfo->push_back("[ContractVerifierAlloc] Attempting to verify expression: " + Expr->ExprStr);
             std::string err;
