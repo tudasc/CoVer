@@ -29,6 +29,7 @@ struct CallParam_t {
     int32_t contrP;
     ParamAccess accType;
 };
+enum Comparator : int32_t { NEQ, GT, GTEQ, LT, LTEQ, EXEQ };
 
 struct RWOp_t {
     int32_t idx;
@@ -51,6 +52,15 @@ struct ReleaseOp_t {
     int32_t release_op_kind;
     void** forbidden_op;
     int32_t forbidden_op_kind;
+};
+struct ParamReq_t {
+    const Comparator comparator;
+    const void* value;
+};
+struct ParamOp_t {
+    const int32_t idx;
+    const ParamReq_t* requirements;
+    const int32_t num_reqs;
 };
 
 // Number must match those defined in enums in ContractTree.hpp (operation + connective)!
