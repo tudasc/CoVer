@@ -10,6 +10,12 @@
 #include <sstream>
 #include <vector>
 
+#ifdef NDEBUG
+#define ANALYSIS_PREAMBLE inline __attribute__((always_inline))
+#else
+#define ANALYSIS_PREAMBLE
+#endif
+
 using CodePtr = void const*;
 struct ConcreteParam {
     void const* value;

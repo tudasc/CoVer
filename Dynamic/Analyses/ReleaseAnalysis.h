@@ -8,9 +8,9 @@
 struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
     public:
         ReleaseAnalysis(void const* func_supplier, ReleaseOp_t* rOP);
-        inline __attribute__((always_inline)) Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
-        inline __attribute__((always_inline)) Fulfillment memoryCBImpl(CodePtr const& location, void const* const& memory, bool const& isWrite);
-        inline __attribute__((always_inline)) Fulfillment exitCBImpl(CodePtr const& location) const { return Fulfillment::FULFILLED; };
+        ANALYSIS_PREAMBLE Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
+        ANALYSIS_PREAMBLE Fulfillment memoryCBImpl(CodePtr const& location, void const* const& memory, bool const& isWrite);
+        ANALYSIS_PREAMBLE Fulfillment exitCBImpl(CodePtr const& location) const { return Fulfillment::FULFILLED; };
 
         CallBacks requiredCallbacksImpl() const;
 
