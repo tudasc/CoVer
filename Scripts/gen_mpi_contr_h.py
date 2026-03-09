@@ -335,7 +335,9 @@ for func, idx in paramerror_status:
 paramerror_null = [
     ("MPI_Initialized", 0),
     ("MPI_Send", 0),
+    ("MPI_Isend", 0),
     ("MPI_Recv", 0),
+    ("MPI_Irecv", 0),
     ("MPI_Sendrecv", 0),
     ("MPI_Win_create", 0),
     ("MPI_Win_allocate", 4),
