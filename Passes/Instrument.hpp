@@ -61,8 +61,10 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* CallTagOp_Type;
         StructType* ReleaseOp_Type;
         StructType* RWOp_Type;
+        StructType* ParamOp_Type;
         StructType* Contract_Type;
         StructType* Ref_Type;
+        StructType* ParamReq_Type;
         Constant* Null_Const;
 
         // Helpers

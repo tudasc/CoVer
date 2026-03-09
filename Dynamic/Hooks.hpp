@@ -12,6 +12,7 @@
 #include "Analyses/BaseAnalysis.h"
 #include "DynamicUtils.h"
 
+#include "Analyses/ParamAnalysis.h"
 #include "Analyses/PreCallAnalysis.h"
 #include "Analyses/PostCallAnalysis.h"
 #include "Analyses/ReleaseAnalysis.h"
@@ -26,7 +27,7 @@ namespace {
 
     std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
-    using AnalysisVariant = std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
+    using AnalysisVariant = std::variant<ParamAnalysis*,PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
 
     struct AnalysisPair {
         ContractFormula_t* formula;
@@ -143,6 +144,9 @@ namespace {
                     if (isPre) DynamicUtils::createMessage("Did not expect releaseop in precond!");
                     else addAnalysis<ReleaseAnalysis>(form, func_supplier, (ReleaseOp_t*)form->data);
                     break;
+                case UNARY_PARAM:
+                    if (isPre) addAnalysis<ParamAnalysis>(form, func_supplier, (ParamOp_t*)form->data);
+                    else DynamicUtils::createMessage("Did not expect paramop in postcond!");
                 default: 
                     DynamicUtils::createMessage("Unknown top-level operation!");
                     break;
@@ -158,15 +162,19 @@ namespace {
             ErrorMessage msg;
             msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg};
             switch (form->conn) {
+                #warning this should really be in the analyses themselves
                 case UNARY_CALL:
                 case UNARY_CALLTAG: {
                     CallTagOp_t* cOP = (CallTagOp_t*)form->data;
                     msg.msg.push_back(std::string("Did not find call to ") + cOP->target_tag);
                     break;
                 }
+                case UNARY_PARAM: {
+                    msg.msg.push_back("Invalid param!");
+                    break;
+                }
                 case UNARY_RELEASE: {
-                    ReleaseOp_t* rOP = (ReleaseOp_t*)form->data;
-                    msg.msg.push_back(std::string("Found forbidden operation!"));
+                    msg.msg.push_back("Found forbidden operation!");
                     break;
                 }
                 default: __builtin_unreachable();

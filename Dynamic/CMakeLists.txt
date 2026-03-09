@@ -1,4 +1,5 @@
 add_library(CoVerDynamicAnalyzer STATIC
+  Analyses/ParamAnalysis.cpp
   Analyses/PostCallAnalysis.cpp
   Analyses/PreCallAnalysis.cpp
   Analyses/ReleaseAnalysis.cpp

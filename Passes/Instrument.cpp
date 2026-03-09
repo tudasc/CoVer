@@ -285,7 +285,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             name = "CONTR_CALLTAGOP";
             break;
         }
-        case FormulaType::RELEASE:
+        case FormulaType::RELEASE: {
             std::shared_ptr<const ReleaseOperation> rOP = static_pointer_cast<const ReleaseOperation>(op);
             Constant* forbidden_op = createOperationGlobal(M, rOP->Forbidden);
             Constant* forb_type = ConstantInt::get(Int_Type, (int64_t)rOP->Forbidden->type());
@@ -294,6 +294,36 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             data = ConstantStruct::get(ReleaseOp_Type, {release_op, release_type, forbidden_op, forb_type});
             name = "CONTR_RELEASE";
             break;
+        }
+        case FormulaType::PARAM: {
+            std::shared_ptr<const ParamOperation> pOP = static_pointer_cast<const ParamOperation>(op);
+            std::vector<Constant*> reqCs;
+            for (std::pair<Comparator, std::string> req : pOP->reqs) {
+                Constant* var = Null_Const;
+                try {
+                    int ivalue = std::stoi(req.second);
+                    var = ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue);
+                    var = ConstantExpr::getIntToPtr(var, Ptr_Type);
+                } catch(std::exception& e) {
+                    if (!DB->ContractVariableData.contains(req.second)) {
+                        errs() << "Undefined non-constint contract value identifier \"" << req.second << "\"!\n";
+                        errs() << "Param Requirement will not be instrumented!\n";
+                        continue;
+                    }
+                    if (isa<Constant>(DB->ContractVariableData[req.second])) var = (Constant*)DB->ContractVariableData[req.second];
+                    if (isa<ConstantInt>(var)) var = ConstantExpr::getIntToPtr(var, Ptr_Type);
+                    if (!isa<Constant>(var)) {
+                        errs() << "Weird param error in instr pass\n";
+                    }
+                }
+                reqCs.push_back(ConstantStruct::get(ParamReq_Type, {ConstantInt::get(Int_Type, req.first), var}));
+            }
+            Constant* reqsC = ConstantArray::get(ArrayType::get(ParamReq_Type, reqCs.size()), reqCs);
+            reqsC = createConstantGlobalUnique(M, reqsC, "CONTR_PARAM_REQS");
+            data = ConstantStruct::get(ParamOp_Type, {ConstantInt::get(Int_Type, pOP->idx), reqsC, ConstantInt::get(Int_Type, reqCs.size())});
+            name = "CONTR_PARAMOP";
+            break;
+        }
     }
     return createConstantGlobalUnique(M, data, name);
 }
@@ -334,6 +364,9 @@ void InstrumentPass::createTypes(Module& M) {
     RWOp_Type = StructType::create(M.getContext(), "RWOp_t");
     RWOp_Type->setBody({Int_Type, Int_Type, Bool_Type}); // idx, paramaccess, isWrite
 
+    ParamOp_Type = StructType::create(M.getContext(), "ParamOp_t");
+    ParamOp_Type->setBody({Int_Type, Ptr_Type, Int_Type}); // idx, list of reqs, num reqs
+
     // Composite Types
     Tag_Type = StructType::create(M.getContext(), "Tag_t");
     Tag_Type->setBody({Ptr_Type, Int_Type}); // tag str, param num
@@ -349,6 +382,9 @@ void InstrumentPass::createTypes(Module& M) {
 
     Ref_Type = StructType::create(M.getContext(), "Reference_t");
     Ref_Type->setBody({Ptr_Type, Ptr_Type}); // char* file ref, char* type
+
+    ParamReq_Type = StructType::create(M.getContext(), "ParamReq_t");
+    ParamReq_Type->setBody({Int_Type, Ptr_Type}); // Comparator, Value
 
     DB_Type = StructType::create(M.getContext(), "ContractDB_t");
     DB_Type->setBody({Ptr_Type, Int_Type, Tags_Type, Ptr_Type, Int_Type}); // contract list, num elems, tag container, reference list, num refs
