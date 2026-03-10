@@ -328,7 +328,7 @@ for func, idx in paramerror_rank_recv:
 
 # MPI_STATUSES_IGNORE == NULL == MPI_STATUS_IGNORE in OpenMPI. Add exception for MPI_STATUS_IGNORE
 paramerror_status = [
-    ("MPI_Recv", 6)
+    ("MPI_Wait", 1),
 ]
 for func, idx in paramerror_status:
     add_contract(func, "PRE", f"param!({idx}:^=MPI_STATUS_IGNORE,!=NULL,!=MPI_STATUSES_IGNORE) MSG \"Status is invalid\"")
