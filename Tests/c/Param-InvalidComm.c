@@ -16,8 +16,8 @@ int main(int argc, char** argv) {
     buf = (int*)malloc(sizeof(int));
     buf[0] = 42;
     if (rank == 0) {
-        MPI_Isend(buf, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, &req);
-        *buf = 24;
+        MPI_Isend(buf, 1, MPI_INT, 1, 0, MPI_COMM_NULL, &req);
+        printf("Buf: %d\n", buf[0]);
     } else {
         MPI_Irecv(buf, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &req);
     }
@@ -29,10 +29,10 @@ int main(int argc, char** argv) {
 
 // CHECK-LABEL: Running Contract Manager on Module
 // CHECK: Contract violation detected!
-// CHECK: Local Data Race - Local write
+// CHECK: Communicator is invalid
 // CHECK: CoVer: Total Tool Runtime
 
 // CHECK-LABEL: CoVer-Dynamic: Initializing...
 // CHECK: Contract violation detected!
-// CHECK: Local Data Race - Local write
+// CHECK: Communicator is invalid
 // Dont check for analysis finished, MPI implementation might crash.
