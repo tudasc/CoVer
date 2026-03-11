@@ -33,19 +33,19 @@ namespace {
         }
         return result;
     }
+}
 
-    uint64_t truncate_bits(uintptr_t const val, int const bit_width) {
+namespace DynamicUtils {
+    std::unordered_map<void const*, std::vector<Tag_t*>> func_to_tags;
+    std::unordered_map<std::string, std::vector<void const*>> tags_to_func;
+
+    uint64_t TruncateBits(uintptr_t const val, int const bit_width) {
         // Mask off unused bits
         if (bit_width < 64)
             return val & ((1ULL << bit_width) - 1);
 
         return val;
     }
-}
-
-namespace DynamicUtils {
-    std::unordered_map<void const*, std::vector<Tag_t*>> func_to_tags;
-    std::unordered_map<std::string, std::vector<void const*>> tags_to_func;
 
     void Initialize(ContractDB_t const* DB) {
         // Initialize Tags
@@ -62,11 +62,11 @@ namespace DynamicUtils {
     bool checkParamMatch(ParamAccess const& acc, ConcreteParam const& contrP, ConcreteParam const& callP) {
         switch (acc) {
             case ParamAccess::NORMAL:
-                return truncate_bits((uintptr_t)contrP.value, contrP.size) == truncate_bits((uintptr_t)callP.value, callP.size);
+                return TruncateBits((uintptr_t)contrP.value, contrP.size) == TruncateBits((uintptr_t)callP.value, callP.size);
             case ParamAccess::DEREF:
-                return truncate_bits(*(uintptr_t const*)contrP.value, callP.size) == (uintptr_t)callP.value;
+                return TruncateBits(*(uintptr_t const*)contrP.value, callP.size) == (uintptr_t)callP.value;
             case ParamAccess::ADDROF:
-                return truncate_bits(*(uintptr_t const*)callP.value, contrP.size) == (uintptr_t)contrP.value;
+                return TruncateBits(*(uintptr_t const*)callP.value, contrP.size) == (uintptr_t)contrP.value;
         }
         __builtin_unreachable();
     }

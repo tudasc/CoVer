@@ -7,6 +7,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -40,7 +41,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             std::vector<Contract> Contracts; // For postprocessing only
             std::vector<LinearizedContract> LinearizedContracts; // For verification passes
             std::map<Function*, std::vector<TagUnit>> Tags;
-            std::map<std::string, Value*> ContractVariableData;
+            std::map<std::string, std::set<Value*>> ContractVariableData;
             std::chrono::time_point<std::chrono::system_clock> start_time;
             bool allowMultiReports = false;
             Json::Value processedReports;
@@ -60,6 +61,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         void extractFromFunction(Module& M); // Fortran Workaround
 
         void addContract(std::string contract, Function* F);
+        void addValueDefinition(std::string name, Value* val);
 };
 
 } // namespace llvm

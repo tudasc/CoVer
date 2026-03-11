@@ -7,8 +7,12 @@
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/Analysis/MemoryDependenceAnalysis.h>
+#include <llvm/Analysis/MemoryLocation.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Analysis.h>
+#include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Support/ErrorHandling.h>
@@ -46,15 +50,15 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
             Fulfillment resf = Fulfillment::FULFILLED;
 
             // Perform the check on each callsite
-            for (const User* U : C.F->users()) {
-                if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+            for (User* U : C.F->users()) {
+                if (CallBase* CB = dyn_cast<CallBase>(U)) {
                     for (std::pair<const Comparator, const std::string> req : ParamOp->reqs) {
                         // Figure out value(s) to check against
-                        Value* var;
+                        std::set<Value*> vars;
                         try {
                             // First, check if constant value provided
                             int ivalue = std::stoi(req.second);
-                            var = ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue);
+                            vars = {ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue)};
                         } catch(std::exception& e) {
                             // Otherwise, check against value database
                             if (!DB.ContractVariableData.contains(req.second)) {
@@ -62,12 +66,12 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
                                 errs() << "Requirement will not be analysed!\n";
                                 continue;
                             }
-                            var = DB.ContractVariableData[req.second];
+                            vars = DB.ContractVariableData[req.second];
                         }
 
                         // Perform check
                         std::string errInfo = "";
-                        Fulfillment f = checkParamReq(var, CB->getArgOperand(ParamOp->idx), req.first, errInfo);
+                        Fulfillment f = checkParamReq(vars, CB, ParamOp->idx, req.first, errInfo);
                         if (f == Fulfillment::BROKEN) {
                             resf = Fulfillment::BROKEN;
                                 Expr->ErrorInfo->push_back({
@@ -132,35 +136,62 @@ Fulfillment compareCI(const ConstantInt* CI, const ConstantInt* CI2, Comparator 
     }
 }
 
-Fulfillment ContractVerifierParamPass::checkParamReq(const Value* var, const Value* callVal, Comparator comp, std::string& ErrInfo) {
-    if (callVal->getType()->isPointerTy()) {
-        switch (comp) {
-            case Comparator::NEQ:
-                if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
-                    ErrInfo = "Parameter matches or is alias to forbidden pointer value!";
-                    return Fulfillment::BROKEN;
+Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, CallBase* call, int idx, Comparator comp, std::string& ErrInfo) {
+    for (Value* var : vars) {
+        Value* callVal = call->getArgOperand(idx);
+        if (AllocaInst* AI = dyn_cast<AllocaInst>(callVal)) {
+            for (Instruction* cur = call->getPrevNode(); cur && !isa<CallInst>(cur); cur = cur->getPrevNode()) {
+                if (GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(cur)) {
+                    if (GEP->getPointerOperand() != callVal) continue;
+                    if (LoadInst* LI = dyn_cast<LoadInst>(cur->getNextNode())) {
+                        callVal = LI->getPointerOperand();
+                    }
                 }
-                return Fulfillment::FULFILLED;
-            case Comparator::EXEQ:
-                if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
-                    ErrInfo = "Note: Parameter matches or is alias to exception value.";
-                    return Fulfillment::FULFILLED;
-                }
-                // Not an exception. Continue analysis, so far no info gained
-                return Fulfillment::UNKNOWN;
-            default:
-                errs() << "Attempt to compare pointers! Not performing parameter analysis\n";
-                return Fulfillment::UNKNOWN;
-        }
-    }
-    // Ensured that !isPtr, can get constinfo if present
-    if (const ConstantInt* callCI = dyn_cast<ConstantInt>(callVal)) {
-        if (const ConstantInt* varCI = dyn_cast<ConstantInt>(var)) {
-            Fulfillment f = compareCI(callCI, varCI, comp);
-            if (f == Fulfillment::BROKEN) {
-                ErrInfo = createCompErr(comp, callCI, varCI);
             }
-            return f;
+        }
+        if (callVal->getType()->isPointerTy()) {
+            switch (comp) {
+                case Comparator::NEQ:
+                    if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
+                        ErrInfo = "Parameter matches or is alias to forbidden pointer value!";
+                        return Fulfillment::BROKEN;
+                    }
+                    return Fulfillment::FULFILLED;
+                case Comparator::EXEQ:
+                    if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
+                        ErrInfo = "Note: Parameter matches or is alias to exception value.";
+                        return Fulfillment::FULFILLED;
+                    }
+                    // Not an exception. Continue analysis, so far no info gained
+                    continue;
+                default:
+                    // Check if we can salvage this and get a constant int result still, even if IR says its a pointer at that point
+                    if (Instruction* I = dyn_cast<Instruction>(callVal)) {
+                        MemoryDependenceResults& MDR = MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<MemoryDependenceAnalysis>(*I->getFunction());
+                        MemoryLocation Loc = MemoryLocation::getForArgument(call, idx, MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<TargetLibraryAnalysis>(*call->getFunction()));
+                        MemDepResult x = MDR.getPointerDependencyFrom(Loc, true, call->getIterator(), call->getParent());
+                        if (x.getInst()) {
+                            if (StoreInst* S = dyn_cast<StoreInst>(x.getInst())) {
+                                if (isa<ConstantInt>(S->getValueOperand())) {
+                                    callVal = S->getValueOperand();
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    errs() << "Attempt to compare pointers! Not performing parameter analysis\n";
+                    return Fulfillment::UNKNOWN;
+            }
+        }
+        // Ensured that !isPtr, can get constinfo if present
+        if (const ConstantInt* callCI = dyn_cast<ConstantInt>(callVal)) {
+            if (const ConstantInt* varCI = dyn_cast<ConstantInt>(var)) {
+                Fulfillment f = compareCI(callCI, varCI, comp);
+                if (f == Fulfillment::BROKEN) {
+                    ErrInfo = createCompErr(comp, callCI, varCI);
+                    return f;
+                }
+            }
         }
     }
 

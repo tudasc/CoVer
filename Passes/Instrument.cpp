@@ -304,19 +304,22 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
                     int ivalue = std::stoi(req.second);
                     var = ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue);
                     var = ConstantExpr::getIntToPtr(var, Ptr_Type);
+                    reqCs.push_back(ConstantStruct::get(ParamReq_Type, {ConstantInt::get(Int_Type, req.first), var, ConstantInt::get(Bool_Type, false)}));
                 } catch(std::exception& e) {
                     if (!DB->ContractVariableData.contains(req.second)) {
                         errs() << "Undefined non-constint contract value identifier \"" << req.second << "\"!\n";
                         errs() << "Param Requirement will not be instrumented!\n";
                         continue;
                     }
-                    if (isa<Constant>(DB->ContractVariableData[req.second])) var = (Constant*)DB->ContractVariableData[req.second];
-                    if (isa<ConstantInt>(var)) var = ConstantExpr::getIntToPtr(var, Ptr_Type);
-                    if (!isa<Constant>(var)) {
-                        errs() << "Weird param error in instr pass\n";
+                    for (Value* V : DB->ContractVariableData[req.second]) {
+                        if (isa<Constant>(V)) var = (Constant*)V;
+                        if (isa<ConstantInt>(var)) var = ConstantExpr::getIntToPtr(var, Ptr_Type);
+                        if (!isa<Constant>(var)) {
+                            errs() << "Weird param error in instr pass\n";
+                        }
+                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {ConstantInt::get(Int_Type, req.first), var, ConstantInt::get(Bool_Type, var->getName().starts_with("_QQ"))}));
                     }
                 }
-                reqCs.push_back(ConstantStruct::get(ParamReq_Type, {ConstantInt::get(Int_Type, req.first), var}));
             }
             Constant* reqsC = ConstantArray::get(ArrayType::get(ParamReq_Type, reqCs.size()), reqCs);
             reqsC = createConstantGlobalUnique(M, reqsC, "CONTR_PARAM_REQS");
@@ -384,7 +387,7 @@ void InstrumentPass::createTypes(Module& M) {
     Ref_Type->setBody({Ptr_Type, Ptr_Type}); // char* file ref, char* type
 
     ParamReq_Type = StructType::create(M.getContext(), "ParamReq_t");
-    ParamReq_Type->setBody({Int_Type, Ptr_Type}); // Comparator, Value
+    ParamReq_Type->setBody({Int_Type, Ptr_Type, Bool_Type}); // Comparator, Value
 
     DB_Type = StructType::create(M.getContext(), "ContractDB_t");
     DB_Type->setBody({Ptr_Type, Int_Type, Tags_Type, Ptr_Type, Int_Type}); // contract list, num elems, tag container, reference list, num refs
