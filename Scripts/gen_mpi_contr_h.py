@@ -354,7 +354,9 @@ add_contract("MPI_Sendrecv", "PRE", f"param!(5:^=MPI_IN_PLACE,!=NULL) MSG \"Buff
 # Comm buffer should be allocated
 paramerror_null = [
     ("MPI_Send", 0),
+    ("MPI_Isend", 0),
     ("MPI_Recv", 0),
+    ("MPI_Irecv", 0),
     ("MPI_Sendrecv", 0),
     ("MPI_Sendrecv", 5),
     ("MPI_Get", 0),
