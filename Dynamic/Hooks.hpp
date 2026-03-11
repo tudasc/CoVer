@@ -147,6 +147,7 @@ namespace {
                 case UNARY_PARAM:
                     if (isPre) addAnalysis<ParamAnalysis>(form, func_supplier, (ParamOp_t*)form->data);
                     else DynamicUtils::createMessage("Did not expect paramop in postcond!");
+                    break;
                 default: 
                     DynamicUtils::createMessage("Unknown top-level operation!");
                     break;
