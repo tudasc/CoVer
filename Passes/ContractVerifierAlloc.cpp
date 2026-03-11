@@ -128,9 +128,6 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     auto bound_merge = std::bind(&ContractVerifierAllocPass::mergeAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     std::map<const Instruction *, AllocStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, bound_transfer, bound_merge, &data, init);
 
-    //C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
-    //Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
-
     // Take max over all analysis info
     // Correct usage will not contain error
     AllocStatusVal res = AllocStatusVal::ALLOC;
