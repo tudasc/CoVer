@@ -23,4 +23,5 @@
     "COVER_WRAP_TARGET_mpicc": "~/Desktop/ompi/install/bin/mpicc",
     "COVER_WRAP_TARGET_mpicxx": "~/Desktop/ompi/install/bin/mpicxx",
   },
+  "cmake.ctest.testSuiteDelimiter": "-|::",
 }
