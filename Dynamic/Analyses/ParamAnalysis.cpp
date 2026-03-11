@@ -37,5 +37,5 @@ Fulfillment ParamAnalysis::functionCBImpl(void* const& func, CallsiteInfo const&
                 continue;
         }
     }
-    __builtin_unreachable();
+    return Fulfillment::UNKNOWN;
 }
