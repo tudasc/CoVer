@@ -44,6 +44,9 @@ struct std::hash<CallsiteInfo> {
 namespace DynamicUtils {
     // Initialize Utils
     void Initialize(ContractDB_t const* DB);
+    
+    // Truncate bits from a raw byte value
+    uint64_t TruncateBits(uintptr_t const val, int const bit_width);
 
     // Check if two parameters match
     bool checkParamMatch(ParamAccess const& acc, ConcreteParam const& contrP, ConcreteParam const& callP);

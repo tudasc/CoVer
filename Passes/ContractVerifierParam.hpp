@@ -3,6 +3,7 @@
 #include "ContractTree.hpp"
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
+#include <set>
 
 namespace llvm {
 
@@ -12,7 +13,7 @@ class ContractVerifierParamPass : public PassInfoMixin<ContractVerifierParamPass
 
     private:
         ModuleAnalysisManager* MAM;
-        ContractTree::Fulfillment checkParamReq(const Value* var, const Value* contrVal, ContractTree::Comparator comp, std::string& ErrInfo);
+        ContractTree::Fulfillment checkParamReq(std::set<Value*> vars, CallBase* call, int idx, ContractTree::Comparator comp, std::string& ErrInfo);
 };
 
 } // namespace llvm

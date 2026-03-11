@@ -62,7 +62,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
                     val = CE->getOperand(0);
                 }
             }
-            curDatabase.ContractVariableData[name.str()] = val;
+            addValueDefinition(name.str(), val);
         }
     }
 
@@ -76,7 +76,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
 void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
     GlobalVariable* Annotations = M.getGlobalVariable("llvm.global.annotations");
     if (Annotations == nullptr) {
-        errs() << "Note: No string annotations found.\n";
+        errs() << "Note: No contract annotations found in Function declarations.\n";
         return;
     }
 
@@ -98,17 +98,17 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                 errs() << "Contract definition by function body failed, function body not found!\n";
                 continue;
             }
-            const BasicBlock& BB = F.getEntryBlock(); // Exactly one basic block allowed, so this is ok
-            for (const Instruction& I : BB) {
-                if (const CallBase* CB = dyn_cast<CallBase>(&I)) {
+            BasicBlock& BB = F.getEntryBlock(); // Exactly one basic block allowed, so this is ok
+            for (Instruction& I : BB) {
+                if (CallBase* CB = dyn_cast<CallBase>(&I)) {
                     // Only care about this intrinsic
                     #warning TODO probably should figure out a less hacky way.
                     if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64" && CB->getCalledFunction()->getName() != "llvm.memcpy.p0.p0.i64") continue;
                     // Add CONTRACT { ... } brace. Its explicitly needed for C(++) to make sure we are not parsing irrelevant stuff,
                     // but for fortran its already implicit in declare_contract, making it superfluous
-                    std::string CallStr = "CONTRACT { " + ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString().str() + " }";
+                    std::string CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString().str();
                     // Call is from memmove -> insertvalue -> extractvalue -> funccall. on -O0, and memcpy -> funccall on -O1 and above
-                    const CallBase* ContrCall = (CallBase*)(isa<CallBase>(*CB->getArgOperand(0)->user_begin()) ? *CB->getArgOperand(0)->user_begin() : *CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin());
+                    CallBase* ContrCall = (CallBase*)(isa<CallBase>(*CB->getArgOperand(0)->user_begin()) ? *CB->getArgOperand(0)->user_begin() : *CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin());
                     if (ContrCall->getCalledOperand()->getName() == "declare_contract_") {
                         const Function* ContrSup = (Function*)ContrCall->getArgOperand(0);
                         if (ContrSup->hasOneUser()) continue; // Only used here where the contract is defined. No need to verify.
@@ -122,7 +122,63 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                             }
                         }
                         if (!has_callsite) continue;
-                        addContract(CallStr, (Function*)(ContrCall->getArgOperand(0)));
+                        addContract("CONTRACT { " + CallStr + " }", (Function*)(ContrCall->getArgOperand(0)));
+                    } else if (ContrCall->getCalledOperand()->getName() == "declare_value_") {
+                        #warning really super duper should find out a less hacky way
+                        // If contr value is nullptr, its trivial
+                        if (ContrCall->getArgOperand(1) == ConstantPointerNull::getNullValue(PointerType::get(M.getContext(), 0))) {
+                            addValueDefinition(CallStr, ContrCall->getArgOperand(1));
+                            continue;
+                        }
+
+                        // This is the start of a dirty heuristic. If it breaks in the future, good luck to you
+                        // Start at the third instr after memmove. This skips the string parameter init (putting it in a struct with its length)
+                        Instruction* ImportantInst = CB->getNextNode()->getNextNode()->getNextNode();
+                        Value* result = nullptr;
+
+                        // Possibility 1: StoreInst saving an integer into a ptr, where the integer is what we want
+                        if (StoreInst* SI = dyn_cast<StoreInst>(ImportantInst)) {
+                            if (isa<ConstantInt>(SI->getValueOperand())) {
+                                result = SI->getValueOperand();
+                            }
+                        }
+
+                        // Possibility 2: SExtInst, then stuff, then an InsertValueInst with index 0 where that is what we want
+                        if (SExtInst* SEI = dyn_cast<SExtInst>(ImportantInst)) {
+                            for (Instruction* cur = SEI; cur && !isa<CallInst>(cur); cur = cur->getNextNode()) {
+                                if (InsertValueInst* IVI = dyn_cast<InsertValueInst>(cur)) {
+                                    if (IVI->hasIndices() && IVI->getIndices()[0] == 0) {
+                                        result = IVI->getInsertedValueOperand();
+                                    }
+                                }
+                            }
+                        }
+
+                        // Possibility 3: GEPInst, directly after a StoreInst or LoadInst with correct value
+                        if (GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(ImportantInst)) {
+                            if (StoreInst* SI = dyn_cast<StoreInst>(GEP->getNextNode())) {
+                                result = SI->getValueOperand();
+                            } else if (LoadInst* LI = dyn_cast<LoadInst>(GEP->getNextNode())) {
+                                result = LI->getPointerOperand();
+                            }
+                        }
+
+                        // Check for Fortran mangling stuff
+                        if (!result) {
+                            errs() << "Could not decipher call to Declare_Value for \n" << CallStr << "!\n";
+                        } else {
+                            if (result->getName().starts_with("_QQ") && isa<GlobalVariable>(result)) {
+                                StringRef result_stem = result->getName().split('.').first;
+                                for (GlobalVariable& GV : M.globals()) {
+                                    if (GV.getName().starts_with(result_stem)) {
+                                        errs() << "Note: Added " << GV.getName() << " as mangled alias to " << result->getName() << " for contract value " << CallStr << "\n";
+                                        addValueDefinition(CallStr, &GV);
+                                    }
+                                }
+                            } else {
+                                addValueDefinition(CallStr, result);
+                            }
+                        }
                     }
                 }
             }
@@ -133,6 +189,9 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
     // Remove unneeded functions
     for (Function* F : to_remove)
         F->eraseFromParent();
+    if (to_remove.empty()) {
+        errs() << "Note: No contract declarations found using Declare_Contract calls\n";
+    }
 }
 
 void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
@@ -163,6 +222,10 @@ void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
 
     // Append tag database
     curDatabase.Tags[newCtr.F].insert(curDatabase.Tags[newCtr.F].end(), newCtr.Data.Tags.begin(), newCtr.Data.Tags.end());
+}
+
+void ContractManagerAnalysis::addValueDefinition(std::string name, Value* val) {
+    curDatabase.ContractVariableData[name].insert(val);
 }
 
 const std::vector<std::shared_ptr<ContractExpression>> ContractManagerAnalysis::linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF) {
