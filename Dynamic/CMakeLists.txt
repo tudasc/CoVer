@@ -8,7 +8,11 @@ add_library(CoVerDynamicAnalyzer STATIC
 )
 
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 20)
-set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD "$<NOT:$<CONFIG:Debug>>")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD OFF)
+else()
+    set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD ON)
+endif()
 target_include_directories(CoVerDynamicAnalyzer PUBLIC ../Include/)
 
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_VISIBILITY_PRESET hidden)
