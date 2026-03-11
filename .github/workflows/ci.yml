@@ -13,7 +13,7 @@ jobs:
       LLVM_VER: "21"
       OPENMPI_VER: "5.0.10"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: 'recursive'
       - name: Install Dependencies
@@ -28,7 +28,7 @@ jobs:
           echo "/usr/lib/llvm-${{ env.LLVM_VER }}/bin/" >> "$GITHUB_PATH"
       - name: Cache OpenMPI
         id: cache-openmpi
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: openmpi-${{ env.OPENMPI_VER }}
           key: ${{ runner.os }}-openmpi-llvm-${{ env.LLVM_VER }}
@@ -45,7 +45,7 @@ jobs:
           cd openmpi-${{ env.OPENMPI_VER }}
           sudo make install
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ccache
           key: ${{ runner.os }}-llvm-${{ env.LLVM_VER }}-ccache-${{ github.sha }}
