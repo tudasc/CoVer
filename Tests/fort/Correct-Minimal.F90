@@ -3,6 +3,7 @@
 program CorrectMinimal
     use mpi_f08
     implicit none
+
     integer :: ierr
 
     call MPI_Init(ierr)

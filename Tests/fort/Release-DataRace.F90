@@ -2,6 +2,8 @@
 
 program main
     use mpi_f08
+    implicit none
+
     integer :: rank
     integer, pointer :: buf(:)
     type(MPI_Request) :: req
