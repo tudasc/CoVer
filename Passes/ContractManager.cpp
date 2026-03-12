@@ -71,6 +71,8 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     s << "CoVer: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";
     errs() << s.str();
 
+    ContractPassUtility::Initialize(M);
+
     return curDatabase;
 }
 
