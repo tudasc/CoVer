@@ -95,7 +95,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
         }
     }
     if (const InsertValueInst* IVI = dyn_cast<InsertValueInst>(I)) {
-        if (cur.candidate.contains(IVI->getInsertedValueOperand())) {
+        if (cur.candidate.contains(IVI->getInsertedValueOperand()) || ContractPassUtility::isTrivialAlloc(IVI->getInsertedValueOperand())) {
             cur.candidate[IVI] = cur.candidate[IVI->getInsertedValueOperand()];
         }
     }
