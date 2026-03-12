@@ -28,6 +28,9 @@ using namespace llvm;
 #define IS_DEBUG (getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1)
 
 namespace ContractPassUtility {
+    // Called automatically by ContractManager
+    void Initialize(Module& M);
+
     template<typename T>
     using TransferFunction = std::function<T(T,const Instruction*,void*)>;
     template<typename T>

@@ -8,6 +8,7 @@
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/GlobalValue.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Function.h>
@@ -33,6 +34,9 @@ using namespace llvm;
 
 // To only warn once if a CB is calling an unknown function
 static std::set<const CallBase*> UnknownCalledParam;
+
+// For language-specific stuff
+static bool isFort = false;
 
 const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
     const Value* b = getPointerOperand(V);
@@ -122,6 +126,10 @@ int resolveFunctionDifference(const Value** A, const Value** B) {
 
 namespace ContractPassUtility {
 
+void Initialize(Module& M) {
+    isFort = M.getFunction("_QQmain");
+}
+
 std::optional<uint> getLineNumber(const Instruction* I) {
     if (const DebugLoc& N = I->getDebugLoc()) {
         return N.getLine();
@@ -149,9 +157,20 @@ FileReference getFileReference(const Instruction* I) {
     };
 }
 
-bool isTrivialAlloc(const Value* V) {
+bool isTrivialAlloc(Value const* V) {
     // First possibility: Its a global alloc, trivially fulfilled
-    if (isa<GlobalVariable>(V)) {
+    if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
+        if (isFort) {
+            SmallVector<DIGlobalVariableExpression*> dbg_arr;
+            GV->getDebugInfo(dbg_arr);
+            if (!dbg_arr.empty()) {
+                if (DICompositeType* T = dyn_cast<DICompositeType>(dbg_arr[0]->getVariable()->getType())) {
+                    if (T->getDataLocationExp()) {
+                        return false;
+                    }
+                }
+            }
+        }
         return true;
     }
     // Second possibility: Its a stack var, trivially fulfilled
@@ -159,7 +178,9 @@ bool isTrivialAlloc(const Value* V) {
     while (isa<GetElementPtrInst>(tmp)) {
         tmp = getPointerOperand(tmp);
     }
-    if (isa<AllocaInst>(tmp)) return true;
+
+    // alloca is trivial alloc only in C
+    if (isa<AllocaInst>(tmp) && !isFort) return true;
 
     // Not trivially allocated
     return false;
@@ -206,9 +227,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     }
 
     // Only use DSA for Fortran
-    const bool use_dsa = (isa<Instruction>(contrP) && dyn_cast<Instruction>(contrP)->getModule()->getFunction("_QQmain")) ||
-                         (isa<Instruction>(callP) && dyn_cast<Instruction>(callP)->getModule()->getFunction("_QQmain"));
-    if (!use_dsa) {
+    if (!isFort) {
         // Resolve function differences.
         // If one is a global, this does not matter, so check if they are instructions first
         if (isa<Instruction>(source) && isa<Instruction>(target)) {
@@ -244,7 +263,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
 
     if (source == target) return true;
 
-    if (use_dsa) {
+    if (isFort) {
         std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
         if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
             DSNodeHandle sourceNode = steens->getNodeForValue(source);
