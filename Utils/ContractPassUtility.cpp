@@ -7,6 +7,7 @@
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
+#include <llvm/IR/DebugProgramInstruction.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
@@ -179,8 +180,27 @@ bool isTrivialAlloc(Value const* V) {
         tmp = getPointerOperand(tmp);
     }
 
-    // alloca is trivial alloc only in C
-    if (isa<AllocaInst>(tmp) && !isFort) return true;
+    // Stack Variables
+    if (AllocaInst const* AI = dyn_cast<AllocaInst>(tmp)) {
+        if (isFort) {
+            // Fortran will do weird pointer / metadata stuff -> Need to check if stack thingy has external data location
+            Instruction const* dbgdeclare = AI;
+            while (dbgdeclare->getNextNode() && isa<AllocaInst>(dbgdeclare)) dbgdeclare = dbgdeclare->getNextNode();
+            for (DbgRecord const& DR : dbgdeclare->getDbgRecordRange()) {
+                if (DbgVariableRecord const* DVR = dyn_cast<DbgVariableRecord>(&DR)) {
+                    if (DVR->getAddress() != AI) continue;
+                    if (DICompositeType const* T = dyn_cast<DICompositeType>(DVR->getVariable()->getType())) {
+                        if (!T->getDataLocationExp()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } else {
+            // C will just put the stack var in the function like a normal program -> already allocated
+            return true;
+        }
+    }
 
     // Not trivially allocated
     return false;
