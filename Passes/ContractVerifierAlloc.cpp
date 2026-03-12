@@ -67,7 +67,41 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     // Propagate allocations
     if (const StoreInst* SI = dyn_cast<StoreInst>(I)) {
         if (cur.candidate.contains(SI->getValueOperand())) {
-            cur.candidate[SI->getPointerOperand()] = ParamAccess::ADDROF;
+            cur.candidate[SI->getPointerOperand()] = I->getModule()->getFunction("_QQmain") ? ParamAccess::NORMAL : ParamAccess::ADDROF;
+        }
+    }
+
+    // Propagate allocations - Pretty much just Fortran from here...
+    if (const CallBase* CB = dyn_cast<CallBase>(I)) {
+        if (CB->getCalledFunction() && CB->getCalledFunction()->getName().starts_with("llvm.memcpy.p0.p0")) {
+            Value* src = CB->getArgOperand(1);
+            Value* dest = CB->getArgOperand(0);
+            if (ContractPassUtility::isTrivialAlloc(src)) {
+                cur.candidate[dest] = ParamAccess::NORMAL;
+            }
+        }
+        if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "_FortranAPointerAllocate") {
+            cur.candidate[CB->getArgOperand(0)] = ParamAccess::NORMAL;
+        }
+    }
+    if (const LoadInst* LI = dyn_cast<LoadInst>(I)) {
+        if (ContractPassUtility::isTrivialAlloc(LI->getPointerOperand()) || cur.candidate.contains(LI->getPointerOperand())) {
+            cur.candidate[LI] = cur.candidate[LI->getPointerOperand()];
+        }
+    }
+    if (const GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(I)) {
+        if (cur.candidate.contains(GEP->getPointerOperand())) {
+            cur.candidate[GEP] = cur.candidate[GEP->getPointerOperand()];
+        }
+    }
+    if (const InsertValueInst* IVI = dyn_cast<InsertValueInst>(I)) {
+        if (cur.candidate.contains(IVI->getInsertedValueOperand())) {
+            cur.candidate[IVI] = cur.candidate[IVI->getInsertedValueOperand()];
+        }
+    }
+    if (const ExtractValueInst* EVI = dyn_cast<ExtractValueInst>(I)) {
+        if (cur.candidate.contains(EVI->getAggregateOperand())) {
+            cur.candidate[EVI] = cur.candidate[EVI->getAggregateOperand()];
         }
     }
 
@@ -95,7 +129,6 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
                 }
             }
             // Any required parameter not used by any candidate
-            //appendDebugStr(Data->Target, Data->isTag, CB, cur.candidate, Data->err);
             cur.CurVal = AllocStatusVal::ERROR;
             return cur;
         }
