@@ -8,6 +8,15 @@
           ]
       }
   },
+  "cmake.ctest.failurePatterns": [
+    {
+      "regexp": "(.+):(\\d+):(\\d+): error: CHECK: (.+)",
+      "file": 1,
+      "line": 2,
+      "column": 3,
+      "message": 4,
+    },
+  ],
   "terminal.integrated.defaultProfile.linux": "CoVer Wrapper Bash",
   "cmake.configureArgs": [
     "-DMPI_HOME=/home/archuser/Desktop/ompi/install",
