@@ -473,6 +473,8 @@ boilerplate_header_c = f"""
 void* calloc(size_t num, size_t size) CONTRACT( POST {{ alloc!(99) }});
 void* malloc(size_t size) CONTRACT( POST {{ alloc!(99) }});
 
+void free(void*) CONTRACT( POST {{ free!(0) }});
+
 """
 
 header_output_c = boilerplate_header_c
@@ -486,8 +488,20 @@ subroutine CONTRACT_DEFINITIONS_FORT_@RANDOM_UNIQUE@
     use contract_helper
 """
 
-header_output_fort = boilerplate_header_fort + f"    use mpi\n    implicit none\n\n{get_param_values("fort")}\n\n"
-header_output_fort_f08 = boilerplate_header_fort + f"    use mpi_f08\n    implicit none\n\n{get_param_values("fort")}\n\n"
+fortran_lang_intrinsics = """
+    ! Contracts for intrinsics - Mainly for allocation tracking
+    interface
+        subroutine FortAlloc() bind(c, name="_FortranAPointerAllocate")
+        end subroutine FortAlloc
+        subroutine FortFree() bind(c, name="_FortranAPointerDeallocate")
+        end subroutine FortFree
+    end interface
+    call Declare_Contract(FortAlloc, \"POST { alloc!(0) }\")
+    call Declare_Contract(FortFree, \"POST { free!(0) }\")
+"""
+
+header_output_fort = boilerplate_header_fort + f"    use mpi\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values("fort")}\n\n"
+header_output_fort_f08 = boilerplate_header_fort + f"    use mpi_f08\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values("fort")}\n\n"
 header_output_fort_f08ts = header_output_fort_f08
 
 exclude_fortran = [
