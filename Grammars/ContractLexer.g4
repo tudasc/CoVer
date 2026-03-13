@@ -37,6 +37,7 @@ OPRelease1: 'no!';
 OPRelease2: 'until!';
 OPParam: 'param!';
 OPAlloc: 'alloc!';
+OPFree: 'free!';
 OPPrefix: '(';
 OPPostfix: ')';
 

@@ -80,6 +80,8 @@ std::any ContractDataVisitor::visitRwOp(ContractParser::RwOpContext *ctx) {
         op = std::make_shared<const WriteOperation>(std::stoi(ctx->NatNum()->getText()), acc);
     else if (ctx->OPAlloc())
         op = std::make_shared<const AllocOperation>(std::stoi(ctx->NatNum()->getText()), acc);
+    else if (ctx->OPFree())
+        op = std::make_shared<const FreeOperation>(std::stoi(ctx->NatNum()->getText()), acc);
     return op;
 }
 std::any ContractDataVisitor::visitParamOp(ContractParser::ParamOpContext *ctx) {

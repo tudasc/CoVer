@@ -74,6 +74,7 @@ enum ContractConnective : int32_t {
     UNARY_READ,
     UNARY_WRITE,
     UNARY_ALLOC,
+    UNARY_FREE,
     UNARY_CALL,
     UNARY_CALLTAG,
     UNARY_RELEASE,
