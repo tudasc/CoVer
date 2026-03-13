@@ -21,10 +21,17 @@ PreservedAnalyses ContractVerifierAllocPass::run(Module &M,
     // First, build list of all allocating funcs
     for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
         for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
-            if (Expr->OP->type() != FormulaType::ALLOC) continue;
-            const AllocOperation* AllocOp = dynamic_cast<const AllocOperation*>(Expr->OP.get());
-            if (!AllocFuncs.contains(C.F)) AllocFuncs[C.F] = {};
-            AllocFuncs[C.F].insert(AllocOp);
+            switch (Expr->OP->type()) {
+                case FormulaType::ALLOC:
+                    if (!AllocFuncs.contains(C.F)) AllocFuncs[C.F] = {};
+                    AllocFuncs[C.F].insert(static_cast<const AllocOperation*>(Expr->OP.get()));
+                    break;
+                case FormulaType::FREE:
+                    if (!FreeFuncs.contains(C.F)) FreeFuncs[C.F] = {};
+                    FreeFuncs[C.F].insert(static_cast<const FreeOperation*>(Expr->OP.get()));
+                    break;
+                default: continue;
+            }
             *Expr->Status = Fulfillment::FULFILLED; // Always fulfilled.
         }
     }
@@ -65,52 +72,65 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     IterTypeAlloc* Data = static_cast<IterTypeAlloc*>(data);
 
     // Propagate allocations
-    if (const StoreInst* SI = dyn_cast<StoreInst>(I)) {
-        if (cur.candidate.contains(SI->getValueOperand())) {
-            cur.candidate[SI->getPointerOperand()] = I->getModule()->getFunction("_QQmain") ? ParamAccess::NORMAL : ParamAccess::ADDROF;
+    if (StoreInst const* SI = dyn_cast<StoreInst>(I)) {
+        if (cur.hasAllocInfo(SI->getValueOperand())) {
+            cur.addCopy(SI->getPointerOperand(), SI->getValueOperand(), I->getModule()->getFunction("_QQmain") ? ParamAccess::NORMAL : ParamAccess::ADDROF);
         }
     }
 
     // Propagate allocations - Pretty much just Fortran from here...
-    if (const CallBase* CB = dyn_cast<CallBase>(I)) {
+    if (CallBase const* CB = dyn_cast<CallBase>(I)) {
         if (CB->getCalledFunction() && CB->getCalledFunction()->getName().starts_with("llvm.memcpy.p0.p0")) {
             Value* src = CB->getArgOperand(1);
             Value* dest = CB->getArgOperand(0);
             if (ContractPassUtility::isTrivialAlloc(src)) {
-                cur.candidate[dest] = ParamAccess::NORMAL;
+                cur.addAllocatedValue(dest);
             }
         }
-        if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "_FortranAPointerAllocate") {
-            cur.candidate[CB->getArgOperand(0)] = ParamAccess::NORMAL;
+    }
+    if (LoadInst const* LI = dyn_cast<LoadInst>(I)) {
+        if (ContractPassUtility::isTrivialAlloc(LI->getPointerOperand())) {
+            cur.addAllocatedValue(LI);
+        } else if (cur.hasAllocInfo(LI->getPointerOperand())) {
+            cur.addCopy(LI, LI->getPointerOperand(), cur.getAllocInfo(LI->getPointerOperand()).acc);
         }
     }
-    if (const LoadInst* LI = dyn_cast<LoadInst>(I)) {
-        if (ContractPassUtility::isTrivialAlloc(LI->getPointerOperand()) || cur.candidate.contains(LI->getPointerOperand())) {
-            cur.candidate[LI] = cur.candidate[LI->getPointerOperand()];
+    if (GetElementPtrInst const* GEP = dyn_cast<GetElementPtrInst>(I)) {
+        if (cur.hasAllocInfo(GEP->getPointerOperand())) {
+            cur.addCopy(GEP, GEP->getPointerOperand(), cur.getAllocInfo(GEP->getPointerOperand()).acc);
         }
     }
-    if (const GetElementPtrInst* GEP = dyn_cast<GetElementPtrInst>(I)) {
-        if (cur.candidate.contains(GEP->getPointerOperand())) {
-            cur.candidate[GEP] = cur.candidate[GEP->getPointerOperand()];
+    if (InsertValueInst const* IVI = dyn_cast<InsertValueInst>(I)) {
+        if (cur.hasAllocInfo(IVI->getInsertedValueOperand())) {
+            cur.addCopy(IVI, IVI->getInsertedValueOperand(), cur.getAllocInfo(IVI->getInsertedValueOperand()).acc);
+        } else if (ContractPassUtility::isTrivialAlloc(IVI->getInsertedValueOperand())) {
+            cur.addAllocatedValue(IVI);
         }
     }
-    if (const InsertValueInst* IVI = dyn_cast<InsertValueInst>(I)) {
-        if (cur.candidate.contains(IVI->getInsertedValueOperand()) || ContractPassUtility::isTrivialAlloc(IVI->getInsertedValueOperand())) {
-            cur.candidate[IVI] = cur.candidate[IVI->getInsertedValueOperand()];
+    if (ExtractValueInst const* EVI = dyn_cast<ExtractValueInst>(I)) {
+        if (cur.hasAllocInfo(EVI->getAggregateOperand())) {
+            cur.addCopy(EVI, EVI->getAggregateOperand(), cur.getAllocInfo(EVI->getAggregateOperand()).acc);
         }
     }
-    if (const ExtractValueInst* EVI = dyn_cast<ExtractValueInst>(I)) {
-        if (cur.candidate.contains(EVI->getAggregateOperand())) {
-            cur.candidate[EVI] = cur.candidate[EVI->getAggregateOperand()];
+    if (IntToPtrInst const* ITPI = dyn_cast<IntToPtrInst>(I)) {
+        if (cur.hasAllocInfo(ITPI->getOperand(0))) {
+            cur.addCopy(ITPI, ITPI->getOperand(0), cur.getAllocInfo(ITPI->getOperand(0)).acc);
         }
     }
 
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-        if (AllocFuncs.contains(CB->getCalledFunction())) {
-            for (const AllocOperation* alloc : AllocFuncs[CB->getCalledFunction()]) {
+        if (AllocFuncs.contains(CB->getCalledOperand())) {
+            for (const AllocOperation* alloc : AllocFuncs[CB->getCalledOperand()]) {
                 #warning TODO different access patterns
-                if (alloc->contrP == 99) cur.candidate[CB] = alloc->contrParamAccess;
-                else cur.candidate[CB->getArgOperand(alloc->contrP)] = alloc->contrParamAccess;
+                if (alloc->contrP == 99) cur.addAllocatedValue(CB, alloc->contrParamAccess);
+                else cur.addAllocatedValue(CB->getArgOperand(alloc->contrP), alloc->contrParamAccess);
+            }
+            // Dont return here! Maybe it also is contr sup
+        }
+        if (FreeFuncs.contains(CB->getCalledFunction())) {
+            for (const FreeOperation* freeOp : FreeFuncs[CB->getCalledFunction()]) {
+                #warning TODO perform free, remove stuff from candidate tree
+                cur.freeValue(CB->getArgOperand(freeOp->contrP));
             }
             // Dont return here! Maybe it also is contr sup
         }
@@ -121,8 +141,8 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
                 return cur;
             }
             // Not trivial, check if explicitly allocated
-            for (std::pair<const Value*,ParamAccess> Candidate : cur.candidate) {
-                if (ContractPassUtility::checkParamMatch(CB->getArgOperand(Data->param), Candidate.first, Candidate.second, MAM)) {
+            for (std::pair<Value const*, AllocStatus::AllocInfo> Candidate : cur.candidates()) {
+                if (ContractPassUtility::checkParamMatch(CB->getArgOperand(Data->param), Candidate.first, Candidate.second.acc, MAM)) {
                     // Success!
                     cur.CurVal = AllocStatusVal::ALLOC;
                     return cur;
@@ -138,13 +158,8 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
 }
 
 std::pair<ContractVerifierAllocPass::AllocStatus,bool> ContractVerifierAllocPass::mergeAllocStat(AllocStatus prev, AllocStatus cur, const Instruction* I, void* data) {
-    std::map<const Value*,ParamAccess> intersect;
-    std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
-                 std::inserter(intersect, intersect.begin()));
-
-    AllocStatus merge = { std::max(prev.CurVal, cur.CurVal), intersect };
-    
-    return { merge, merge.CurVal > prev.CurVal };
+    AllocStatus intersect = cur.intersect(prev);
+    return {intersect, intersect.CurVal > prev.CurVal};
 }
 
 ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocReq(const AllocOperation* AllocOp, Module const& M, const Function* F, std::string& err) {
@@ -155,7 +170,7 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     }
     const Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
 
-    AllocStatus init = { AllocStatusVal::UNDEF, {}};
+    AllocStatus init;
     IterTypeAlloc data = { {}, {}, AllocOp->contrP, AllocOp->contrParamAccess, F };
     auto bound_transfer = std::bind(&ContractVerifierAllocPass::transferAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     auto bound_merge = std::bind(&ContractVerifierAllocPass::mergeAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
