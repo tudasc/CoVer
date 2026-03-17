@@ -569,7 +569,7 @@ for func, contrs in function_contracts.items():
     header_output_c += ");\n\n"
     if func in exclude_fortran or "c2f" in func or "f2c" in func or "f082c" in func or "c2f08" in func or func.endswith("_c") or func.endswith("_fromint") or func.endswith("_toint"): continue # Only defined for C
     # Now: Fortran
-    contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "").replace("*", "").replace("&", "").replace("read!(", "read!(*").replace("write!(", "write!(*")
+    contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "").replace(":*", ":").replace(":&", ":")
     if func not in exclude_fortran_nof08:
         header_output_fort += "    call Declare_Contract(" + func + ", \"" + contract_str_fort + "\")\n"
     # Fortran f08(ts)
