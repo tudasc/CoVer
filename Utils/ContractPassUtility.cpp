@@ -18,6 +18,7 @@
 #include <llvm/IR/Operator.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
+#include <llvm/Support/WithColor.h>
 #include <map>
 #include <memory>
 #include <set>
@@ -268,8 +269,11 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         case ContractTree::ParamAccess::DEREF:
             // Contr has a pointer, call has value.
             // If interproc, diff should be -1 if already resolved
-            if (diff == 0)
-                target = getLoadStorePointerOperand(target);
+            if (diff == 0) {
+                Value const* V = getLoadStorePointerOperand(target);
+                if (!V && IS_DEBUG) WithColor(errs(), HighlightColor::String) << "Note: Static deref failed, falling back to orig.\n";
+                target = V ? V : target;
+            }
             else if (diff != -1) return false;
             break;
         case ContractTree::ParamAccess::ADDROF:
