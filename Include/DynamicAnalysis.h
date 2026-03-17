@@ -71,6 +71,7 @@ enum ContractConnective : int32_t {
     OR,
     XOR,
     // Operations
+    UNARY_RWOP,
     UNARY_READ,
     UNARY_WRITE,
     UNARY_ALLOC,

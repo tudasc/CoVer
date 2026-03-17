@@ -14,7 +14,7 @@
 #include <vector>
 
 namespace ContractTree {
-    enum struct FormulaType { AND, OR, XOR, READ, WRITE, ALLOC, FREE, CALL, CALLTAG, RELEASE, PARAM };
+    enum struct FormulaType { AND, OR, XOR, RWOP, READ, WRITE, ALLOC, FREE, CALL, CALLTAG, RELEASE, PARAM };
     enum struct ParamAccess { NORMAL, DEREF, ADDROF };
     struct Operation {
         virtual ~Operation() = default;
@@ -23,8 +23,8 @@ namespace ContractTree {
     struct RWOperation : Operation {
         const int contrP;
         const ParamAccess contrParamAccess;
-        protected:
-            RWOperation(int _contrP, ParamAccess _acc) : contrP(_contrP), contrParamAccess(_acc) {};
+        virtual const FormulaType type() const override { return FormulaType::RWOP; };
+        RWOperation(int _contrP, ParamAccess _acc) : contrP(_contrP), contrParamAccess(_acc) {};
     };
     struct ReadOperation : RWOperation {
         ReadOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
