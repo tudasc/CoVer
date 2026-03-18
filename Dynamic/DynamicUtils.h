@@ -25,6 +25,7 @@ struct ConcreteParam {
 struct CallsiteInfo {
     CodePtr location;
     std::vector<ConcreteParam> params;
+    void const* retval = nullptr;
     bool operator==(CallsiteInfo const& other) const {
         return this->location == other.location && params == other.params;
     }

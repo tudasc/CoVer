@@ -11,6 +11,8 @@
 #include <vector>
 #include <cstdarg>
 
+#include <ffi.h>
+
 #include "DynamicAnalysis.h"
 #include "DynamicUtils.h"
 
@@ -88,19 +90,63 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
     DynamicUtils::createMessage("Finished Initializing!");
 }
 
-extern "C" void __attribute__((visibility("default"))) PPDCV_FunctionCallback(bool isRef, void* function, int32_t num_params, ...) {
+ffi_type* getFFIType(int32_t size) {
+    switch (size) {
+        case 0: return &ffi_type_void;
+        case 16: return &ffi_type_uint16;
+        case 32: return &ffi_type_uint32;
+        case 64: return &ffi_type_pointer;
+    }
+    __builtin_unreachable();
+}
+
+extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(bool isRef, void* function, int32_t ret_size, int32_t num_params, ...) {
     CallsiteInfo callsite = { .location = __builtin_return_address(0) };
+    callsite.params.reserve(num_params);
     std::va_list list;
+    static std::vector<ffi_type*> ffi_arg_types;
+    static std::vector<void*> ffi_arg_values_ptr;
+    static std::vector<void*> ffi_arg_values_store;
+    ffi_arg_types.reserve(num_params);
+    ffi_arg_types.clear();
+    ffi_arg_values_store.reserve(num_params);
+    ffi_arg_values_store.clear();
+    ffi_arg_values_ptr.reserve(num_params);
+    ffi_arg_values_ptr.clear();
+
     va_start(list, num_params);
     for (int i = 0; i < num_params; i++) {
         uint32_t param_size = va_arg(list,uint32_t);
-        void const* param_val = va_arg(list,void*);
-        callsite.params.push_back({param_val, param_size});
+        void* param_val = va_arg(list,void*);
+        if (param_size >> 16) {
+            // Need to deref value first
+            callsite.params.push_back({*(void**)param_val, param_size & 0xFF});   
+        } else {
+            callsite.params.push_back({param_val, param_size & 0xFF});
+        }
+        ffi_arg_types.push_back(getFFIType((param_size & 0xFF00) >> 8));
+        ffi_arg_values_store.push_back(param_val);
+        ffi_arg_values_ptr.push_back(&ffi_arg_values_store[i]);
     }
     va_end(list);
 
     // Run event handlers and remove analysis if done
-    HANDLE_CALLBACK(analyses_with_funcCB, onFunctionCall, function, callsite);
+    HANDLE_CALLBACK(analyses_with_funcPreCB, onFunctionCall, function, true, callsite);
+
+    // Call the intercepted function
+    ffi_cif cif;
+    void* res = nullptr;
+    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, num_params, getFFIType(ret_size), ffi_arg_types.data()) == FFI_OK) {
+        ffi_call(&cif, FFI_FN(function), &res, ffi_arg_values_ptr.data());
+    } else {
+        DynamicUtils::out() << "CRITICAL: Failed to prepare libffi CIF!\n";
+    }
+
+    // Run event handlers again for the postCBs, including the newly returned value
+    callsite.retval = res;
+    HANDLE_CALLBACK(analyses_with_funcPostCB, onFunctionCall, function, false, callsite);
+
+    return res;
 }
 
 extern "C" void __attribute__((visibility("default"))) PPDCV_MemRCallback(bool isRef, void const* buf) {

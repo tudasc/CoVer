@@ -10,11 +10,11 @@ struct PostCallAnalysis : public BaseAnalysis<PostCallAnalysis> {
         PostCallAnalysis(void const* func_supplier, CallOp_t* callop);
         PostCallAnalysis(void const* func_supplier, CallTagOp_t* callop);
 
-        ANALYSIS_PREAMBLE Fulfillment functionCBImpl(void* const& func, CallsiteInfo const& callsite);
+        ANALYSIS_PREAMBLE Fulfillment functionCBImpl(void* const& func, bool const isPre, CallsiteInfo const& callsite);
         ANALYSIS_PREAMBLE Fulfillment memoryCBImpl(CodePtr const& location, void const* const& memory, bool const& isWrite) const { return Fulfillment::UNKNOWN; }
         ANALYSIS_PREAMBLE Fulfillment exitCBImpl(CodePtr const& location);
 
-        constexpr CallBacks requiredCallbacksImpl() const { return {true, false, false}; }
+        constexpr CallBacks requiredCallbacksImpl() const { return {true, false, false, false}; }
 
     private:
         void SharedInit(void const* _func_supplier, const char* target_str, CallParam_t *params, int64_t num_params);

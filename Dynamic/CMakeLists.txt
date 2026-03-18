@@ -15,11 +15,17 @@ else()
 endif()
 target_include_directories(CoVerDynamicAnalyzer PUBLIC ../Include/)
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(FFI REQUIRED libffi)
+target_include_directories(CoVerDynamicAnalyzer PRIVATE "${FFI_INCLUDE_DIRS}")
+
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_VISIBILITY_PRESET hidden)
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY C_VISIBILITY_PRESET hidden)
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY VISIBILITY_INLINES_HIDDEN ON)
 
 target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions -fomit-frame-pointer -fno-stack-protector)
+target_link_libraries(CoVerDynamicAnalyzer libffi)
+target_include_directories(CoVerDynamicAnalyzer PRIVATE "${FFI_LIBRARIES}")
 
 if (CMAKE_ADDR2LINE)
   target_compile_definitions(CoVerDynamicAnalyzer PUBLIC CMAKE_ADDR2LINE="${CMAKE_ADDR2LINE}")

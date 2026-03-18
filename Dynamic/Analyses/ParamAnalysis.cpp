@@ -5,7 +5,7 @@
 
 #include <vector>
 
-Fulfillment ParamAnalysis::functionCBImpl(void* const& func, CallsiteInfo const& callsite) {
+Fulfillment ParamAnalysis::functionCBImpl(void* const& func, bool const isPre, CallsiteInfo const& callsite) {
     if (func != func_supplier) return Fulfillment::UNKNOWN;
 
     for (const ParamReq_t* req : param_requirements) {
@@ -18,19 +18,19 @@ Fulfillment ParamAnalysis::functionCBImpl(void* const& func, CallsiteInfo const&
         switch (req->comparator) {
             case Comparator::NEQ:
                 if (act_callp != act_req) continue;
-                return Fulfillment::VIOLATED;
+                references.push_back(callsite.location); return Fulfillment::VIOLATED;
             case Comparator::GTEQ:
                 if (act_callp >= act_req) continue;
-                return Fulfillment::VIOLATED;
+                references.push_back(callsite.location); return Fulfillment::VIOLATED;
             case Comparator::GT:
                 if (act_callp >  act_req) continue;
-                return Fulfillment::VIOLATED;
+                references.push_back(callsite.location); return Fulfillment::VIOLATED;
             case Comparator::LTEQ:
                 if (act_callp <= act_req) continue;
-                return Fulfillment::VIOLATED;
+                references.push_back(callsite.location); return Fulfillment::VIOLATED;
             case Comparator::LT:
                 if (act_callp <  act_req) continue;
-                return Fulfillment::VIOLATED;
+                references.push_back(callsite.location); return Fulfillment::VIOLATED;
             case Comparator::EXEQ:
                 // EXEQ is the exception (pun), it overrides other forbidden values.
                 if (act_callp == act_req) return Fulfillment::FULFILLED;

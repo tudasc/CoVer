@@ -118,15 +118,16 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
     Value* Vargc = mainF->getArg(0);
     Value* Vargv = mainF->getArg(1);
-    Value* argcptr = new AllocaInst(Int_Type, 0, "argc_ptr", mainF->getEntryBlock().getFirstNonPHIOrDbg());
-    Value* argvptr = new AllocaInst(Ptr_Type, 0, "argv_ptr", mainF->getEntryBlock().getFirstNonPHIOrDbg());
+    AllocaInst* argcptr = new AllocaInst(Int_Type, 0, "argc_ptr", mainF->getEntryBlock().getFirstNonPHIOrDbg());
+    AllocaInst* argvptr = new AllocaInst(Ptr_Type, 0, "argv_ptr", argcptr->getIterator());
     CallInst* initFuncCI = CallInst::Create(initFuncCallee, {argcptr, argvptr, GlobalDB});
-    initFuncCI->insertBefore(mainF->getEntryBlock().getFirstNonPHIOrDbgOrAlloca());
+    initFuncCI->insertAfter(argcptr->getIterator());
+    instrument_ignore.insert({argcptr, argvptr});
     instrument_ignore.insert(new StoreInst(Vargc, argcptr, initFuncCI->getIterator()));
     instrument_ignore.insert(new StoreInst(Vargv, argvptr, initFuncCI->getIterator()));
     // Create callback function for rel func call
-    // Call sig: Function ptr, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
-    FunctionType* FunctionCBType = FunctionType::get(Void_Type, {Bool_Type, Ptr_Type, Int_Type}, true);
+    // Call sig: isRel, Function ptr, ret size, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
+    FunctionType* FunctionCBType = FunctionType::get(Ptr_Type, {Bool_Type, Ptr_Type, Int_Type, Int_Type}, true);
     callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType, fnAttr);
     Function* callbackFunc = dyn_cast<Function>(callbackFuncCallee.getCallee());
     callbackFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
@@ -257,7 +258,8 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             errs() << "Unexpected connective in createOperationGlobal!\n";
             break;
         case FormulaType::READ:
-        case FormulaType::WRITE: {
+        case FormulaType::WRITE:
+        case FormulaType::RWOP: {
             std::shared_ptr<const RWOperation> rwOP = static_pointer_cast<const RWOperation>(op);
             Constant* isWrite = ConstantInt::getBool(Bool_Type, op->type() == FormulaType::WRITE);
             ConstantInt* const_paramacc = ConstantInt::get(Int_Type, (int)rwOP->contrParamAccess);
@@ -438,7 +440,7 @@ std::pair<Constant*,int64_t> InstrumentPass::createParamList(Module& M, std::vec
     if (params.empty()) return { Null_Const, 0 };
     std::vector<Constant*> paramConsts;
     for (CallParam param : params) {
-        Constant* pConst = ConstantStruct::get(Param_Type, {ConstantInt::get(Int_Type, param.callP), ConstantInt::getBool(Bool_Type, param.callPisTagVar), ConstantInt::get(Int_Type, param.contrP), ConstantInt::get(Int_Type, (int64_t)param.contrParamAccess)});
+        Constant* pConst = ConstantStruct::get(Param_Type, {ConstantInt::get(Int_Type, param.callP), ConstantInt::getBool(Bool_Type, param.callPisTagVar), ConstantInt::get(Int_Type, param.contrP), ConstantInt::get(Int_Type, (int32_t)param.contrParamAccess)});
         paramConsts.push_back(pConst);
     }
     ArrayType* paramArr_Type = ArrayType::get(Param_Type, paramConsts.size());
@@ -458,6 +460,14 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         int skipnum = 0;
         std::vector<Value*> params;
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
+
+        // Get return value size
+        if (isC && callsite->getType()->isSized()) {
+            params.push_back(ConstantInt::get(Int_Type, callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType())));
+        } else {
+            params.push_back(ConstantInt::get(Int_Type, 0));
+        }
+
         params.push_back(ConstantInt::get(Int_Type, callsite->arg_size()));
         for (Use const& U : callsite->args()) {
             Value* actual_param = U;
@@ -466,7 +476,8 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
 
             // Store size of data type
             if (isC) {
-                params.push_back(ConstantInt::get(Int_Type, callsite->getDataLayout().getTypeStoreSizeInBits(U->getType())));
+                int size_act = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
+                params.push_back(ConstantInt::get(Int_Type, (size_act << 8) | (size_act & 0xFF)));
                 // Store actual parameter, making sure to cast if necessary
                 if (!U->getType()->isPointerTy()) {
                     if (U->getType()->isFloatingPointTy()) {
@@ -486,11 +497,14 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                     }
                     // All parameters are sent as pointers. Need to check exact size using dbg info
                     DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
-                    params.push_back(ConstantInt::get(Int_Type, param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits()));
-                    // On Fortran, deref if param is an allocate/ptr buffer
+                    int size_act = param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits();
+                    int size_call = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
+                    // On Fortran, deref if param is an allocate/ptr buffer.
+                    // Indicate with magic bit
                     if (param_type->getTag() == (dwarf::Tag)DW_TAG_array_type) {
-                        actual_param = new LoadInst(Ptr_Type, actual_param, "", callsite->getIterator());
+                        size_call = size_call | 1 << 8;
                     }
+                    params.push_back(ConstantInt::get(Int_Type, (size_call << 8) | (size_act & 0xFF)));
                 } else {
                     errs() << "ERROR: Could not perform instrumentation! Unable to get debug info for function \"" << callsite->getCalledOperand()->getName() << "\"";
                 }
@@ -507,7 +521,8 @@ void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> pa
     params.insert(params.begin(), ConstantInt::getBool(Bool_Type, isRelevant(I)));
     CallInst* callbackCI = CallInst::Create(FC, params);
     callbackCI->setDebugLoc(I->getDebugLoc());
-    callbackCI->insertBefore(I->getIterator());
+    if (isa<CallBase>(I)) ReplaceInstWithInst(I, callbackCI);
+    else callbackCI->insertBefore(I->getIterator());
 }
 
 bool InstrumentPass::isRelevant(Instruction const* I) const {

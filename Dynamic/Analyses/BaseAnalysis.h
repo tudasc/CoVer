@@ -6,7 +6,8 @@
 enum struct Fulfillment { FULFILLED, UNKNOWN, VIOLATED, INACTIVE };
 
 struct CallBacks {
-    bool FUNCTION;
+    bool FUNCTION_PRE;
+    bool FUNCTION_POST;
     bool MEMORY_R;
     bool MEMORY_W;
 };
@@ -19,7 +20,7 @@ class BaseAnalysis {
     public:
         // Event handlers. Return non-unknown if analysis is resolved and no longer needs to be analysed.
         // onFunctionCall does not forward return address, as it is included in callsiteinfo
-        inline Fulfillment onFunctionCall(CodePtr const& location, void* const& func, CallsiteInfo const& callsite) { return static_cast<T*>(this)->functionCBImpl(func, callsite); };
+        inline Fulfillment onFunctionCall(CodePtr const& location, void* const& func, bool const isPre, CallsiteInfo const& callsite) { return static_cast<T*>(this)->functionCBImpl(func, isPre, callsite); };
         inline Fulfillment onMemoryAccess(CodePtr const& location, void const* const& memory, bool const& isWrite) { return static_cast<T*>(this)->memoryCBImpl(std::forward<CodePtr const>(location), memory, isWrite); };
         inline Fulfillment onProgramExit(CodePtr const& location) { return static_cast<T*>(this)->exitCBImpl(std::forward<void const* const>(location)); };
 

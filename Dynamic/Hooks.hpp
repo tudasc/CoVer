@@ -42,7 +42,8 @@ namespace {
     std::unordered_map<ContractFormula_t*, ContractFormula_t*> formula_parents;
     std::unordered_map<ContractFormula_t*, Contract_t*> toplevel_to_contract;
     std::vector<AnalysisPair> all_analyses;
-    std::vector<AnalysisPair> analyses_with_funcCB;
+    std::vector<AnalysisPair> analyses_with_funcPreCB;
+    std::vector<AnalysisPair> analyses_with_funcPostCB;
     std::vector<AnalysisPair> analyses_with_memRCB;
     std::vector<AnalysisPair> analyses_with_memWCB;
     std::unordered_map<ContractFormula_t*, std::vector<void const*>> analysis_references;
@@ -58,12 +59,13 @@ namespace {
         CallBacks reqCB = fastVisit([&](auto& analysis) {
             return analysis->requiredCallbacks();
         }, new_pair.analysis);
-        if (reqCB.FUNCTION) analyses_with_funcCB.push_back(new_pair);
+        if (reqCB.FUNCTION_PRE) analyses_with_funcPreCB.push_back(new_pair);
+        if (reqCB.FUNCTION_POST) analyses_with_funcPostCB.push_back(new_pair);
         if (reqCB.MEMORY_R) analyses_with_memRCB.push_back(new_pair);
         if (reqCB.MEMORY_W) analyses_with_memWCB.push_back(new_pair);
     }
 
-    #define HANDLE_CALLBACK(pairs, CB, ...) \
+    #define HANDLE_CALLBACK(pairs, CB, ...) {\
         void const* location = __builtin_return_address(0);\
         if (isRef) visitedLocs.insert(location);\
         _Pragma("unroll(5)") for (auto it = pairs.begin(); it < pairs.end();) { \
@@ -77,7 +79,7 @@ namespace {
                 }\
                 return ++it;\
             }, it->analysis);\
-        }
+        }}
 
     void validateState(ContractFormula_t* form) {
         if (formula_parents[form] && contract_status.contains(formula_parents[form])) return; // If parent already decided return early
@@ -158,7 +160,7 @@ namespace {
     }
 
     ErrorMessage recurseCreateErrorMsg(ContractFormula_t* form) {
-        if (contract_status[form] != Fulfillment::VIOLATED) return {};
+        if (!contract_status.contains(form) || contract_status[form] != Fulfillment::VIOLATED) return {};
         if (form->num_children == 0) {
             ErrorMessage msg;
             msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg};
