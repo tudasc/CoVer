@@ -6,7 +6,7 @@
 
 int main(int argc, char** argv) {
     int rank;
-    int buf;
+    int buf = 42;
     MPI_Request req;
 
     MPI_Init(NULL, NULL);

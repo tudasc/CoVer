@@ -5,7 +5,7 @@ program main
     implicit none
 
     integer :: rank
-    integer :: buf(1)
+    integer :: buf(1) = 42
     type(MPI_Request) :: req
 
     call MPI_Init()
