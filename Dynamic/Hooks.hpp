@@ -82,7 +82,14 @@ namespace {
         }}
 
     void validateState(ContractFormula_t* form) {
-        if (formula_parents[form] && contract_status.contains(formula_parents[form])) return; // If parent already decided return early
+        if (formula_parents[form] && contract_status.contains(formula_parents[form])) {
+            if (contract_status[formula_parents[form]] == Fulfillment::VIOLATED && !formula_parents[formula_parents[form]]) {
+                // Another child of top-level formula violated. Two possible errors, though maybe just a symptom of the first one.
+                DynamicUtils::out() << "Note: Possible secondary issue detected! This may be a true FP or a side effect of the previous report.\n";
+                formatError(recurseCreateErrorMsg(form));
+            }
+            return; // If parent already decided return early
+        }
         if (contract_status[form] != Fulfillment::VIOLATED &&
             !(contract_status[form] == Fulfillment::FULFILLED && formula_parents[form] && formula_parents[form]->conn == XOR)) return;
 
