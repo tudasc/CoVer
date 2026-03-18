@@ -369,7 +369,7 @@ allocators = [
     ("MPI_Win_allocate", 4),
 ]
 for func, idx in allocators:
-    add_contract(func, "POST", f"alloc!(&{idx})")
+    add_contract(func, "POST", f"alloc!(*{idx})")
 
 
 # Datatype should not be null when doing communication
@@ -496,7 +496,7 @@ fortran_lang_intrinsics = """
         subroutine FortFree() bind(c, name="_FortranAPointerDeallocate")
         end subroutine FortFree
     end interface
-    call Declare_Contract(FortAlloc, \"POST { alloc!(0) }\")
+    call Declare_Contract(FortAlloc, \"POST { alloc!(*0) }\")
     call Declare_Contract(FortFree, \"POST { free!(0) }\")
 """
 
