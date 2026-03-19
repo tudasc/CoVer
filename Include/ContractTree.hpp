@@ -16,6 +16,13 @@
 namespace ContractTree {
     enum struct FormulaType { AND, OR, XOR, RWOP, READ, WRITE, ALLOC, FREE, CALL, CALLTAG, RELEASE, PARAM };
     enum struct ParamAccess { NORMAL, DEREF, ADDROF };
+    enum struct MathType { UNARY_VALUE, MULT };
+    struct MathExpr {
+        int value;
+        bool isArgValue;
+        MathType type;
+        std::shared_ptr<MathExpr> other = nullptr;
+    };
     struct Operation {
         virtual ~Operation() = default;
         virtual const FormulaType type() const = 0;
@@ -35,7 +42,8 @@ namespace ContractTree {
         virtual const FormulaType type() const override { return FormulaType::WRITE; };
     };
     struct AllocOperation : RWOperation {
-        AllocOperation(int _contrP, ParamAccess _acc) : RWOperation(_contrP, _acc) {};
+        const std::shared_ptr<MathExpr> size;
+        AllocOperation(int _contrP, ParamAccess _acc, std::shared_ptr<MathExpr> _size) : RWOperation(_contrP, _acc), size(_size) {};
         virtual const FormulaType type() const override { return FormulaType::ALLOC; };
     };
     struct FreeOperation : RWOperation {

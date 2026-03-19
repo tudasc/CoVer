@@ -28,6 +28,8 @@ TagParam: '$';
 Deref: '*';
 AddrOf: '&';
 
+MarkArg: '_arg';
+
 // All ops must end with '!' to differentiate from variables
 OPRead: 'read!';
 OPWrite: 'write!';
@@ -38,8 +40,11 @@ OPRelease2: 'until!';
 OPParam: 'param!';
 OPAlloc: 'alloc!';
 OPFree: 'free!';
+
 OPPrefix: '(';
 OPPostfix: ')';
+RWOffsetPrefix: '[';
+RWOffsetSuffix: ']';
 
 ParamForbidEq: '!=';
 ParamGt: '>';

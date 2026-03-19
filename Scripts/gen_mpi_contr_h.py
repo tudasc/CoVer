@@ -470,8 +470,9 @@ boilerplate_header_c = f"""
 
 {get_param_values("c")}
 
-void* calloc(size_t num, size_t size) CONTRACT( POST {{ alloc!(99) }});
-void* malloc(size_t size) CONTRACT( POST {{ alloc!(99) }});
+
+void* calloc(size_t num, size_t size) CONTRACT( POST {{ alloc!(99[ 0 _arg * 1 _arg]) }});
+void* malloc(size_t size) CONTRACT( POST {{ alloc!(99[0 _arg]) }});
 
 void free(void*) CONTRACT( POST {{ free!(0) }});
 

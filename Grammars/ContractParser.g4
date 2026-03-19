@@ -17,7 +17,12 @@ tagUnit: Variable (OPPrefix NatNum OPPostfix)?;
 
 expression: callOp | releaseOp | paramOp | rwOp; // rwOp only makes sense for alloc though
 
-rwOp: (OPRead | OPWrite | OPAlloc | OPFree) OPPrefix (Deref | AddrOf)? NatNum OPPostfix;
+natExpr: NatNum | NatNum MarkArg;
+multExpr: Deref mathExpr;
+mathOp: multExpr;
+mathExpr: natExpr mathOp?;
+
+rwOp: (OPRead | OPWrite | OPAlloc | OPFree) OPPrefix (Deref | AddrOf)? arg_index=NatNum (RWOffsetPrefix alloc_size=mathExpr RWOffsetSuffix)? OPPostfix;
 varMap: (callP=NatNum | TagParam) MapSep (Deref | AddrOf)? contrP=NatNum;
 callOp: (OPCall | OPCallTag) OPPrefix Variable (ListSep varMap)* OPPostfix;
 paramOp: OPParam OPPrefix NatNum MapSep paramReq (ListSep paramReq)* OPPostfix;
