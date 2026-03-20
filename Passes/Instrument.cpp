@@ -104,7 +104,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
 
     // Package database
     GlobalVariable* GlobalDB = dyn_cast<GlobalVariable>(M.getOrInsertGlobal("CONTR_DB", DB_Type));
-    Constant* CDB = ConstantStruct::get(DB_Type, {ContractsVal, ConstantInt::get(Int_Type, num_contrs),  TagVal, ReferencesVal, ConstantInt::get(Int_Type, num_refs)});
+    Constant* CDB = ConstantStruct::get(DB_Type, {ContractsVal, Basic_Types.getInt(num_contrs),  TagVal, ReferencesVal, Basic_Types.getInt(num_refs)});
     GlobalDB->setInitializer(CDB);
 
     AttributeList fnAttr;
