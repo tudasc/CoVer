@@ -121,7 +121,6 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
         if (AllocFuncs.contains(CB->getCalledOperand())) {
             for (const AllocOperation* alloc : AllocFuncs[CB->getCalledOperand()]) {
-                #warning TODO different access patterns
                 if (alloc->contrP == 99) cur.addAllocatedValue(CB, alloc->contrParamAccess);
                 else cur.addAllocatedValue(CB->getArgOperand(alloc->contrP), alloc->contrParamAccess);
             }
