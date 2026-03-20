@@ -49,6 +49,7 @@ static cl::opt<std::string> ClInstrumentType(
 PreservedAnalyses InstrumentPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     DB = &AM.getResult<ContractManagerAnalysis>(M);
+    Basic_Types = AM.getResult<BasicTypesAnalysis>(M);
 
     Function* mainF = M.getFunction("main");
     if (!mainF) return PreservedAnalyses::all(); // No point
@@ -84,7 +85,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
         err_msgs.push_back(msg);
     }
 
-    // Generic Types and consts
+    // Contract Types and consts
     createTypes(M);
 
     // Create Tag globals
@@ -111,30 +112,16 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     fnAttr = fnAttr.addFnAttribute(M.getContext(), Attribute::WillReturn);
     fnAttr = fnAttr.addFnAttribute(M.getContext(), Attribute::NoCallback);
 
-    // Create initialization routine for tool
-    FunctionType* InitCBType = FunctionType::get(Void_Type, {Ptr_Type, Ptr_Type, Ptr_Type}, false);
-    FunctionCallee initFuncCallee = M.getOrInsertFunction("PPDCV_Initialize", InitCBType, fnAttr);
-    Function* initFunc = dyn_cast<Function>(initFuncCallee.getCallee());
-    initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
-    Value* Vargc = mainF->getArg(0);
-    Value* Vargv = mainF->getArg(1);
-    AllocaInst* argcptr = new AllocaInst(Int_Type, 0, "argc_ptr", mainF->getEntryBlock().getFirstNonPHIOrDbg());
-    AllocaInst* argvptr = new AllocaInst(Ptr_Type, 0, "argv_ptr", argcptr->getIterator());
-    CallInst* initFuncCI = CallInst::Create(initFuncCallee, {argcptr, argvptr, GlobalDB});
-    initFuncCI->insertAfter(argcptr->getIterator());
-    instrument_ignore.insert({argcptr, argvptr});
-    instrument_ignore.insert(new StoreInst(Vargc, argcptr, initFuncCI->getIterator()));
-    instrument_ignore.insert(new StoreInst(Vargv, argvptr, initFuncCI->getIterator()));
     // Create callback function for rel func call
     // Call sig: isRel, Function ptr, ret size, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
-    FunctionType* FunctionCBType = FunctionType::get(Ptr_Type, {Bool_Type, Ptr_Type, Int_Type, Int_Type}, true);
+    FunctionType* FunctionCBType = FunctionType::get(Basic_Types.Ptr_Type, {Basic_Types.Bool_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Int_Type}, true);
     callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType, fnAttr);
     Function* callbackFunc = dyn_cast<Function>(callbackFuncCallee.getCallee());
     callbackFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create callback function for RW
     // Call sig: int64-as-bool isWrite, mem ptr
-    FunctionType* FunctionRWType = FunctionType::get(Void_Type, {Bool_Type, Ptr_Type}, false);
+    FunctionType* FunctionRWType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Bool_Type, Basic_Types.Ptr_Type}, false);
     callbackRCallee = M.getOrInsertFunction("PPDCV_MemRCallback", FunctionRWType, fnAttr);
     Function* callbackR = dyn_cast<Function>(callbackRCallee.getCallee());
     callbackR->setLinkage(GlobalValue::ExternalWeakLinkage);
@@ -157,7 +144,7 @@ Constant* InstrumentPass::createTagGlobal(Module& M) {
     int count = 0;
     for (std::pair<Function*, std::vector<TagUnit>> functags : DB->Tags) {
         for (TagUnit tag : functags.second) {
-            Constant* param = ConstantInt::get(Int_Type, tag.param ? *tag.param : -1);
+            Constant* param = ConstantInt::get(Basic_Types.Int_Type, tag.param ? *tag.param : -1);
             Constant* str = ConstantDataArray::getString(M.getContext(), tag.tag);
             GlobalVariable* strGlobal = createConstantGlobal(M, str, "CONTR_TAG_STR_" + tag.tag);
             Constant* TagC = ConstantStruct::get(Tag_Type, {strGlobal,param});
@@ -168,13 +155,13 @@ Constant* InstrumentPass::createTagGlobal(Module& M) {
     }
 
     // Create global const arrays for the tags
-    ArrayType* ArrFuncTy = ArrayType::get(Ptr_Type, count);
+    ArrayType* ArrFuncTy = ArrayType::get(Basic_Types.Ptr_Type, count);
     ArrayType* ArrTagTy = ArrayType::get(Tag_Type, count);
     GlobalVariable* ptrFuncs = createConstantGlobal(M, ConstantArray::get(ArrFuncTy, funcs), "CONTR_TAG_ARRAY_PTRS");
     GlobalVariable* ptrTags = createConstantGlobal(M, ConstantArray::get(ArrTagTy, tags), "CONTR_TAG_ARRAY_TAGS");
 
     // Full tag map structure
-    Constant* TagsStruct = ConstantStruct::get(Tags_Type, {ptrFuncs, ptrTags, ConstantInt::get(Int_Type, count)});
+    Constant* TagsStruct = ConstantStruct::get(Tags_Type, {ptrFuncs, ptrTags, ConstantInt::get(Basic_Types.Int_Type, count)});
     return TagsStruct;
 }
 
@@ -214,19 +201,19 @@ std::pair<Constant*, int64_t> InstrumentPass::createContractsGlobal(Module& M) {
 Constant* InstrumentPass::createScopeGlobal(Module& M, std::vector<std::shared_ptr<ContractFormula>> forms) {
     std::vector<Constant*> formsConst;
     static Constant* scopeMsgConst = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), "Full Scope"), "CONTR_SCOPE_STR_");
-    if (forms.empty()) return Null_Const;
+    if (forms.empty()) return Basic_Types.Null_Const;
     for (std::shared_ptr<ContractFormula> form : forms) {
         formsConst.push_back(createFormulaGlobal(M, form));
     }
     ArrayType* ArrPreCond = ArrayType::get(Formula_Type, forms.size());
     GlobalVariable* Sublevel = createConstantGlobalUnique(M, ConstantArray::get(ArrPreCond, formsConst), std::string("CONTR_SCOPECONDITIONS"));
-    return createConstantGlobalUnique(M, ConstantStruct::get(Formula_Type, { Sublevel, ConstantInt::get(Int_Type, forms.size()), ConstantInt::get(Int_Type, (int64_t)FormulaType::AND), scopeMsgConst, Null_Const}), "CONTR_SCOPE");
+    return createConstantGlobalUnique(M, ConstantStruct::get(Formula_Type, { Sublevel, Basic_Types.getInt(forms.size()), Basic_Types.getInt((int64_t)FormulaType::AND), scopeMsgConst, Basic_Types.Null_Const}), "CONTR_SCOPE");
 }
 
 Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form) {
-    Constant* op_const = Null_Const;
-    Constant* children = Null_Const;
-    Constant* msg = Null_Const;
+    Constant* op_const = Basic_Types.Null_Const;
+    Constant* children = Basic_Types.Null_Const;
+    Constant* msg = Basic_Types.Null_Const;
     std::string descriptor = form->Message ? form->Message->text : form->ExprStr;
     msg = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), descriptor), "CONTR_MSG_" + descriptor);
     int64_t connective;
@@ -244,11 +231,11 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
         ArrayType* ArrChildren = ArrayType::get(Formula_Type, childConsts.size());
         children = createConstantGlobalUnique(M, ConstantArray::get(ArrChildren, childConsts), "CONTRACT_CHILDREN");
     }
-    return ConstantStruct::get(Formula_Type, {children, ConstantInt::get(Int_Type, form->Children.size()), ConstantInt::get(Int_Type, connective), msg, op_const});
+    return ConstantStruct::get(Formula_Type, {children, Basic_Types.getInt(form->Children.size()), Basic_Types.getInt(connective), msg, op_const});
 }
 
 Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const Operation> op) {
-    Constant* data = Null_Const;
+    Constant* data = Basic_Types.Null_Const;
     std::string name = "UNKNOWN";
     switch (op->type()) {
         case FormulaType::AND:
@@ -261,9 +248,9 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         case FormulaType::WRITE:
         case FormulaType::RWOP: {
             std::shared_ptr<const RWOperation> rwOP = static_pointer_cast<const RWOperation>(op);
-            Constant* isWrite = ConstantInt::getBool(Bool_Type, op->type() == FormulaType::WRITE);
-            ConstantInt* const_paramacc = ConstantInt::get(Int_Type, (int)rwOP->contrParamAccess);
-            ConstantInt* const_idx = ConstantInt::get(Int_Type, (int)rwOP->contrP);
+            Constant* isWrite = Basic_Types.getBool(op->type() == FormulaType::WRITE);
+            ConstantInt* const_paramacc = Basic_Types.getInt((int)rwOP->contrParamAccess);
+            ConstantInt* const_idx = Basic_Types.getInt((int)rwOP->contrP);
             data = ConstantStruct::get(RWOp_Type, {const_idx, const_paramacc, isWrite});
             name = "CONTR_RWOP";
             break;
@@ -275,7 +262,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             else mentioned_funcs.push_back(F);
             Constant* funcStr = ConstantDataArray::getString(M.getContext(), cOP->Function);
             std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
-            data = ConstantStruct::get(CallOp_Type, {createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + cOP->Function), paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second), F ? F : Null_Const});
+            data = ConstantStruct::get(CallOp_Type, {createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + cOP->Function), paramGlobal.first, Basic_Types.getInt(paramGlobal.second), F ? F : Basic_Types.Null_Const});
             name = "CONTR_CALLOP";
             break;
         }
@@ -283,16 +270,16 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             std::shared_ptr<const CallOperation> cOP = static_pointer_cast<const CallOperation>(op);
             data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), cOP->Function), "CONTR_TAG_STR_" + cOP->Function);
             std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
-            data = ConstantStruct::get(CallTagOp_Type, {data, paramGlobal.first, ConstantInt::get(Int_Type, paramGlobal.second)});
+            data = ConstantStruct::get(CallTagOp_Type, {data, paramGlobal.first, Basic_Types.getInt(paramGlobal.second)});
             name = "CONTR_CALLTAGOP";
             break;
         }
         case FormulaType::RELEASE: {
             std::shared_ptr<const ReleaseOperation> rOP = static_pointer_cast<const ReleaseOperation>(op);
             Constant* forbidden_op = createOperationGlobal(M, rOP->Forbidden);
-            Constant* forb_type = ConstantInt::get(Int_Type, (int64_t)rOP->Forbidden->type());
+            Constant* forb_type = Basic_Types.getInt((int64_t)rOP->Forbidden->type());
             Constant* release_op = createOperationGlobal(M, rOP->Until);
-            Constant* release_type = ConstantInt::get(Int_Type, (int64_t)rOP->Until->type());
+            Constant* release_type = Basic_Types.getInt((int64_t)rOP->Until->type());
             data = ConstantStruct::get(ReleaseOp_Type, {release_op, release_type, forbidden_op, forb_type});
             name = "CONTR_RELEASE";
             break;
@@ -301,12 +288,12 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             std::shared_ptr<const ParamOperation> pOP = static_pointer_cast<const ParamOperation>(op);
             std::vector<Constant*> reqCs;
             for (std::pair<Comparator, std::string> req : pOP->reqs) {
-                Constant* var = Null_Const;
+                Constant* var = Basic_Types.Null_Const;
                 try {
                     int ivalue = std::stoi(req.second);
-                    var = ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue);
-                    var = ConstantExpr::getIntToPtr(var, Ptr_Type);
-                    reqCs.push_back(ConstantStruct::get(ParamReq_Type, {ConstantInt::get(Int_Type, req.first), var, ConstantInt::get(Bool_Type, false)}));
+                    var = Basic_Types.getInt64(ivalue);
+                    var = ConstantExpr::getIntToPtr(var, Basic_Types.Ptr_Type);
+                    reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.first), var, Basic_Types.getBool(false)}));
                 } catch(std::exception& e) {
                     if (!DB->ContractVariableData.contains(req.second)) {
                         errs() << "Undefined non-constint contract value identifier \"" << req.second << "\"!\n";
@@ -315,17 +302,17 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
                     }
                     for (Value* V : DB->ContractVariableData[req.second]) {
                         if (isa<Constant>(V)) var = (Constant*)V;
-                        if (isa<ConstantInt>(var)) var = ConstantExpr::getIntToPtr(var, Ptr_Type);
+                        if (isa<ConstantInt>(var)) var = ConstantExpr::getIntToPtr(var, Basic_Types.Ptr_Type);
                         if (!isa<Constant>(var)) {
                             errs() << "Weird param error in instr pass\n";
                         }
-                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {ConstantInt::get(Int_Type, req.first), var, ConstantInt::get(Bool_Type, var->getName().starts_with("_QQ"))}));
+                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.first), var, Basic_Types.getBool(var->getName().starts_with("_QQ"))}));
                     }
                 }
             }
             Constant* reqsC = ConstantArray::get(ArrayType::get(ParamReq_Type, reqCs.size()), reqCs);
             reqsC = createConstantGlobalUnique(M, reqsC, "CONTR_PARAM_REQS");
-            data = ConstantStruct::get(ParamOp_Type, {ConstantInt::get(Int_Type, pOP->idx), reqsC, ConstantInt::get(Int_Type, reqCs.size())});
+            data = ConstantStruct::get(ParamOp_Type, {Basic_Types.getInt(pOP->idx), reqsC, Basic_Types.getInt(reqCs.size())});
             name = "CONTR_PARAMOP";
             break;
         }
@@ -346,53 +333,47 @@ GlobalVariable* InstrumentPass::createConstantGlobal(Module& M, Constant* C, std
 }
 
 void InstrumentPass::createTypes(Module& M) {
-    // Basic Types
-    Ptr_Type = PointerType::get(M.getContext(), 0);
-    Int_Type = IntegerType::get(M.getContext(), 32);
-    Bool_Type = IntegerType::get(M.getContext(), 1);
-    Null_Const = ConstantPointerNull::getNullValue(Ptr_Type);
-    Void_Type = Type::getVoidTy(M.getContext());
-
     // Operations
     Param_Type = StructType::create(M.getContext(), "CallParam_t");
-    Param_Type->setBody({Int_Type, Bool_Type, Int_Type, Int_Type}); // call param, bool param is tag ref, contr param, acc type
+    Param_Type->setBody({Basic_Types.Int_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type, Basic_Types.Int_Type}); // call param, bool param is tag ref, contr param, acc type
 
     CallOp_Type = StructType::create(M.getContext(), "CallOp_t");
-    CallOp_Type->setBody({Ptr_Type, Ptr_Type, Int_Type, Ptr_Type}); // char* Function Name, list of params, num of params, Function Pointer
+    CallOp_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Ptr_Type}); // char* Function Name, list of params, num of params, Function Pointer
 
     CallTagOp_Type = StructType::create(M.getContext(), "CallTagOp_t");
-    CallTagOp_Type->setBody({Ptr_Type, Ptr_Type, Int_Type}); // char* Tag name, list of params, num of params
+    CallTagOp_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // char* Tag name, list of params, num of params
 
     ReleaseOp_Type = StructType::create(M.getContext(), "ReleaseOp_t");
-    ReleaseOp_Type->setBody({Ptr_Type, Int_Type, Ptr_Type, Int_Type}); // void* release op, relop type, void* forbidden op, forbop type
+    ReleaseOp_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // void* release op, relop type, void* forbidden op, forbop type
 
     RWOp_Type = StructType::create(M.getContext(), "RWOp_t");
-    RWOp_Type->setBody({Int_Type, Int_Type, Bool_Type}); // idx, paramaccess, isWrite
+    RWOp_Type->setBody({Basic_Types.Int_Type, Basic_Types.Int_Type, Basic_Types.Bool_Type}); // idx, paramaccess, isWrite
 
     ParamOp_Type = StructType::create(M.getContext(), "ParamOp_t");
-    ParamOp_Type->setBody({Int_Type, Ptr_Type, Int_Type}); // idx, list of reqs, num reqs
+    ParamOp_Type->setBody({Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // idx, list of reqs, num reqs
+
 
     // Composite Types
     Tag_Type = StructType::create(M.getContext(), "Tag_t");
-    Tag_Type->setBody({Ptr_Type, Int_Type}); // tag str, param num
+    Tag_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // tag str, param num
 
     Formula_Type = StructType::create(M.getContext(), "ContractFormula_t");
-    Formula_Type->setBody({Ptr_Type, Int_Type, Int_Type, Ptr_Type, Ptr_Type}); // Children, number of children, connective, message char*, expression data ptr
+    Formula_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Ptr_Type}); // Children, number of children, connective, message char*, expression data ptr
 
     Contract_Type = StructType::create(M.getContext(), "Contract_t");
-    Contract_Type->setBody({Ptr_Type, Ptr_Type, Ptr_Type, Ptr_Type}); // Precondition ptr, Postcondition ptr, contr supplier ptr, supplier name
+    Contract_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Ptr_Type}); // Precondition ptr, Postcondition ptr, contr supplier ptr, supplier name
 
     Tags_Type = StructType::create(M.getContext(), "TagsMap_t");
-    Tags_Type->setBody({Ptr_Type, Ptr_Type, Int_Type}); // Funcptr list, Tag + param struct list, num elems
+    Tags_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // Funcptr list, Tag + param struct list, num elems
 
     Ref_Type = StructType::create(M.getContext(), "Reference_t");
-    Ref_Type->setBody({Ptr_Type, Ptr_Type}); // char* file ref, char* type
+    Ref_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type}); // char* file ref, char* type
 
     ParamReq_Type = StructType::create(M.getContext(), "ParamReq_t");
-    ParamReq_Type->setBody({Int_Type, Ptr_Type, Bool_Type}); // Comparator, Value
+    ParamReq_Type->setBody({Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Bool_Type}); // Comparator, Value
 
     DB_Type = StructType::create(M.getContext(), "ContractDB_t");
-    DB_Type->setBody({Ptr_Type, Int_Type, Tags_Type, Ptr_Type, Int_Type}); // contract list, num elems, tag container, reference list, num refs
+    DB_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Int_Type, Tags_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // contract list, num elems, tag container, reference list, num refs
 }
 
 void InstrumentPass::instrumentFunctions(Module &M) {
@@ -437,10 +418,10 @@ void InstrumentPass::instrumentRW(Module &M) {
 }
 
 std::pair<Constant*,int64_t> InstrumentPass::createParamList(Module& M, std::vector<CallParam> params) {
-    if (params.empty()) return { Null_Const, 0 };
+    if (params.empty()) return { Basic_Types.Null_Const, 0 };
     std::vector<Constant*> paramConsts;
     for (CallParam param : params) {
-        Constant* pConst = ConstantStruct::get(Param_Type, {ConstantInt::get(Int_Type, param.callP), ConstantInt::getBool(Bool_Type, param.callPisTagVar), ConstantInt::get(Int_Type, param.contrP), ConstantInt::get(Int_Type, (int32_t)param.contrParamAccess)});
+        Constant* pConst = ConstantStruct::get(Param_Type, {Basic_Types.getInt(param.callP), Basic_Types.getBool(param.callPisTagVar), Basic_Types.getInt(param.contrP), Basic_Types.getInt((int32_t)param.contrParamAccess)});
         paramConsts.push_back(pConst);
     }
     ArrayType* paramArr_Type = ArrayType::get(Param_Type, paramConsts.size());
@@ -463,12 +444,12 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
 
         // Get return value size
         if (isC && callsite->getType()->isSized()) {
-            params.push_back(ConstantInt::get(Int_Type, callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType())));
+            params.push_back(Basic_Types.getInt(callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType())));
         } else {
-            params.push_back(ConstantInt::get(Int_Type, 0));
+            params.push_back(Basic_Types.getInt(0));
         }
 
-        params.push_back(ConstantInt::get(Int_Type, callsite->arg_size()));
+        params.push_back(Basic_Types.getInt(callsite->arg_size()));
         for (Use const& U : callsite->args()) {
             Value* actual_param = U;
             int const cur_argno = callsite->getArgOperandNo(&U);
@@ -477,14 +458,14 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             // Store size of data type
             if (isC) {
                 int size_act = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
-                params.push_back(ConstantInt::get(Int_Type, (size_act << 8) | (size_act & 0xFF)));
+                params.push_back(Basic_Types.getInt((size_act << 8) | (size_act & 0xFF)));
                 // Store actual parameter, making sure to cast if necessary
                 if (!U->getType()->isPointerTy()) {
                     if (U->getType()->isFloatingPointTy()) {
-                        actual_param = CastInst::Create(Instruction::CastOps::BitCast, actual_param, Int_Type, "", callsite->getIterator());
+                        actual_param = CastInst::Create(Instruction::CastOps::BitCast, actual_param, Basic_Types.Int_Type, "", callsite->getIterator());
                     }
                     // Now, actual pointer cast
-                    actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Ptr_Type, "", callsite->getIterator());
+                    actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Basic_Types.Ptr_Type, "", callsite->getIterator());
                 }
             } else {
                 if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
@@ -504,7 +485,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                     if (param_type->getTag() == (dwarf::Tag)DW_TAG_array_type) {
                         size_call = size_call | 1 << 8;
                     }
-                    params.push_back(ConstantInt::get(Int_Type, (size_call << 8) | (size_act & 0xFF)));
+                    params.push_back(Basic_Types.getInt((size_call << 8) | (size_act & 0xFF)));
                 } else {
                     errs() << "ERROR: Could not perform instrumentation! Unable to get debug info for function \"" << callsite->getCalledOperand()->getName() << "\"";
                 }
@@ -518,7 +499,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
 
 void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I) {
     if (!isRelevant(I) && (isa<LoadInst>(I) || isa<StoreInst>(I)) && ClInstrumentType.starts_with("filtered")) return;
-    params.insert(params.begin(), ConstantInt::getBool(Bool_Type, isRelevant(I)));
+    params.insert(params.begin(), Basic_Types.getBool(isRelevant(I)));
     CallInst* callbackCI = CallInst::Create(FC, params);
     callbackCI->setDebugLoc(I->getDebugLoc());
     if (isa<CallBase>(I)) ReplaceInstWithInst(I, callbackCI);

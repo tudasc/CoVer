@@ -10,6 +10,7 @@
 #include <set>
 #include <unordered_set>
 #include <vector>
+#include "BasicTypes.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
@@ -48,10 +49,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         std::vector<Function*> mentioned_funcs; // Filled by callops (non-tag) in createOperation
 
         // Types
-        PointerType* Ptr_Type;
-        IntegerType* Bool_Type;
-        IntegerType* Int_Type;
-        Type* Void_Type;
+        BasicTypesAnalysis::BasicTypes Basic_Types;
         StructType* Formula_Type;
         StructType* DB_Type;
         StructType* Tag_Type;
@@ -65,7 +63,6 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* Contract_Type;
         StructType* Ref_Type;
         StructType* ParamReq_Type;
-        Constant* Null_Const;
 
         // Helpers
         bool checkIsStrParam(Value const* I);

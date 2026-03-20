@@ -76,6 +76,7 @@ target_compile_options (ContractLanguage PUBLIC -fexceptions)
 
 add_llvm_pass_plugin(CoVerPlugin
   Passes/Registrar.cpp
+  Passes/BasicTypes.cpp
   Passes/ContractManager.cpp
   Passes/ContractVerifierPreCall.cpp
   Passes/ContractVerifierPostCall.cpp
