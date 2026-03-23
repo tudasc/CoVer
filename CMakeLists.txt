@@ -84,6 +84,7 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractVerifierParam.cpp
   Passes/ContractVerifierAlloc.cpp
   Passes/ContractPostProcess.cpp
+  Passes/Intrinsics.cpp
   Passes/Instrument.cpp
   Utils/ContractPassUtility.cpp
   Include/ContractPassUtility.hpp
@@ -138,6 +139,12 @@ install(
     GROUP_READ
     WORLD_READ
 )
+
+##
+## CoVer Intrinsics definitions
+##
+
+add_subdirectory(Intrinsics)
 
 ##
 ## Dynamic project
@@ -199,6 +206,7 @@ endif(MPI_C_FOUND AND Python_FOUND)
 
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
 set(COVER_DYNAMIC_ANALYSER_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerDynamicAnalyzer.a)
+set(COVER_INTRINSICS_LIB_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerIntrinsics.a)
 set(DSA_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/DSA.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include")
 

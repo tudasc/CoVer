@@ -31,6 +31,15 @@ struct CallParam_t {
 };
 enum Comparator : int32_t { NEQ, GT, GTEQ, LT, LTEQ, EXEQ };
 
+// Number must match those defined in ContractTree.hpp!
+enum MathType : int32_t { UNARY_VALUE, MULT };
+struct MathExpr_t {
+    int32_t const value;
+    bool const isArgValue;
+    MathType const type;
+    MathExpr_t const* other = nullptr;
+};
+
 struct RWOp_t {
     int32_t idx;
     ParamAccess accType;
@@ -62,6 +71,19 @@ struct ParamOp_t {
     const int32_t idx;
     const ParamReq_t* requirements;
     const int32_t num_reqs;
+};
+struct MemOpFunc_t {
+    const void* func;
+    const RWOp_t* rwOp;
+    const MathExpr_t* size = 0;
+};
+struct AllocOp_t {
+    const int32_t idx;
+    const ParamAccess accType;
+    MemOpFunc_t* allocators;
+    int32_t num_allocators;
+    MemOpFunc_t* deallocators;
+    int32_t num_deallocators;
 };
 
 // Number must match those defined in enums in ContractTree.hpp (operation + connective)!

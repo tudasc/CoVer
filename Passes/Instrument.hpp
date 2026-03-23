@@ -30,6 +30,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         Constant* createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form);
         Constant* createOperationGlobal(Module& M, std::shared_ptr<const Operation> op);
         std::pair<Constant*,int64_t> createParamList(Module& M, std::vector<CallParam> p);
+        Constant* createMathExprGlobal(Module& M, std::shared_ptr<MathExpr> expr);
 
         // Auxiliary
         GlobalVariable* createConstantGlobalUnique(Module& M, Constant* C, std::string name);
@@ -37,14 +38,15 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         void createTypes(Module& M);
 
         // Instrumentation
-        void instrumentFunctions(Module &M);
-        void instrumentRW(Module &M);
-        void insertFunctionInstrCallback(Function* CB);
-        void insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I);
-        bool isRelevant(Instruction const* I) const;
+        FunctionCallee initFuncCallee;
         FunctionCallee callbackFuncCallee;
         FunctionCallee callbackRCallee;
         FunctionCallee callbackWCallee;
+        void instrumentRW(Module &M);
+        void instrumentFunctions(Module &M);
+        void insertFunctionInstrCallback(Function* CB);
+        void insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I);
+        bool isRelevant(Instruction const* I) const;
         std::set<Function*> already_instrumented;
         std::vector<Function*> mentioned_funcs; // Filled by callops (non-tag) in createOperation
 
@@ -54,12 +56,15 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* DB_Type;
         StructType* Tag_Type;
         StructType* Tags_Type;
+        StructType* MathExpr_Type;
         StructType* Param_Type;
+        StructType* MemOpFunc_Type;
         StructType* CallOp_Type;
         StructType* CallTagOp_Type;
         StructType* ReleaseOp_Type;
         StructType* RWOp_Type;
         StructType* ParamOp_Type;
+        StructType* AllocOp_Type;
         StructType* Contract_Type;
         StructType* Ref_Type;
         StructType* ParamReq_Type;

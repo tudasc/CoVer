@@ -285,7 +285,7 @@ int main(int argc, const char** argv) {
     execSafe("llvm-link" + bitcode_files + " -o " + tmpfile);
 
     // Call LLVM passes
-    std::string passlist = "function(sroa),contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
+    std::string passlist = "function(sroa),instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
     if (!opt_level.empty()) {
         passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
     }
@@ -300,6 +300,6 @@ int main(int argc, const char** argv) {
 
     // Finalize executable
     execSafe("llc -filetype=obj --relocation-model=pic " + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
-    execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o" + dest_arg);
+    execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o @COVER_INTRINSICS_LIB_PATH@ " + dest_arg);
     return 0;
 }

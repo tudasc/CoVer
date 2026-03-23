@@ -119,14 +119,15 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     }
 
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-        if (AllocFuncs.contains(CB->getCalledOperand())) {
+        // Check for alloc/freefunc. Stack alloc better handled by isTriviallyAlloc.
+        if (AllocFuncs.contains(CB->getCalledOperand()) && CB->getCalledOperand()->getName() != "CoVer_AllocStack" && CB->getCalledOperand()->getName() != "CoVer_RegisterGlobal") {
             for (const AllocOperation* alloc : AllocFuncs[CB->getCalledOperand()]) {
                 if (alloc->contrP == 99) cur.addAllocatedValue(CB, alloc->contrParamAccess);
                 else cur.addAllocatedValue(CB->getArgOperand(alloc->contrP), alloc->contrParamAccess);
             }
             // Dont return here! Maybe it also is contr sup
         }
-        if (FreeFuncs.contains(CB->getCalledFunction())) {
+        if (FreeFuncs.contains(CB->getCalledFunction()) && CB->getCalledOperand()->getName() != "CoVer_FreeStack") {
             for (const FreeOperation* freeOp : FreeFuncs[CB->getCalledFunction()]) {
                 #warning TODO perform free, remove stuff from candidate tree
                 cur.freeValue(CB->getArgOperand(freeOp->contrP));

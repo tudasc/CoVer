@@ -11,8 +11,10 @@
 
 #include <llvm/ADT/StringRef.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/IR/Type.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/WithColor.h>
@@ -67,9 +69,8 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
         }
     }
 
-    std::stringstream s;
-    s << "CoVer: Parsed contracts after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count() << "s\n";
-    errs() << s.str();
+    std::string timestr = std::format("CoVer: Parsed contracts after {}s\n", std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count());
+    errs() << timestr;
 
     ContractPassUtility::Initialize(M);
 
@@ -112,20 +113,31 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                     // but for fortran its already implicit in declare_contract, making it superfluous
                     std::string CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString().str();
                     // Call is from memmove -> insertvalue -> extractvalue -> funccall. on -O0, and memcpy -> funccall on -O1 and above
-                    CallBase* ContrCall = (CallBase*)(isa<CallBase>(*CB->getArgOperand(0)->user_begin()) ? *CB->getArgOperand(0)->user_begin() : *CB->getArgOperand(0)->user_begin()->user_begin()->user_begin()->user_begin());
+                    Instruction const* cur = CB->getNextNode();
+                    while (cur && !isa<CallBase>(cur)) cur = cur->getNextNode();
+                    if (!cur) {
+                        errs() << "CRITICAL: Unable to determine a contract definition!\n";
+                        continue;
+                    }
+                    CallBase const* ContrCall = dyn_cast<CallBase>(cur);
                     if (ContrCall->getCalledOperand()->getName() == "declare_contract_") {
                         const Function* ContrSup = (Function*)ContrCall->getArgOperand(0);
-                        if (ContrSup->hasOneUser()) continue; // Only used here where the contract is defined. No need to verify.
-                        bool has_callsite = false;
-                        for (const User* U : ContrSup->users() ) {
-                            if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-                                if (CB->getCalledOperand() == ContrSup) {
-                                    has_callsite = true;
-                                    break;
+                        if (!ContrSup->getName().starts_with("CoVer_")) {
+                            // Check if this function is actually used in the code apart from the contract definition.
+                            // If not, no need to analyse this contract and can safely skip it.
+                            // Exception: CoVer intrinsics (CoVer_*), such as stack var tracking pseudofunc.
+                            if (ContrSup->hasOneUser()) continue;
+                            bool has_callsite = false;
+                            for (const User* U : ContrSup->users() ) {
+                                if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                                    if (CB->getCalledOperand() == ContrSup) {
+                                        has_callsite = true;
+                                        break;
+                                    }
                                 }
                             }
+                            if (!has_callsite) continue;
                         }
-                        if (!has_callsite) continue;
                         addContract("CONTRACT { " + CallStr + " }", (Function*)(ContrCall->getArgOperand(0)));
                     } else if (ContrCall->getCalledOperand()->getName() == "declare_value_") {
                         #warning really super duper should find out a less hacky way

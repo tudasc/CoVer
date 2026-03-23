@@ -11,6 +11,7 @@
 #include <llvm/ADT/APInt.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/BinaryFormat/Dwarf.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constant.h>
@@ -29,9 +30,10 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/Compiler.h>
 #include <llvm/Support/ErrorHandling.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Support/WithColor.h>
-#include <dwarf.h>
+#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -128,6 +130,23 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     callbackWCallee = M.getOrInsertFunction("PPDCV_MemWCallback", FunctionRWType, fnAttr);
     Function* callbackW = dyn_cast<Function>(callbackWCallee.getCallee());
     callbackW->setLinkage(GlobalValue::ExternalWeakLinkage);
+
+    // Finally the init routine
+    FunctionType* InitCBType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Ptr_Type}, false);
+    initFuncCallee = M.getOrInsertFunction("PPDCV_Initialize", InitCBType, fnAttr);
+    Function* initFunc = dyn_cast<Function>(initFuncCallee.getCallee());
+    initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
+
+    // Create initialization routine for tool
+    Value* Vargc = mainF->getArg(0);
+    Value* Vargv = mainF->getArg(1);
+    AllocaInst* argcptr = new AllocaInst(Basic_Types.Int_Type, 0, "argc_ptr", mainF->getEntryBlock().getFirstNonPHIOrDbg());
+    AllocaInst* argvptr = new AllocaInst(Basic_Types.Ptr_Type, 0, "argv_ptr", argcptr->getIterator());
+    CallInst* initFuncCI = CallInst::Create(initFuncCallee, {argcptr, argvptr, GlobalDB});
+    initFuncCI->insertAfter(argcptr->getIterator());
+    instrument_ignore.insert({argcptr, argvptr});
+    instrument_ignore.insert(new StoreInst(Vargc, argcptr, initFuncCI->getIterator()));
+    instrument_ignore.insert(new StoreInst(Vargv, argvptr, initFuncCI->getIterator()));
 
     // Create callbacks
     if (ClInstrumentType != "funconly")
@@ -316,8 +335,58 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             name = "CONTR_PARAMOP";
             break;
         }
+        case FormulaType::ALLOC: {
+            static std::vector<Constant*> allocators;
+            static std::vector<Constant*> deallocators;
+            static Constant* allocs_C = Basic_Types.Null_Const;
+            static Constant* deallocs_C = Basic_Types.Null_Const;
+            std::shared_ptr<const AllocOperation> allocOp = std::static_pointer_cast<const AllocOperation>(op);
+            if (allocators.empty() && deallocators.empty()) {
+                for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
+                    for (const std::shared_ptr<ContractExpression> Expr : C.Post) {
+                        switch (Expr->OP->type()) {
+                            case FormulaType::ALLOC:
+                            case FormulaType::FREE: {
+                                std::shared_ptr<const RWOperation> rwOp = std::make_shared<const RWOperation>(*std::static_pointer_cast<const RWOperation>(Expr->OP));
+                                Constant* rwOp_C = createOperationGlobal(M, rwOp);
+                                Constant* memop_C = ConstantStruct::get(MemOpFunc_Type, {C.F, rwOp_C, Expr->OP->type() == FormulaType::ALLOC ? createMathExprGlobal(M, std::static_pointer_cast<AllocOperation const>(Expr->OP)->size) : Basic_Types.Null_Const});
+                                if (Expr->OP->type() == FormulaType::ALLOC) allocators.push_back(memop_C);
+                                else if (Expr->OP->type() == FormulaType::FREE) deallocators.push_back(memop_C);
+                                else llvm_unreachable("Unexpected type when constructing alloc/free inst!");
+                                break;
+                            }
+                            default: continue;
+                        }
+                    }
+                }
+                static ArrayType* allocators_Type = ArrayType::get(MemOpFunc_Type, allocators.size());
+                allocs_C = ConstantArray::get(allocators_Type, allocators);
+                allocs_C = createConstantGlobal(M, allocs_C, "CONTR_ALLOCATOR_LIST");
+                static ArrayType* deallocators_Type = ArrayType::get(MemOpFunc_Type, deallocators.size());
+                deallocs_C = ConstantArray::get(deallocators_Type, deallocators);
+                deallocs_C = createConstantGlobal(M, deallocs_C, "CONTR_DEALLOCATOR_LIST");
+            }
+            data = ConstantStruct::get(AllocOp_Type, {Basic_Types.getInt(allocOp->contrP), Basic_Types.getInt((int32_t)allocOp->contrParamAccess),
+                                                           allocs_C, Basic_Types.getInt(allocators.size()),
+                                                           deallocs_C, Basic_Types.getInt(deallocators.size())});
+            name = "CONTR_ALLOCOP";
+            break;
+        }
+        case FormulaType::FREE: break;
     }
     return createConstantGlobalUnique(M, data, name);
+}
+
+Constant* InstrumentPass::createMathExprGlobal(Module& M, std::shared_ptr<MathExpr> expr) {
+    Constant* val = Basic_Types.getInt(expr->value);
+    Constant* isArg = Basic_Types.getBool(expr->isArgValue);
+    Constant* type = Basic_Types.getInt((int32_t)expr->type);
+    Constant* other = Basic_Types.Null_Const;
+    if (expr->type != MathType::UNARY_VALUE) {
+        other = createMathExprGlobal(M, expr->other);
+    }
+    Constant* result = ConstantStruct::get(MathExpr_Type, {val, isArg, type, other});
+    return createConstantGlobalUnique(M, result, "CONT_MATHEXPR");
 }
 
 GlobalVariable* InstrumentPass::createConstantGlobalUnique(Module& M, Constant* C, std::string name) {
@@ -352,6 +421,8 @@ void InstrumentPass::createTypes(Module& M) {
     ParamOp_Type = StructType::create(M.getContext(), "ParamOp_t");
     ParamOp_Type->setBody({Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // idx, list of reqs, num reqs
 
+    AllocOp_Type = StructType::create(M.getContext(), "AllocOp_t");
+    AllocOp_Type->setBody({Basic_Types.Int_Type, Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // idx, accType, list of allocators, num allocs, list of deallocs, num deallocs
 
     // Composite Types
     Tag_Type = StructType::create(M.getContext(), "Tag_t");
@@ -366,11 +437,17 @@ void InstrumentPass::createTypes(Module& M) {
     Tags_Type = StructType::create(M.getContext(), "TagsMap_t");
     Tags_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // Funcptr list, Tag + param struct list, num elems
 
+    MathExpr_Type = StructType::create(M.getContext(), "MathExpr_t");
+    MathExpr_Type->setBody({Basic_Types.Int_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type, Basic_Types.Ptr_Type}); // int val, bool isarg, math type, other math
+
     Ref_Type = StructType::create(M.getContext(), "Reference_t");
     Ref_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type}); // char* file ref, char* type
 
     ParamReq_Type = StructType::create(M.getContext(), "ParamReq_t");
     ParamReq_Type->setBody({Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Bool_Type}); // Comparator, Value
+
+    MemOpFunc_Type = StructType::create(M.getContext(), "MemOpFunc_t");
+    MemOpFunc_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Ptr_Type}); // Func, rwOp, size mathexpr
 
     DB_Type = StructType::create(M.getContext(), "ContractDB_t");
     DB_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Int_Type, Tags_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // contract list, num elems, tag container, reference list, num refs
@@ -438,7 +515,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         }
     }
     for (CallBase* callsite : callsites) {
-        int skipnum = 0;
+        int stringnum = 0;
         std::vector<Value*> params;
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
 
@@ -453,7 +530,6 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         for (Use const& U : callsite->args()) {
             Value* actual_param = U;
             int const cur_argno = callsite->getArgOperandNo(&U);
-            if (cur_argno >= callsite->arg_size() - skipnum) break;
 
             // Store size of data type
             if (isC) {
@@ -470,24 +546,46 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             } else {
                 if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
                     DISubprogram const* Dbg = F->getSubprogram();
-                    if (checkIsStrParam(U)) skipnum++;
-                    if (Dbg->getType()->getTypeArray()->getNumOperands() <= cur_argno + 1) {
-                        errs() << "Warning: During instrumentation, likely string param missed during detection. Normal if optimizations enabled.\n";
-                        errs() << "If unsure, check if function " << F->getName() << " has more than " << skipnum << " string arguments.\n";
-                        break;
-                    }
-                    // All parameters are sent as pointers. Need to check exact size using dbg info
-                    DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
-                    int size_act = param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits();
-                    int size_call = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
-                    // On Fortran, deref if param is an allocate/ptr buffer.
-                    // Indicate with magic bit
-                    if (param_type->getTag() == (dwarf::Tag)DW_TAG_array_type) {
-                        size_call = size_call | 1 << 8;
+                    int size_call = 0;
+                    int size_act = 0;
+                    // Vararg intrinsics have to be handled specially due to missing debug info on vararg
+                    if (F->getName() == "CoVer_FPointerAllocate") {
+                            // Prefix - 0, 1 ptr and size, 2 num_dims
+                            switch (cur_argno) {
+                                case 0:
+                                case 1: size_act = size_call = 64; break;
+                                case 2: size_act = size_call = 32;
+                            }
+                            if (!size_act) {
+                                // End - _FortranAPointerAllocate params
+                                if (cur_argno == callsite->arg_size() - 4) size_act = size_call = 32;
+                                if (cur_argno == callsite->arg_size() - 3) size_act = size_call = 64;
+                                if (cur_argno == callsite->arg_size() - 2) size_act = size_call = 64;
+                                if (cur_argno == callsite->arg_size() - 1) size_act = size_call = 32;
+                            }
+                            if (!size_act) {
+                                // Middle - Descriptors for dims
+                                int tmp = cur_argno - 3;
+                                if (tmp % 3 == 0) size_act = size_call = 32;
+                                else size_act = size_call = 64;
+                            }
+                    } else {
+                        if (cur_argno >= callsite->arg_size() - stringnum) {
+                            size_act = size_call = callsite->getParent()->getDataLayout().getTypeAllocSize(actual_param->getType());
+                        } else {
+                            if (checkIsStrParam(U)) stringnum++;
+                            // All parameters are sent as pointers. Need to check exact size using dbg info
+                            DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
+                            size_act = param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits();
+                            size_call = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
+                            // On Fortran, deref if param is an allocate/ptr buffer.
+                            // Indicate with magic bit
+                            if (param_type->getTag() == dwarf::DW_TAG_array_type) {
+                                size_call = size_call | 1 << 8;
+                            }
+                        }
                     }
                     params.push_back(Basic_Types.getInt((size_call << 8) | (size_act & 0xFF)));
-                } else {
-                    errs() << "ERROR: Could not perform instrumentation! Unable to get debug info for function \"" << callsite->getCalledOperand()->getName() << "\"";
                 }
             }
             params.push_back(actual_param);

@@ -12,6 +12,7 @@
 #include "Analyses/BaseAnalysis.h"
 #include "DynamicUtils.h"
 
+#include "Analyses/AllocAnalysis.h"
 #include "Analyses/ParamAnalysis.h"
 #include "Analyses/PreCallAnalysis.h"
 #include "Analyses/PostCallAnalysis.h"
@@ -27,7 +28,7 @@ namespace {
 
     std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
-    using AnalysisVariant = std::variant<ParamAnalysis*,PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
+    using AnalysisVariant = std::variant<ParamAnalysis*,AllocAnalysis*,PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
 
     struct AnalysisPair {
         ContractFormula_t* formula;
@@ -83,7 +84,7 @@ namespace {
 
     void validateState(ContractFormula_t* form) {
         if (formula_parents[form] && contract_status.contains(formula_parents[form])) {
-            if (contract_status[formula_parents[form]] == Fulfillment::VIOLATED && !formula_parents[formula_parents[form]]) {
+            if (contract_status[form] == Fulfillment::VIOLATED && contract_status[formula_parents[form]] == Fulfillment::VIOLATED && !formula_parents[formula_parents[form]]) {
                 // Another child of top-level formula violated. Two possible errors, though maybe just a symptom of the first one.
                 DynamicUtils::out() << "Note: Possible secondary issue detected! This may be a true FP or a side effect of the previous report.\n";
                 formatError(recurseCreateErrorMsg(form));
@@ -157,6 +158,12 @@ namespace {
                     if (isPre) addAnalysis<ParamAnalysis>(form, func_supplier, (ParamOp_t*)form->data);
                     else DynamicUtils::createMessage("Did not expect paramop in postcond!");
                     break;
+                case UNARY_ALLOC:
+                    if (isPre) addAnalysis<AllocAnalysis>(form, func_supplier, (AllocOp_t*)form->data);
+                    break; // Normal to have alloc in post, but unused.
+                case UNARY_FREE:
+                    if (isPre) DynamicUtils::createMessage("Did not expect freeop in precondition!");
+                    break; // Normal to find free in post, but unused.
                 default: 
                     DynamicUtils::createMessage("Unknown top-level operation!");
                     break;
@@ -181,6 +188,10 @@ namespace {
                 }
                 case UNARY_PARAM: {
                     msg.msg.push_back("Invalid param!");
+                    break;
+                }
+                case UNARY_ALLOC: {
+                    msg.msg.push_back("Buffer not allocated or use-after-free!");
                     break;
                 }
                 case UNARY_RELEASE: {

@@ -3,6 +3,7 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/Passes/OptimizationLevel.h>
 
+#include "BasicTypes.hpp"
 #include "ContractManager.hpp"
 #include "ContractVerifierAlloc.hpp"
 #include "ContractVerifierPreCall.hpp"
@@ -10,6 +11,7 @@
 #include "ContractVerifierRelease.hpp"
 #include "ContractVerifierParam.hpp"
 #include "ContractPostProcess.hpp"
+#include "Intrinsics.hpp"
 #include "Instrument.hpp"
 
 using namespace llvm;
@@ -38,6 +40,10 @@ namespace {
         }
         if (Name == "contractPostProcess") {
             MPM.addPass(ContractPostProcessingPass());
+            return true;
+        }
+        if (Name == "instrumentIntrinsics") {
+            MPM.addPass(IntrinsicsPass());
             return true;
         }
         if (Name == "instrumentContracts") {

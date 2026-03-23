@@ -470,6 +470,11 @@ boilerplate_header_c = f"""
 
 {get_param_values("c")}
 
+void __attribute__((weak)) CoVer_AllocStack(void* ptr) CONTRACT( POST {{ alloc!(0) }}) {{}};
+void __attribute__((weak)) CoVer_FreeStack(void* ptr) CONTRACT( POST {{ free!(0) }}) {{}};
+
+void __attribute__((weak)) CoVer_RegisterGlobal(void* ptr, int64_t size) CONTRACT( POST {{ alloc!(0[ 1 _arg ]) }}) {{}};
+
 
 void* calloc(size_t num, size_t size) CONTRACT( POST {{ alloc!(99[ 0 _arg * 1 _arg]) }});
 void* malloc(size_t size) CONTRACT( POST {{ alloc!(99[0 _arg]) }});
@@ -492,13 +497,26 @@ subroutine CONTRACT_DEFINITIONS_FORT_@RANDOM_UNIQUE@
 fortran_lang_intrinsics = """
     ! Contracts for intrinsics - Mainly for allocation tracking
     interface
-        subroutine FortAlloc() bind(c, name="_FortranAPointerAllocate")
+        ! Fortran language intrinsics
+        subroutine FortAlloc() bind(c, name="CoVer_FPointerAllocate")
         end subroutine FortAlloc
-        subroutine FortFree() bind(c, name="_FortranAPointerDeallocate")
+        subroutine FortFree() bind(c, name="CoVer_FPointerDeallocate")
         end subroutine FortFree
+
+        ! CoVer intrinsics
+        subroutine CoVer_AllocStack(ptr) bind(c, name="CoVer_AllocStack")
+            integer, pointer :: ptr
+        end subroutine CoVer_AllocStack
+        subroutine CoVer_FreeStack() bind(c, name="CoVer_FreeStack")
+        end subroutine CoVer_FreeStack
+        subroutine CoVer_RegisterGlobal() bind(c, name="CoVer_RegisterGlobal")
+        end subroutine CoVer_RegisterGlobal
     end interface
-    call Declare_Contract(FortAlloc, \"POST { alloc!(*0) }\")
+    call Declare_Contract(FortAlloc, \"POST { alloc!(*0[1 _arg]) }\")
     call Declare_Contract(FortFree, \"POST { free!(0) }\")
+    call Declare_Contract(CoVer_AllocStack, \"POST { alloc!(0) }\")
+    call Declare_Contract(CoVer_FreeStack, \"POST { free!(0) }\")
+    call Declare_Contract(CoVer_RegisterGlobal, \"POST { alloc!(0) }\")
 """
 
 header_output_fort = boilerplate_header_fort + f"    use mpi\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values("fort")}\n\n"

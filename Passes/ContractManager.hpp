@@ -50,7 +50,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             }
         } typedef ContractDatabase;
 
-        // Run Pass
+        // Run Analysis
         ContractDatabase run(Module &M, ModuleAnalysisManager &AM);
 
     private:
