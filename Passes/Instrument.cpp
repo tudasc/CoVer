@@ -405,7 +405,7 @@ void InstrumentPass::instrumentRW(Module &M) {
                         if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(GEPOp->getPointerOperand())) {
                             SmallVector<DIGlobalVariableExpression*> dbg_arr;
                             GV->getDebugInfo(dbg_arr);
-                            if (!isC && !dbg_arr.empty() && dbg_arr[0]->getVariable()->getType()->getTag() == (dwarf::Tag)DW_TAG_array_type) {
+                            if (!isC && !dbg_arr.empty() && dbg_arr[0]->getVariable()->getType()->getTag() == dwarf::DW_TAG_array_type) {
                                 continue;
                             }
                         }

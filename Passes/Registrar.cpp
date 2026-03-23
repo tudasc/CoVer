@@ -48,6 +48,7 @@ namespace {
     };
 
     void MAMHook(ModuleAnalysisManager &MAM) {
+        MAM.registerPass([&] { return BasicTypesAnalysis(); });
         MAM.registerPass([&] { return ContractManagerAnalysis(); });
     };
 
