@@ -89,7 +89,7 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
         AllocStatus transferAllocStat(AllocStatus s, const Instruction* I, void* data);
         std::pair<AllocStatus,bool> mergeAllocStat(AllocStatus prev, AllocStatus cur, const Instruction* I, void* data);
 
-        AllocStatusVal checkAllocReq(const AllocOperation* AllocOp, Module const& M, const Function* F, std::string& err);
+        AllocStatusVal checkAllocReq(const AllocOperation* AllocOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, Module const& M, const Function* F, std::string& err);
 
 };
 

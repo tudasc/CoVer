@@ -3,6 +3,7 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
+#include <format>
 #include <functional>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
@@ -45,7 +46,7 @@ PreservedAnalyses ContractVerifierAllocPass::run(Module &M,
             const AllocOperation* AllocOp = dynamic_cast<const AllocOperation*>(Expr->OP.get());
             C.DebugInfo->push_back("[ContractVerifierAlloc] Attempting to verify expression: " + Expr->ExprStr);
             std::string err;
-            AllocStatusVal val = checkAllocReq(AllocOp, M, C.F, err);
+            AllocStatusVal val = checkAllocReq(AllocOp, C, *Expr, M, C.F, err);
             if (!err.empty()) {
                 errs() << err << "\n";
                 *Expr->Status = Fulfillment::BROKEN;
@@ -58,10 +59,9 @@ PreservedAnalyses ContractVerifierAllocPass::run(Module &M,
 }
 
 struct IterTypeAlloc {
-    std::vector<std::string> err;
+    std::vector<ErrorMessage> err;
     std::vector<std::string> dbg;
     int param;
-    ParamAccess acc;
     const Function* F;
 };
 
@@ -149,6 +149,11 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
             }
             // Any required parameter not used by any candidate
             cur.CurVal = AllocStatusVal::ERROR;
+            Data->err.push_back({
+                .error_id = "Alloc",
+                .text = std::format("Value in argument index {} of {} in {} is not allocated!", Data->param, Data->F->getName().str(), ContractPassUtility::getInstrLocStr(CB)),
+                .references = {ContractPassUtility::getFileReference(CB)},
+            });
             return cur;
         }
     }
@@ -161,7 +166,7 @@ std::pair<ContractVerifierAllocPass::AllocStatus,bool> ContractVerifierAllocPass
     return {intersect, intersect.CurVal > prev.CurVal};
 }
 
-ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocReq(const AllocOperation* AllocOp, Module const& M, const Function* F, std::string& err) {
+ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocReq(const AllocOperation* AllocOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, Module const& M, const Function* F, std::string& err) {
     const Function* mainF = M.getFunction("main");
     if (!mainF) {
         err = "Cannot find main function, cannot construct path to check precall!";
@@ -170,10 +175,13 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     const Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
 
     AllocStatus init;
-    IterTypeAlloc data = { {}, {}, AllocOp->contrP, AllocOp->contrParamAccess, F };
+    IterTypeAlloc data = { {}, {}, AllocOp->contrP, F };
     auto bound_transfer = std::bind(&ContractVerifierAllocPass::transferAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     auto bound_merge = std::bind(&ContractVerifierAllocPass::mergeAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     std::map<const Instruction *, AllocStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, bound_transfer, bound_merge, &data, init);
+
+    C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
+    Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
 
     // Take max over all analysis info
     // Correct usage will not contain error
