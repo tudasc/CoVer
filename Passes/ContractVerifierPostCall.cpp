@@ -10,7 +10,6 @@
 #include <memory>
 #include <utility>
 #include <vector>
-#include <sstream>
 #include <llvm/Analysis/InlineCost.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DebugInfoMetadata.h>
