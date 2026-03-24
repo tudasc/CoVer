@@ -222,8 +222,8 @@ int main(int argc, const char** argv) {
         // Strip the leading dashes from the bash input
         Prefix = Prefix.ltrim('-');
         for (auto &It : cl::getRegisteredOptions()) {
-            StringRef OptName = It.getKey();
-            if (It.getValue()->getOptionHiddenFlag() != cl::NotHidden) continue;
+            StringRef OptName = It.getFirst();
+            if (It.getSecond()->getOptionHiddenFlag() != cl::NotHidden) continue;
             if (OptName.starts_with(Prefix)) {
                 outs() << "--" << OptName << "\n";
             }
