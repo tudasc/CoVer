@@ -109,7 +109,6 @@ namespace DynamicUtils {
     }
 
     std::string getFileRefStr(void const* location) {
-        std::stringstream exec_cmd;
         std::optional<std::pair<std::string, const void *>> dlinfo = getDLInfo(location);
         if (!dlinfo) {
             return "dladdr failure!";
