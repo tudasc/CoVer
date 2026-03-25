@@ -52,36 +52,37 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
             // Perform the check on each callsite
             for (User* U : C.F->users()) {
                 if (CallBase* CB = dyn_cast<CallBase>(U)) {
-                    for (std::pair<const Comparator, const std::string> req : ParamOp->reqs) {
+                    for (ParamRequirement const& req : ParamOp->reqs) {
                         // Figure out value(s) to check against
                         std::set<Value*> vars;
                         try {
                             // First, check if constant value provided
-                            int ivalue = std::stoi(req.second);
-                            vars = {ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue)};
+                            int ivalue = std::stoi(req.value);
+                            if (req.isArg) vars = {CB->getArgOperand(ivalue)};
+                            else vars = {ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue)};
                         } catch(std::exception& e) {
                             // Otherwise, check against value database
-                            if (!DB.ContractVariableData.contains(req.second)) {
-                                errs() << "Undefined non-constint contract value identifier \"" << req.second << "\"!\n";
+                            if (!DB.ContractVariableData.contains(req.value)) {
+                                errs() << "Undefined non-constint contract value identifier \"" << req.value << "\"!\n";
                                 errs() << "Requirement will not be analysed!\n";
                                 continue;
                             }
-                            vars = DB.ContractVariableData[req.second];
+                            vars = DB.ContractVariableData[req.value];
                         }
 
                         // Perform check
                         std::string errInfo = "";
-                        Fulfillment f = checkParamReq(vars, CB, ParamOp->idx, req.first, errInfo);
+                        Fulfillment f = checkParamReq(vars, CB, ParamOp->idx, req.comp, errInfo);
                         if (f == Fulfillment::BROKEN) {
                             resf = Fulfillment::BROKEN;
                                 Expr->ErrorInfo->push_back({
                                 .error_id = "Param",
-                                .text = std::format("{:s} Parameter Index: {:d}, Contract Value: {:s}", errInfo.empty() ? "Parameter error detected!" : errInfo, ParamOp->idx, req.second),
+                                .text = std::format("{:s} Parameter Index: {:d}, Contract Value: {:s}", errInfo.empty() ? "Parameter error detected!" : errInfo, ParamOp->idx, req.value),
                                 .references = {ContractPassUtility::getFileReference(CB)},
                             });
                             goto exit_param_analysis;
                         }
-                        if (f == Fulfillment::FULFILLED && req.first == Comparator::EXEQ) {
+                        if (f == Fulfillment::FULFILLED && req.comp == Comparator::EXEQ) {
                             // Parameter fulfills exception value. Stop checking this parameter
                             goto exit_param_analysis;
                         }
@@ -136,7 +137,7 @@ Fulfillment compareCI(const ConstantInt* CI, const ConstantInt* CI2, Comparator 
     }
 }
 
-Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, CallBase* call, int idx, Comparator comp, std::string& ErrInfo) {
+Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, CallBase* call, int idx, Comparator const& comp, std::string& ErrInfo) {
     for (Value* var : vars) {
         Value* callVal = call->getArgOperand(idx);
         if (AllocaInst* AI = dyn_cast<AllocaInst>(callVal)) {

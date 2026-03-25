@@ -65,6 +65,7 @@ struct ReleaseOp_t {
 struct ParamReq_t {
     const Comparator comparator;
     const void* value;
+    const bool isArg;
     const bool need_deref;
 };
 struct ParamOp_t {

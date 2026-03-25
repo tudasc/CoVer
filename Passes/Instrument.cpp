@@ -306,26 +306,26 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         case FormulaType::PARAM: {
             std::shared_ptr<const ParamOperation> pOP = static_pointer_cast<const ParamOperation>(op);
             std::vector<Constant*> reqCs;
-            for (std::pair<Comparator, std::string> req : pOP->reqs) {
+            for (ParamRequirement const& req : pOP->reqs) {
                 Constant* var = Basic_Types.Null_Const;
                 try {
-                    int ivalue = std::stoi(req.second);
+                    int ivalue = std::stoi(req.value);
                     var = Basic_Types.getInt64(ivalue);
                     var = ConstantExpr::getIntToPtr(var, Basic_Types.Ptr_Type);
-                    reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.first), var, Basic_Types.getBool(false)}));
+                    reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(false)}));
                 } catch(std::exception& e) {
-                    if (!DB->ContractVariableData.contains(req.second)) {
-                        errs() << "Undefined non-constint contract value identifier \"" << req.second << "\"!\n";
+                    if (!DB->ContractVariableData.contains(req.value)) {
+                        errs() << "Undefined non-constint contract value identifier \"" << req.value << "\"!\n";
                         errs() << "Param Requirement will not be instrumented!\n";
                         continue;
                     }
-                    for (Value* V : DB->ContractVariableData[req.second]) {
+                    for (Value* V : DB->ContractVariableData[req.value]) {
                         if (isa<Constant>(V)) var = (Constant*)V;
                         if (isa<ConstantInt>(var)) var = ConstantExpr::getIntToPtr(var, Basic_Types.Ptr_Type);
                         if (!isa<Constant>(var)) {
                             errs() << "Weird param error in instr pass\n";
                         }
-                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.first), var, Basic_Types.getBool(var->getName().starts_with("_QQ"))}));
+                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(var->getName().starts_with("_QQ"))}));
                     }
                 }
             }
@@ -444,7 +444,7 @@ void InstrumentPass::createTypes(Module& M) {
     Ref_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type}); // char* file ref, char* type
 
     ParamReq_Type = StructType::create(M.getContext(), "ParamReq_t");
-    ParamReq_Type->setBody({Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Bool_Type}); // Comparator, Value
+    ParamReq_Type->setBody({Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Bool_Type}); // Comparator, Value, isArg, need_deref
 
     MemOpFunc_Type = StructType::create(M.getContext(), "MemOpFunc_t");
     MemOpFunc_Type->setBody({Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Ptr_Type}); // Func, rwOp, size mathexpr

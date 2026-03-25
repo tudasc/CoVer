@@ -99,7 +99,7 @@ std::any ContractDataVisitor::visitRwOp(ContractParser::RwOpContext *ctx) {
     return op;
 }
 std::any ContractDataVisitor::visitParamOp(ContractParser::ParamOpContext *ctx) {
-    std::vector<std::pair<const Comparator, const std::string>> reqs;
+    ParamOperation pOP(std::stoi(ctx->NatNum()->getText()));
     for (ContractParser::ParamReqContext* req : ctx->paramReq()) {
         Comparator comp;
         if (req->ParamForbidEq()) comp = Comparator::NEQ;
@@ -108,10 +108,9 @@ std::any ContractDataVisitor::visitParamOp(ContractParser::ParamOpContext *ctx) 
         if (req->ParamLt()) comp = Comparator::LT;
         if (req->ParamLtEq()) comp = Comparator::LTEQ;
         if (req->ParamEqExcept()) comp = Comparator::EXEQ;
-        reqs.push_back({comp, req->value->getText()});
+        pOP.reqs.push_back({comp, req->value->getText(), req->MarkArg() != nullptr});
     }
-    std::shared_ptr<const Operation> op = std::make_shared<const ParamOperation>(std::stoi(ctx->NatNum()->getText()), reqs);
-    return op;
+    return std::static_pointer_cast<const Operation>(std::make_shared<const ParamOperation>(pOP));
 }
 std::any ContractDataVisitor::visitCallOp(ContractParser::CallOpContext *ctx) {
     std::vector<CallParam> params;

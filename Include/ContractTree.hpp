@@ -53,10 +53,15 @@ namespace ContractTree {
     enum Comparator {
         NEQ, GT, GTEQ, LT, LTEQ, EXEQ
     };
+    struct ParamRequirement {
+        Comparator comp;
+        std::string value;
+        bool isArg;
+    };
     struct ParamOperation : Operation {
-        ParamOperation(int _idx, std::vector<std::pair<const Comparator, const std::string>> _reqs) : idx{_idx}, reqs{_reqs} {};
-        const int idx;
-        const std::vector<std::pair<const Comparator, const std::string>> reqs;
+        ParamOperation(int _idx) : idx{_idx} {};
+        int idx;
+        std::vector<ParamRequirement> reqs;
         virtual const FormulaType type() const override { return FormulaType::PARAM; };
     };
     struct CallParam {

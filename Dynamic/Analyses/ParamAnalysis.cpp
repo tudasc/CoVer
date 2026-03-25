@@ -3,13 +3,14 @@
 #include "DynamicAnalysis.h"
 #include "../DynamicUtils.h"
 
+#include <cstdint>
 #include <vector>
 
 Fulfillment ParamAnalysis::functionCBImpl(void* const& func, bool const isPre, CallsiteInfo const& callsite) {
     if (func != func_supplier) return Fulfillment::UNKNOWN;
 
     for (const ParamReq_t* req : param_requirements) {
-        const void* act_req = req->value;
+        const void* act_req = req->isArg ? callsite.params[(int64_t)req->value].value: req->value;
         const void* act_callp = callsite.params[idx].value;
         if (req->need_deref) {
             act_req = (const void*)DynamicUtils::TruncateBits(*(int64_t*)act_req, callsite.params[idx].size);
