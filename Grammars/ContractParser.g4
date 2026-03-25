@@ -17,7 +17,7 @@ tagUnit: Variable (OPPrefix NatNum OPPostfix)?;
 
 expression: callOp | releaseOp | paramOp | rwOp; // rwOp only makes sense for alloc though
 
-natExpr: NatNum | NatNum MarkArg;
+natExpr: NatNum MarkArg?;
 multExpr: Deref mathExpr;
 mathOp: multExpr;
 mathExpr: natExpr mathOp?;

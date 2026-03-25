@@ -19,7 +19,7 @@ namespace ContractTree {
     enum struct MathType { UNARY_VALUE, MULT };
     struct MathExpr {
         int value;
-        bool isArgValue;
+        bool isArg;
         MathType type;
         std::shared_ptr<MathExpr> other = nullptr;
     };

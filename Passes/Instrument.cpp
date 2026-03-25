@@ -379,7 +379,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
 
 Constant* InstrumentPass::createMathExprGlobal(Module& M, std::shared_ptr<MathExpr> expr) {
     Constant* val = Basic_Types.getInt(expr->value);
-    Constant* isArg = Basic_Types.getBool(expr->isArgValue);
+    Constant* isArg = Basic_Types.getBool(expr->isArg);
     Constant* type = Basic_Types.getInt((int32_t)expr->type);
     Constant* other = Basic_Types.Null_Const;
     if (expr->type != MathType::UNARY_VALUE) {

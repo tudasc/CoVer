@@ -7,7 +7,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <utility>
 #include <vector>
 
 using namespace ContractTree;
@@ -71,7 +70,7 @@ std::any ContractDataVisitor::visitExpression(ContractParser::ExpressionContext 
 
 std::any ContractDataVisitor::visitMathExpr(ContractParser::MathExprContext* ctx) {
     MathExpr expr;
-    expr.isArgValue = ctx->natExpr()->MarkArg();
+    expr.isArg = ctx->natExpr()->MarkArg();
     expr.value = std::stoi(ctx->natExpr()->NatNum()->getText());
     if (ctx->mathOp()) {
         if (ctx->mathOp()->multExpr()) {
