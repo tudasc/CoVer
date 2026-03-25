@@ -12,7 +12,6 @@ See [Usage](./Docs/Usage.md)
 
 - LLVM 21 or newer
 - Java (Build dependency only)
-- dwarf.h (Ubuntu: libdw-dev, build dependency only)
 
 Optionally:
 - ANTLR4 (provided if not installed)
