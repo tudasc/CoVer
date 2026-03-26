@@ -66,12 +66,13 @@ struct ParamReq_t {
     const Comparator comparator;
     const void* value;
     const bool isArg;
-    const bool need_deref;
+    const bool reqval_need_deref;
 };
 struct ParamOp_t {
     const int32_t idx;
     const ParamReq_t* requirements;
     const int32_t num_reqs;
+    const bool callval_need_deref;
 };
 struct MemOpFunc_t {
     const void* func;

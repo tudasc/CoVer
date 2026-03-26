@@ -6,7 +6,7 @@
 
 struct ParamAnalysis : BaseAnalysis<ParamAnalysis> {
     public:
-        ParamAnalysis(void const* _func_supplier, ParamOp_t* paramop) : idx(paramop->idx), func_supplier(_func_supplier) {
+        ParamAnalysis(void const* _func_supplier, ParamOp_t* paramop) : idx(paramop->idx), func_supplier(_func_supplier), callval_need_deref(paramop->callval_need_deref) {
             for (int i = 0; i < paramop->num_reqs; i++) {
                 param_requirements.push_back(&paramop->requirements[i]);
             }
@@ -22,5 +22,6 @@ struct ParamAnalysis : BaseAnalysis<ParamAnalysis> {
         // Configuration
         void const* func_supplier;
         int const idx;
+        bool const callval_need_deref;
         std::vector<ParamReq_t const*> param_requirements;
 };

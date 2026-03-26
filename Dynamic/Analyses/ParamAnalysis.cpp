@@ -18,17 +18,17 @@ static constexpr int64_t sign_extend(uintptr_t const ptr, int const size) {
 Fulfillment ParamAnalysis::functionCBImpl(void* const& func, bool const isPre, CallsiteInfo const& callsite) {
     if (func != func_supplier) return Fulfillment::UNKNOWN;
 
+    void const* act_callp = callsite.params[idx].value;
+    if (callval_need_deref) {
+        act_callp = (const void*)(*(void**)act_callp);
+    }
+    int64_t const int_callp = sign_extend((uintptr_t)act_callp, callsite.params[idx].size);
     for (const ParamReq_t* req : param_requirements) {
         void const* act_req = req->isArg ? callsite.params[(int64_t)req->value].value: req->value;
-        void const* act_callp = callsite.params[idx].value;
-        if (req->need_deref) {
-            act_req = (const void*)DynamicUtils::TruncateBits(*(int64_t*)act_req, callsite.params[idx].size);
-            act_callp = (const void*)DynamicUtils::TruncateBits(*(int64_t*)act_callp, callsite.params[idx].size);
-        } else {
-            act_callp = (const void*)DynamicUtils::TruncateBits((uintptr_t)act_callp, callsite.params[idx].size);
+        if (req->reqval_need_deref) {
+            act_req = (const void*)*(void**)act_req;
         }
-        int64_t const int_req = (int64_t const)act_req;
-        int64_t const int_callp = sign_extend((uintptr_t)act_callp, callsite.params[idx].size);
+        int64_t const int_req = sign_extend((uintptr_t)act_req, callsite.params[idx].size);
         switch (req->comparator) {
             case Comparator::EXEQ:
                 // EXEQ is the exception (pun), it overrides other forbidden values.

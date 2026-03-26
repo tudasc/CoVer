@@ -306,6 +306,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         case FormulaType::PARAM: {
             std::shared_ptr<const ParamOperation> pOP = static_pointer_cast<const ParamOperation>(op);
             std::vector<Constant*> reqCs;
+            bool hasIntCmp = false;
             for (ParamRequirement const& req : pOP->reqs) {
                 Constant* var = Basic_Types.Null_Const;
                 try {
@@ -313,6 +314,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
                     var = Basic_Types.getInt64(ivalue);
                     var = ConstantExpr::getIntToPtr(var, Basic_Types.Ptr_Type);
                     reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(false)}));
+                    hasIntCmp = req.isArg ? hasIntCmp : true;
                 } catch(std::exception& e) {
                     if (!DB->ContractVariableData.contains(req.value)) {
                         errs() << "Undefined non-constint contract value identifier \"" << req.value << "\"!\n";
@@ -325,13 +327,20 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
                         if (!isa<Constant>(var)) {
                             errs() << "Weird param error in instr pass\n";
                         }
-                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(var->getName().starts_with("_QQ"))}));
+                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(!isC && (isa<GlobalVariable>(var) || var->getName().starts_with("_QQ")))}));
+                        if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(var)) {
+                            if (GV->hasInitializer()) {
+                                if (StructType const* T = dyn_cast<StructType>(GV->getInitializer()->getType())) {
+                                    if (T->getNumElements() == 1 && T->getElementType(0)->isIntegerTy()) hasIntCmp = true;
+                                }
+                            }
+                        }
                     }
                 }
             }
             Constant* reqsC = ConstantArray::get(ArrayType::get(ParamReq_Type, reqCs.size()), reqCs);
             reqsC = createConstantGlobalUnique(M, reqsC, "CONTR_PARAM_REQS");
-            data = ConstantStruct::get(ParamOp_Type, {Basic_Types.getInt(pOP->idx), reqsC, Basic_Types.getInt(reqCs.size())});
+            data = ConstantStruct::get(ParamOp_Type, {Basic_Types.getInt(pOP->idx), reqsC, Basic_Types.getInt(reqCs.size()), Basic_Types.getBool(!isC && hasIntCmp)});
             name = "CONTR_PARAMOP";
             break;
         }
@@ -419,7 +428,7 @@ void InstrumentPass::createTypes(Module& M) {
     RWOp_Type->setBody({Basic_Types.Int_Type, Basic_Types.Int_Type, Basic_Types.Bool_Type}); // idx, paramaccess, isWrite
 
     ParamOp_Type = StructType::create(M.getContext(), "ParamOp_t");
-    ParamOp_Type->setBody({Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // idx, list of reqs, num reqs
+    ParamOp_Type->setBody({Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Bool_Type}); // idx, list of reqs, num reqs, need deref
 
     AllocOp_Type = StructType::create(M.getContext(), "AllocOp_t");
     AllocOp_Type->setBody({Basic_Types.Int_Type, Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}); // idx, accType, list of allocators, num allocs, list of deallocs, num deallocs
