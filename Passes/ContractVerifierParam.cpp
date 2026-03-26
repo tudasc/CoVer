@@ -123,15 +123,15 @@ std::string createCompErr(const Comparator comp, const ConstantInt* callCI, cons
 Fulfillment compareCI(const ConstantInt* CI, const ConstantInt* CI2, Comparator comp) {
     switch (comp) {
         case Comparator::NEQ:
-            return CI->getValue().getSExtValue() != CI2->getValue().getSExtValue() ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
+            return CI->getValue().getSExtValue() != CI2->getValue().getSExtValue() ? Fulfillment::UNKNOWN : Fulfillment::BROKEN;
         case Comparator::GTEQ:
-            return CI->getValue().sge(CI2->getValue()) ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
+            return CI->getValue().sge(CI2->getValue()) ? Fulfillment::UNKNOWN : Fulfillment::BROKEN;
         case Comparator::GT:
-            return CI->getValue().sgt(CI2->getValue()) ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
+            return CI->getValue().sgt(CI2->getValue()) ? Fulfillment::UNKNOWN : Fulfillment::BROKEN;
         case Comparator::LTEQ:
-            return CI->getValue().sle(CI2->getValue()) ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
+            return CI->getValue().sle(CI2->getValue()) ? Fulfillment::UNKNOWN : Fulfillment::BROKEN;
         case Comparator::LT:
-            return CI->getValue().slt(CI2->getValue()) ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
+            return CI->getValue().slt(CI2->getValue()) ? Fulfillment::UNKNOWN : Fulfillment::BROKEN;
         case Comparator::EXEQ:
             return CI->getValue().getSExtValue() == CI2->getValue().getSExtValue() ? Fulfillment::FULFILLED : Fulfillment::UNKNOWN;
     }
@@ -191,7 +191,7 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
                 if (f == Fulfillment::BROKEN) {
                     ErrInfo = createCompErr(comp, callCI, varCI);
                     return f;
-                }
+                } else if (f == Fulfillment::FULFILLED) return f;
             }
         }
     }
