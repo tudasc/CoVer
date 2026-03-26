@@ -150,6 +150,19 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
                 }
             }
         }
+        // Always prefer constint comparisons. For Fortran, this sometimes requires a lil trickery:
+        if (Instruction* I = dyn_cast<Instruction>(callVal)) {
+            MemoryDependenceResults& MDR = MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<MemoryDependenceAnalysis>(*I->getFunction());
+            MemoryLocation Loc = MemoryLocation::getForArgument(call, idx, MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<TargetLibraryAnalysis>(*call->getFunction()));
+            MemDepResult x = MDR.getPointerDependencyFrom(Loc, true, call->getIterator(), call->getParent());
+            if (x.getInst()) {
+                if (StoreInst* S = dyn_cast<StoreInst>(x.getInst())) {
+                    if (isa<ConstantInt>(S->getValueOperand())) {
+                        callVal = S->getValueOperand();
+                    }
+                }
+            }
+        }
         if (callVal->getType()->isPointerTy()) {
             switch (comp) {
                 case Comparator::NEQ:
@@ -166,20 +179,6 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
                     // Not an exception. Continue analysis, so far no info gained
                     continue;
                 default:
-                    // Check if we can salvage this and get a constant int result still, even if IR says its a pointer at that point
-                    if (Instruction* I = dyn_cast<Instruction>(callVal)) {
-                        MemoryDependenceResults& MDR = MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<MemoryDependenceAnalysis>(*I->getFunction());
-                        MemoryLocation Loc = MemoryLocation::getForArgument(call, idx, MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<TargetLibraryAnalysis>(*call->getFunction()));
-                        MemDepResult x = MDR.getPointerDependencyFrom(Loc, true, call->getIterator(), call->getParent());
-                        if (x.getInst()) {
-                            if (StoreInst* S = dyn_cast<StoreInst>(x.getInst())) {
-                                if (isa<ConstantInt>(S->getValueOperand())) {
-                                    callVal = S->getValueOperand();
-                                    break;
-                                }
-                            }
-                        }
-                    }
                     errs() << "Attempt to compare pointers! Not performing parameter analysis\n";
                     return Fulfillment::UNKNOWN;
             }
