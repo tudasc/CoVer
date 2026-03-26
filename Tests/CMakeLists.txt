@@ -11,6 +11,7 @@ add_cover_test(Correct-P2P)
 add_cover_test(Correct-P2PStackBuf)
 add_cover_test(Correct-WinAlloc)
 add_cover_test(Correct-P2POffset)
+add_cover_test(Correct-RankNull)
 
 add_cover_test(PostCall-MissingFinalize)
 add_cover_test(PreCall-MissingInit)
