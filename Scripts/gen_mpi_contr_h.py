@@ -308,7 +308,7 @@ paramerror_comm = [
     ("MPI_Cart_get", 0),
 ]
 for func, idx in paramerror_comm:
-    add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_COMM_NULL) MSG \"Communicator is invalid\"")
+    add_contract(func, "PRE", f"param!({idx}:^=MPI_COMM_WORLD,!=NULL,!=MPI_COMM_NULL) MSG \"Communicator is invalid\"")
 
 # MPI_PROC_NULL uses negative special value in OpenMPI, add exception for it
 paramerror_rank_send = [
@@ -428,6 +428,10 @@ def get_param_values(lang: str) -> str:
         "MPI_COMM_NULL": {
             "c": "MPI_COMM_NULL",
             "fort": "MPI_COMM_NULL",
+        },
+        "MPI_COMM_WORLD": {
+            "c": "MPI_COMM_WORLD",
+            "fort": "MPI_COMM_WORLD",
         },
         "MPI_STATUS_IGNORE": {
             "c": "MPI_STATUS_IGNORE",
