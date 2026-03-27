@@ -74,6 +74,11 @@ namespace ContractPassUtility {
     * Check if V is definitely allocated
     */
     bool isTrivialAlloc(const Value* V);
+
+    /*
+    * Fortran Heuristic: Check if global, if so check if constint and return
+    */
+    ConstantInt* fortCheckAndGetGlbInt(Value* V);
 };
 
 template<typename T>

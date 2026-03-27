@@ -327,14 +327,8 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
                         if (!isa<Constant>(var)) {
                             errs() << "Weird param error in instr pass\n";
                         }
-                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(!isC && (isa<GlobalVariable>(var) || var->getName().starts_with("_QQ")))}));
-                        if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(var)) {
-                            if (GV->hasInitializer()) {
-                                if (StructType const* T = dyn_cast<StructType>(GV->getInitializer()->getType())) {
-                                    if (T->getNumElements() == 1 && T->getElementType(0)->isIntegerTy()) hasIntCmp = true;
-                                }
-                            }
-                        }
+                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(!isC && (var->getName().starts_with("_QQ")))}));
+                        hasIntCmp = ContractPassUtility::fortCheckAndGetGlbInt(var) ? true : hasIntCmp;
                     }
                 }
             }

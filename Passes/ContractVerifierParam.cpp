@@ -1,4 +1,5 @@
 #include "ContractVerifierParam.hpp"
+#include "BasicTypes.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
@@ -14,13 +15,11 @@
 #include <llvm/IR/Analysis.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/raw_ostream.h>
-#include <memory>
-#include <string>
-#include <utility>
 #include <llvm/Analysis/InlineCost.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -33,6 +32,8 @@
 #include <llvm/IR/Metadata.h>
 #include <llvm/Support/Casting.h>
 #include <vector>
+#include <memory>
+#include <string>
 
 using namespace llvm;
 using namespace ContractTree;
@@ -41,6 +42,8 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     MAM = &AM;
+    Basic_Types = MAM->getResult<BasicTypesAnalysis>(M);
+
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
         for (const std::shared_ptr<ContractExpression> Expr : C.Pre) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
@@ -169,11 +172,31 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
         // Next, for some global vals its just a struct with one constint member, resolve that as well (for both param val and call val)
         std::vector<Value**> tmps = {&callVal, &var};
         for (Value** tmp : tmps) {
-            if ((*tmp)->getName().starts_with("_QQ")) {
-                if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(*tmp)) {
-                    if (GV->hasInitializer()) {
-                        if (StructType const* T = dyn_cast<StructType>(GV->getInitializer()->getType())) {
-                            if (T->getNumElements() == 1 && T->getElementType(0)->isIntegerTy()) (*tmp) = GV->getInitializer()->getAggregateElement((unsigned int)0);
+            Value* res = ContractPassUtility::fortCheckAndGetGlbInt(*tmp);
+            *tmp = res ? res : *tmp; 
+        }
+
+        // Check if its a pointer with the weird fortran metadata descriptor. If so, need to get contained value using heuristic
+        if (AllocaInst const* AI = dyn_cast<AllocaInst>(callVal)) {
+            if (StructType const* T = dyn_cast<StructType>(AI->getAllocatedType())) {
+                if (T->getElementType(0) == Basic_Types.Ptr_Type &&
+                    T->getElementType(1) == Basic_Types.Int64_Type &&
+                    T->getElementType(2) == Basic_Types.Int_Type &&
+                    T->getNumElements() == 9) {
+                    // Fortran Metadata thing - Find first GEP to callVal
+                    Instruction* cur = call->getPrevNode();
+                    for (; cur && !isa<CallInst>(cur); cur = cur->getPrevNode()) {
+                        if (GetElementPtrInst const* GEP = dyn_cast<GetElementPtrInst>(cur)) {
+                            if (GEP->getPointerOperand() != callVal) continue; 
+                            if (ExtractValueInst const* EVI = dyn_cast<ExtractValueInst>(GEP->getPrevNode())) {
+                                for (Use const& U : EVI->getAggregateOperand()->uses()) {
+                                    if (InsertValueInst* IVI = dyn_cast<InsertValueInst>(U.get())) {
+                                        if (IVI->getIndices()[0] == 0 && IVI->getNumIndices() == 1) {
+                                            callVal = IVI->getInsertedValueOperand();
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }

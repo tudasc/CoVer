@@ -5,6 +5,7 @@
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/DebugProgramInstruction.h>
@@ -205,6 +206,19 @@ bool isTrivialAlloc(Value const* V) {
 
     // Not trivially allocated
     return false;
+}
+
+ConstantInt* fortCheckAndGetGlbInt(Value* V) {
+    if (V->getName().starts_with("_QQ")) {
+        if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
+            if (GV->hasInitializer()) {
+                if (StructType const* T = dyn_cast<StructType>(GV->getInitializer()->getType())) {
+                    if (T->getNumElements() == 1 && T->getElementType(0)->isIntegerTy()) return dyn_cast<ConstantInt>(GV->getInitializer()->getAggregateElement((unsigned int)0));
+                }
+            }
+        }
+    }
+    return nullptr;
 }
 
 bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
