@@ -29,7 +29,7 @@ struct CallParam_t {
     int32_t contrP;
     ParamAccess accType;
 };
-enum Comparator : int32_t { NEQ, GT, GTEQ, LT, LTEQ, EXEQ };
+enum Comparator : int32_t { NEQ, GT, GTEQ, LT, LTEQ, EXEQ, EQ };
 
 // Number must match those defined in ContractTree.hpp!
 enum MathType : int32_t { UNARY_VALUE, MULT };

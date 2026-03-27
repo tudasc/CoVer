@@ -358,12 +358,14 @@ paramerror_null = [
     ("MPI_Recv", 0),
     ("MPI_Irecv", 0),
     ("MPI_Sendrecv", 0),
-    ("MPI_Sendrecv", 5),
     ("MPI_Get", 0),
     ("MPI_Put", 0),
 ]
 for func, idx in paramerror_null:
     add_contract(func, "PRE", f"alloc!({idx}) MSG \"Buffer is not allocated\"")
+
+# Allow MPI_IN_PLACE for recv buffer if its set to MPI_IN_PLACE
+add_contract("MPI_Sendrecv", "PRE", f"( param!(5:==MPI_IN_PLACE) | alloc!(5) ) MSG \"SendRecv is not allocated and not MPI_IN_PLACE\"")
 
 allocators = [
     ("MPI_Win_allocate", 4),

@@ -112,6 +112,8 @@ std::string createCompErr(const Comparator comp, const ConstantInt* callCI, cons
     switch (comp) {
         case Comparator::NEQ:
             return "Parameter matches forbidden value (" + callCs + ")!";
+        case Comparator::EQ:
+            return "Parameter does not match required value (" + callCs + ")!";
         case Comparator::GT:
             return "Call parameter value (" + callCs + ") not greater than contract value (" + valueCs + ")!";
         case Comparator::GTEQ:
@@ -129,6 +131,8 @@ Fulfillment compareCI(const ConstantInt* CI, const ConstantInt* CI2, Comparator 
     switch (comp) {
         case Comparator::NEQ:
             return CI->getValue().getSExtValue() != CI2->getValue().getSExtValue() ? Fulfillment::UNKNOWN : Fulfillment::BROKEN;
+        case Comparator::EQ:
+            return CI->getValue().getSExtValue() == CI2->getValue().getSExtValue() ? Fulfillment::UNKNOWN : Fulfillment::BROKEN;
         case Comparator::GTEQ:
             return CI->getValue().sge(CI2->getValue()) ? Fulfillment::UNKNOWN : Fulfillment::BROKEN;
         case Comparator::GT:

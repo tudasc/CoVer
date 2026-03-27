@@ -34,6 +34,9 @@ Fulfillment ParamAnalysis::functionCBImpl(void* const& func, bool const isPre, C
                 // EXEQ is the exception (pun), it overrides other forbidden values.
                 if (act_callp == act_req || int_callp == int_req) return Fulfillment::FULFILLED;
                 continue;
+            case Comparator::EQ:
+                if (act_callp == act_req && int_callp == int_req) continue;
+                references.push_back(callsite.location); return Fulfillment::VIOLATED;
             case Comparator::NEQ:
                 if (act_callp != act_req && int_callp != int_req) continue;
                 references.push_back(callsite.location); return Fulfillment::VIOLATED;

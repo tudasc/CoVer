@@ -108,6 +108,7 @@ std::any ContractDataVisitor::visitParamOp(ContractParser::ParamOpContext *ctx) 
         if (req->ParamLt()) comp = Comparator::LT;
         if (req->ParamLtEq()) comp = Comparator::LTEQ;
         if (req->ParamEqExcept()) comp = Comparator::EXEQ;
+        if (req->ParamEq()) comp = Comparator::EQ;
         pOP.reqs.push_back({comp, req->value->getText(), req->MarkArg() != nullptr});
     }
     return std::static_pointer_cast<const Operation>(std::make_shared<const ParamOperation>(pOP));

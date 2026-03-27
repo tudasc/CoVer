@@ -51,7 +51,7 @@ namespace ContractTree {
         virtual const FormulaType type() const override { return FormulaType::FREE; };
     };
     enum Comparator {
-        NEQ, GT, GTEQ, LT, LTEQ, EXEQ
+        NEQ, GT, GTEQ, LT, LTEQ, EXEQ, EQ
     };
     struct ParamRequirement {
         Comparator comp;

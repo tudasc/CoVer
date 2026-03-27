@@ -26,7 +26,7 @@ rwOp: (OPRead | OPWrite | OPAlloc | OPFree) OPPrefix (Deref | AddrOf)? arg_index
 varMap: (callP=NatNum | TagParam) MapSep (Deref | AddrOf)? contrP=NatNum;
 callOp: (OPCall | OPCallTag) OPPrefix Variable (ListSep varMap)* OPPostfix;
 paramOp: OPParam OPPrefix NatNum MapSep paramReq (ListSep paramReq)* OPPostfix;
-paramReq: (ParamEqExcept | ParamForbidEq | ParamGt | ParamGtEq | ParamLt | ParamLtEq) (value=Variable | (value=NatNum MarkArg?));
+paramReq: (ParamEqExcept | ParamEq | ParamForbidEq | ParamGt | ParamGtEq | ParamLt | ParamLtEq) (value=Variable | (value=NatNum MarkArg?));
 
 relForbidden: rwOp | callOp;
 releaseOp: OPRelease1 OPPrefix forbidden=relForbidden OPPostfix OPRelease2 OPPrefix until=callOp OPPostfix;
