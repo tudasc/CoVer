@@ -14,6 +14,7 @@
 #include <llvm/IR/Analysis.h>
 #include <llvm/IR/Constant.h>
 #include <llvm/IR/Constants.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Type.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/raw_ostream.h>
@@ -31,6 +32,7 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/Support/Casting.h>
+#include <vector>
 
 using namespace llvm;
 using namespace ContractTree;
@@ -151,6 +153,7 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
             }
         }
         // Always prefer constint comparisons. For Fortran, this sometimes requires a lil trickery:
+        // First, try to get at the actual value instead of the weird pointer that is passed as the arg in IR
         if (Instruction* I = dyn_cast<Instruction>(callVal)) {
             MemoryDependenceResults& MDR = MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<MemoryDependenceAnalysis>(*I->getFunction());
             MemoryLocation Loc = MemoryLocation::getForArgument(call, idx, MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<TargetLibraryAnalysis>(*call->getFunction()));
@@ -163,6 +166,20 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
                 }
             }
         }
+        // Next, for some global vals its just a struct with one constint member, resolve that as well (for both param val and call val)
+        std::vector<Value**> tmps = {&callVal, &var};
+        for (Value** tmp : tmps) {
+            if ((*tmp)->getName().starts_with("_QQ")) {
+                if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(*tmp)) {
+                    if (GV->hasInitializer()) {
+                        if (StructType const* T = dyn_cast<StructType>(GV->getInitializer()->getType())) {
+                            if (T->getNumElements() == 1 && T->getElementType(0)->isIntegerTy()) (*tmp) = GV->getInitializer()->getAggregateElement((unsigned int)0);
+                        }
+                    }
+                }
+            }
+        }
+
         if (callVal->getType()->isPointerTy()) {
             switch (comp) {
                 case Comparator::NEQ:
