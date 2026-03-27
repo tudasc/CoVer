@@ -346,7 +346,7 @@ paramerror_null = [
     ("MPI_Get", 0),
 ]
 for func, idx in paramerror_null:
-    add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_IN_PLACE) MSG \"Parameter is null or MPI_IN_PLACE\"")
+    add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_IN_PLACE,!=MPI_BOTTOM) MSG \"Parameter is null, MPI_IN_PLACE, or MPI_BOTTOM\"")
 
 # Allow MPI_IN_PLACE for recv buffer of sendrecv, but dont allow same as send buf
 add_contract("MPI_Sendrecv", "PRE", f"param!(5:^=MPI_IN_PLACE,!=NULL,!=0 _arg) MSG \"Buffer is null or same as send buffer\"")
@@ -402,6 +402,10 @@ def get_param_values(lang: str) -> str:
         "NULL": {
             "c": "NULL",
             "fort": "NULL()",
+        },
+        "MPI_BOTTOM": {
+            "c": "MPI_BOTTOM",
+            "fort": "MPI_BOTTOM",
         },
         "MPI_PROC_NULL": {
             "c": "MPI_PROC_NULL",
