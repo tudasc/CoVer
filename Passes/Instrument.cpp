@@ -490,6 +490,11 @@ void InstrumentPass::instrumentRW(Module &M) {
                             }
                         }
                     }
+                    // Filter out new instr from sroa
+                    if (!isC && isa<StoreInst>(&I) && dyn_cast<StoreInst>(&I)->getPointerOperand()->getName().starts_with(".fca.")) {
+                        continue;
+                    }
+
                     insertCBIfNeeded(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V}, &I);
                 }
             }
