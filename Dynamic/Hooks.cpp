@@ -95,9 +95,8 @@ ffi_type* getFFIType(int32_t size) {
         case 0: return &ffi_type_void;
         case 16: return &ffi_type_uint16;
         case 32: return &ffi_type_uint32;
-        case 64: return &ffi_type_pointer;
+        default: return &ffi_type_pointer;
     }
-    __builtin_unreachable();
 }
 
 extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(bool isRef, void* function, int32_t ret_size, int32_t num_params, ...) {
