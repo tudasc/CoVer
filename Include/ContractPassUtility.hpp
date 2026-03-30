@@ -259,7 +259,7 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
                 next = stack.top()->getNextNode();
                 stack.pop();
                 next_trace_entry = TraceKind::FUNCEXIT;
-            } else if (isa<ReturnInst>(next)) {
+            } else if (isa<ReturnInst>(cur)) {
                 // Stack is empty. But if we started inside a function, context includes all callsites
                 Function* func = cur->getParent()->getParent();
                 for (User* U : func->users()) {
