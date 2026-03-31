@@ -181,7 +181,7 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
 
                         // Check for Fortran mangling stuff
                         if (!result) {
-                            errs() << "Could not decipher call to Declare_Value for \n" << CallStr << "!\n";
+                            errs() << "Could not decipher call to Declare_Value for " << CallStr << "!\n";
                         } else {
                             if (result->getName().starts_with("_QQ") && isa<GlobalVariable>(result)) {
                                 StringRef result_stem = result->getName().split('.').first;
