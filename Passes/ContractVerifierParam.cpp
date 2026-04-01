@@ -159,7 +159,14 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
                 }
             }
         }
-        // Always prefer constint comparisons. For Fortran, this sometimes requires a lil trickery:
+        // Always prefer constint comparisons.
+        // For C, check if its a constint inttoptr
+        if (ConstantExpr* CE = dyn_cast<ConstantExpr>(callVal)) {
+            if (isa<IntToPtrInst>(CE->getAsInstruction())) {
+                callVal = CE->getOperand(0);
+            }
+        }
+        // For Fortran, this sometimes requires a lil trickery:
         // First, try to get at the actual value instead of the weird pointer that is passed as the arg in IR
         if (Instruction* I = dyn_cast<Instruction>(callVal)) {
             MemoryDependenceResults& MDR = MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<MemoryDependenceAnalysis>(*I->getFunction());
