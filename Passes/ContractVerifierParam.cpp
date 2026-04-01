@@ -215,6 +215,12 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
                         return Fulfillment::BROKEN;
                     }
                     return Fulfillment::FULFILLED;
+                case Comparator::EQ:
+                    if (!ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
+                        ErrInfo = "Parameter does not match required pointer value!";
+                        return Fulfillment::BROKEN;
+                    }
+                    return Fulfillment::FULFILLED;
                 case Comparator::EXEQ:
                     if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
                         ErrInfo = "Note: Parameter matches or is alias to exception value.";
