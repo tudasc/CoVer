@@ -348,8 +348,8 @@ paramerror_null = [
 for func, idx in paramerror_null:
     add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_IN_PLACE,!=MPI_BOTTOM) MSG \"Parameter is null, MPI_IN_PLACE, or MPI_BOTTOM\"")
 
-# Allow MPI_IN_PLACE for recv buffer of sendrecv, but dont allow same as send buf
-add_contract("MPI_Sendrecv", "PRE", f"param!(5:^=MPI_IN_PLACE,!=NULL,!=0 _arg) MSG \"Buffer is null or same as send buffer\"")
+# For sendrecv also dont allow same as send buf in recv buf
+add_contract("MPI_Sendrecv", "PRE", f"param!(5:!=NULL,!=MPI_IN_PLACE,!=MPI_BOTTOM,!=0 _arg) MSG \"Buffer is null or same as send buffer\"")
 
 # Comm buffer should be allocated
 paramerror_null = [
@@ -358,14 +358,12 @@ paramerror_null = [
     ("MPI_Recv", 0),
     ("MPI_Irecv", 0),
     ("MPI_Sendrecv", 0),
+    ("MPI_Sendrecv", 5),
     ("MPI_Get", 0),
     ("MPI_Put", 0),
 ]
 for func, idx in paramerror_null:
     add_contract(func, "PRE", f"alloc!({idx}) MSG \"Buffer is not allocated\"")
-
-# Allow MPI_IN_PLACE for recv buffer if its set to MPI_IN_PLACE
-add_contract("MPI_Sendrecv", "PRE", f"( param!(5:==MPI_IN_PLACE) | alloc!(5) ) MSG \"SendRecv is not allocated and not MPI_IN_PLACE\"")
 
 allocators = [
     ("MPI_Win_allocate", 4),
