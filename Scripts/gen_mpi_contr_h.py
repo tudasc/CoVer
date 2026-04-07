@@ -527,8 +527,8 @@ fortran_lang_intrinsics = """
     call Declare_Contract(CoVer_RegisterGlobal, \"POST { alloc!(0) }\")
 """
 
-header_output_fort = boilerplate_header_fort + f"    use mpi\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values("fort")}\n\n"
-header_output_fort_f08 = boilerplate_header_fort + f"    use mpi_f08\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values("fort")}\n\n"
+header_output_fort = boilerplate_header_fort + f"    use mpi\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values('fort')}\n\n"
+header_output_fort_f08 = boilerplate_header_fort + f"    use mpi_f08\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values('fort')}\n\n"
 header_output_fort_f08ts = header_output_fort_f08
 
 exclude_fortran = [
