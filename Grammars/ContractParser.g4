@@ -22,7 +22,7 @@ multExpr: Deref mathExpr;
 mathOp: multExpr;
 mathExpr: natExpr mathOp?;
 
-rwOp: (OPRead | OPWrite | OPAlloc | OPFree) OPPrefix (Deref | AddrOf)? arg_index=NatNum (RWOffsetPrefix alloc_size=mathExpr RWOffsetSuffix)? OPPostfix;
+rwOp: (OPRead | OPWrite | OPAlloc | OPFree) OPPrefix (Deref | AddrOf)? arg_index=(NatNum | RetSym) (RWOffsetPrefix alloc_size=mathExpr RWOffsetSuffix)? OPPostfix;
 varMap: (callP=NatNum | TagParam) MapSep (Deref | AddrOf)? contrP=NatNum;
 callOp: (OPCall | OPCallTag) OPPrefix Variable (ListSep varMap)* OPPostfix;
 paramOp: OPParam OPPrefix NatNum MapSep paramReq (ListSep paramReq)* OPPostfix;

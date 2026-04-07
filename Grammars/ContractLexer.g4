@@ -14,7 +14,7 @@ ScopePrefix: '{';
 ScopePostfix: '}';
 
 String: '"' ([A-Z] | [a-z] | ' ' | '_' | '-' | '!' | '?' | ',' | [0-9])+ '"';
-Variable: ([A-Z] | [a-z]) ([A-Z] | [a-z] | [0-9] | '_')*;
+Variable: ([A-Z] | [a-z]) ([A-Z] | [a-z] | [0-9] | '_')+;
 NatNum: ('0' | [1-9] [0-9]*);
 
 ListSep: ',';
@@ -27,6 +27,8 @@ TagParam: '$';
 
 Deref: '*';
 AddrOf: '&';
+
+RetSym: 'R';
 
 MarkArg: '_arg';
 

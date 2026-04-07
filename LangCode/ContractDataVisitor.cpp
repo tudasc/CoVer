@@ -87,15 +87,16 @@ std::any ContractDataVisitor::visitRwOp(ContractParser::RwOpContext *ctx) {
     ParamAccess acc = ParamAccess::NORMAL;
     if (ctx->Deref()) acc = ParamAccess::DEREF;
     if (ctx->AddrOf()) acc = ParamAccess::ADDROF;
+    int idx = ctx->RetSym() ? 99 : std::stoi(ctx->arg_index->getText());
     std::shared_ptr<const Operation> op;
     if (ctx->OPRead())
-        op = std::make_shared<const ReadOperation>(std::stoi(ctx->arg_index->getText()), acc);
+        op = std::make_shared<const ReadOperation>(idx, acc);
     else if (ctx->OPWrite())
-        op = std::make_shared<const WriteOperation>(std::stoi(ctx->arg_index->getText()), acc);
+        op = std::make_shared<const WriteOperation>(idx, acc);
     else if (ctx->OPAlloc())
-        op = std::make_shared<const AllocOperation>(std::stoi(ctx->arg_index->getText()), acc, ctx->alloc_size ? std::any_cast<std::shared_ptr<MathExpr>>(visitMathExpr(ctx->alloc_size)) : std::make_shared<MathExpr>(0, false, MathType::UNARY_VALUE));
+        op = std::make_shared<const AllocOperation>(idx, acc, ctx->alloc_size ? std::any_cast<std::shared_ptr<MathExpr>>(visitMathExpr(ctx->alloc_size)) : std::make_shared<MathExpr>(0, false, MathType::UNARY_VALUE));
     else if (ctx->OPFree())
-        op = std::make_shared<const FreeOperation>(std::stoi(ctx->arg_index->getText()), acc);
+        op = std::make_shared<const FreeOperation>(idx, acc);
     return op;
 }
 std::any ContractDataVisitor::visitParamOp(ContractParser::ParamOpContext *ctx) {
