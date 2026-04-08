@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <stddef.h>
 
 // Convenience Annotation Macros
 // Example: int f() CONTRACT( <Contract String> );
