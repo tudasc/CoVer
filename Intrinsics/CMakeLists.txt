@@ -14,4 +14,4 @@ set_property(TARGET CoVerIntrinsics PROPERTY VISIBILITY_INLINES_HIDDEN ON)
 target_compile_options(CoVerIntrinsics PUBLIC -fno-rtti -fno-exceptions -fomit-frame-pointer -fno-stack-protector)
 
 set_property(TARGET CoVerIntrinsics PROPERTY POSITION_INDEPENDENT_CODE ON)
-install(TARGETS CoVerIntrinsics)
+install(TARGETS CoVerIntrinsics DESTINATION lib)
