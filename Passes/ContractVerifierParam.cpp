@@ -236,7 +236,8 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
                     // Not an exception. Continue analysis, so far no info gained
                     continue;
                 default:
-                    errs() << "Attempt to compare pointers! Not performing parameter analysis\n";
+                    errs() << "Attempt to compare pointers! Not performing parameter analysis at "
+                           << ContractPassUtility::getInstrLocStr(call) << " for index " << idx << "\n";
                     return Fulfillment::UNKNOWN;
             }
         }
