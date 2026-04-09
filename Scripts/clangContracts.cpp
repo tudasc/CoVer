@@ -299,6 +299,6 @@ int main(int argc, const char** argv) {
     close(fd);
 
     // Finalize executable
-    execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt @COVER_INTRINSICS_LIB_PATH@ " + dest_arg);
+    execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -flto -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt @COVER_INTRINSICS_LIB_PATH@ " + dest_arg);
     return 0;
 }
