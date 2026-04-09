@@ -369,7 +369,7 @@ allocators = [
     ("MPI_Win_allocate", 4),
 ]
 for func, idx in allocators:
-    add_contract(func, "POST", f"alloc!(*{idx}[0])")
+    add_contract(func, "POST", f"alloc!(*{idx}[0 _arg])")
 
 
 # Datatype should not be null when doing communication
