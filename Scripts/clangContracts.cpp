@@ -286,14 +286,14 @@ int main(int argc, const char** argv) {
 
     // Call LLVM passes
     std::string passlist = "function(sroa),instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
-    if (!opt_level.empty()) {
-        passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
-    }
     if (!InstrumentContracts.empty()) {
         // Need instrumentation, so add instr pass...
         passlist += ",instrumentContracts";
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
+    }
+    if (!opt_level.empty()) {
+        passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
     }
     execSafe("opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
