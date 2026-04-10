@@ -528,11 +528,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
 
         // Get return value size
-        if (isC && callsite->getType()->isSized()) {
-            params.push_back(Basic_Types.getInt(callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType())));
-        } else {
-            params.push_back(Basic_Types.getInt(0));
-        }
+        params.push_back(callsite->getType()->isSized() ? Basic_Types.getInt(callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType())) : Basic_Types.getInt(0));
 
         params.push_back(Basic_Types.getInt(callsite->arg_size()));
         for (Use const& U : callsite->args()) {
