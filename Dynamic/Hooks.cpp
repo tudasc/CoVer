@@ -99,6 +99,13 @@ ffi_type* getFFIType(int32_t size) {
     }
 }
 
+struct cifCache {
+    void* func;
+    std::vector<ffi_type*> arg_types;
+    ffi_cif cif;
+};
+static std::vector<cifCache> cached_cifs;
+
 extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(bool isRef, void* function, int32_t ret_size, int32_t num_params, ...) {
     CallsiteInfo callsite = { .location = __builtin_return_address(0) };
     callsite.params.reserve(num_params);
@@ -106,12 +113,21 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     static std::vector<ffi_type*> ffi_arg_types;
     static std::vector<void*> ffi_arg_values_ptr;
     static std::vector<void*> ffi_arg_values_store;
-    ffi_arg_types.reserve(num_params);
-    ffi_arg_types.clear();
+
+    cifCache cif_c = {nullptr };
+    for (cifCache& entry : cached_cifs) {
+        if (function == entry.func) {
+            cif_c = entry;
+            break;
+        }
+    }
     ffi_arg_values_store.reserve(num_params);
     ffi_arg_values_store.clear();
     ffi_arg_values_ptr.reserve(num_params);
     ffi_arg_values_ptr.clear();
+    if (!cif_c.func) {
+        cif_c.arg_types.reserve(num_params);
+    }
 
     va_start(list, num_params);
     for (int i = 0; i < num_params; i++) {
@@ -123,7 +139,9 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
         } else {
             callsite.params.push_back({param_val, param_size & 0xFF});
         }
-        ffi_arg_types.push_back(getFFIType((param_size & 0xFF00) >> 8));
+        if (!cif_c.func) {
+            cif_c.arg_types.push_back(getFFIType((param_size & 0xFF00) >> 8));
+        }
         ffi_arg_values_store.push_back(param_val);
         ffi_arg_values_ptr.push_back(&ffi_arg_values_store[i]);
     }
@@ -133,13 +151,14 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     HANDLE_CALLBACK(analyses_with_funcPreCB, onFunctionCall, function, true, callsite);
 
     // Call the intercepted function
-    ffi_cif cif;
-    void* res = nullptr;
-    if (ffi_prep_cif(&cif, FFI_DEFAULT_ABI, num_params, getFFIType(ret_size), ffi_arg_types.data()) == FFI_OK) {
-        ffi_call(&cif, FFI_FN(function), &res, ffi_arg_values_ptr.data());
-    } else {
-        DynamicUtils::out() << "CRITICAL: Failed to prepare libffi CIF!\n";
+    if (!cif_c.func) {
+        cif_c.func = function;
+        ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, getFFIType(ret_size), cif_c.arg_types.data());
+        cached_cifs.push_back(cif_c);
     }
+    cif_c.cif.arg_types = cif_c.arg_types.data();
+    void* res = nullptr;
+    ffi_call(&cif_c.cif, FFI_FN(function), &res, ffi_arg_values_ptr.data());
 
     // Run event handlers again for the postCBs, including the newly returned value
     callsite.retval = res;
