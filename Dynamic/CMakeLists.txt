@@ -14,7 +14,6 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 else()
     set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD ON)
 endif()
-set_property(TARGET CoVerDynamicAnalyzer PROPERTY INTERPROCEDURAL_OPTIMIZATION ON)
 target_include_directories(CoVerDynamicAnalyzer PUBLIC ../Include/)
 
 find_package(PkgConfig REQUIRED)
