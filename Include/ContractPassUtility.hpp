@@ -79,6 +79,11 @@ namespace ContractPassUtility {
     * Fortran Heuristic: Check if global, if so check if constint and return
     */
     ConstantInt* fortCheckAndGetGlbInt(Value* V);
+
+    /*
+    * Get last storeinst to a call argument, null if it could not be determined
+    */
+    StoreInst* getLastStore(CallBase* CB, int idx, Instruction* loc, FunctionAnalysisManager* FAM);
 };
 
 template<typename T>

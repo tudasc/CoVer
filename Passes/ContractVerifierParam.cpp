@@ -169,15 +169,9 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
         // For Fortran, this sometimes requires a lil trickery:
         // First, try to get at the actual value instead of the weird pointer that is passed as the arg in IR
         if (Instruction* I = dyn_cast<Instruction>(callVal)) {
-            MemoryDependenceResults& MDR = MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<MemoryDependenceAnalysis>(*I->getFunction());
-            MemoryLocation Loc = MemoryLocation::getForArgument(call, idx, MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager().getResult<TargetLibraryAnalysis>(*call->getFunction()));
-            MemDepResult x = MDR.getPointerDependencyFrom(Loc, true, call->getIterator(), call->getParent());
-            if (x.getInst()) {
-                if (StoreInst* S = dyn_cast<StoreInst>(x.getInst())) {
-                    if (isa<ConstantInt>(S->getValueOperand())) {
-                        callVal = S->getValueOperand();
-                    }
-                }
+            StoreInst* SI = ContractPassUtility::getLastStore(call, idx, I, &MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager());
+            if (SI && isa<ConstantInt>(SI->getValueOperand())) {
+                callVal = SI->getValueOperand();
             }
         }
         // Next, for some global vals its just a struct with one constint member, resolve that as well (for both param val and call val)

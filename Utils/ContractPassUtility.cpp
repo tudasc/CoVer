@@ -4,6 +4,8 @@
 #include <climits>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
+#include <llvm/Analysis/MemoryDependenceAnalysis.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/Demangle/Demangle.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DebugInfoMetadata.h>
@@ -17,6 +19,7 @@
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Operator.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/WithColor.h>
@@ -47,6 +50,18 @@ const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
         if (const GEPOperator* GEPOp = dyn_cast<GEPOperator>(V)) b = GEPOp->getPointerOperand();
     }
     return b;
+}
+
+StoreInst* ContractPassUtility::getLastStore(CallBase* CB, int idx, Instruction* loc, FunctionAnalysisManager* FAM) {
+    MemoryDependenceResults& MDR = FAM->getResult<MemoryDependenceAnalysis>(*loc->getFunction());
+    MemoryLocation Loc = MemoryLocation::getForArgument(CB, idx, FAM->getResult<TargetLibraryAnalysis>(*CB->getFunction()));
+    MemDepResult x = MDR.getPointerDependencyFrom(Loc, true, CB->getIterator(), CB->getParent());
+    if (x.getInst()) {
+        if (StoreInst* S = dyn_cast<StoreInst>(x.getInst())) {
+            return S;
+        }
+    }
+    return nullptr;
 }
 
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
