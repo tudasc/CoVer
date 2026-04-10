@@ -528,7 +528,13 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         params.push_back(callsite->getCalledOperand()); // First param is funcptr
 
         // Get return value size
-        params.push_back(callsite->getType()->isSized() ? Basic_Types.getInt(callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType())) : Basic_Types.getInt(0));
+        if (!callsite->getType()->isSized()) {
+            params.push_back(Basic_Types.getInt(0));
+        } else {
+            int ret_size = callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType());
+            if (callsite->getType()->isFloatingPointTy()) ret_size |= 2 << 16; // Set bit 2 > float tag
+            params.push_back(Basic_Types.getInt(ret_size));
+        }
 
         params.push_back(Basic_Types.getInt(callsite->arg_size()));
         for (Use const& U : callsite->args()) {

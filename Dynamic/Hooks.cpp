@@ -1,3 +1,4 @@
+#include <bitset>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -90,12 +91,12 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
     DynamicUtils::createMessage("Finished Initializing!");
 }
 
-ffi_type* getFFIType(int32_t size) {
+ffi_type* getFFIType(int32_t size, bool isFloat) {
     switch (size) {
         case 0: return &ffi_type_void;
         case 16: return &ffi_type_uint16;
-        case 32: return &ffi_type_uint32;
-        default: return &ffi_type_pointer;
+        case 32: return isFloat ? &ffi_type_float : &ffi_type_uint32;
+        default: return isFloat ? &ffi_type_double : &ffi_type_pointer;
     }
 }
 
@@ -133,14 +134,15 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     for (int i = 0; i < num_params; i++) {
         uint32_t param_size = va_arg(list,uint32_t);
         void* param_val = va_arg(list,void*);
-        if (param_size >> 16) {
+        std::bitset<8> flags(param_size >> 16);
+        if (flags.test(0)) {
             // Need to deref value first
             callsite.params.push_back({*(void**)param_val, param_size & 0xFF});   
         } else {
             callsite.params.push_back({param_val, param_size & 0xFF});
         }
         if (!cif_c.func) {
-            cif_c.arg_types.push_back(getFFIType((param_size & 0xFF00) >> 8));
+            cif_c.arg_types.push_back(getFFIType(param_size >> 8, flags.test(1)));
         }
         ffi_arg_values_store.push_back(param_val);
         ffi_arg_values_ptr.push_back(&ffi_arg_values_store[i]);
@@ -153,7 +155,7 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     // Call the intercepted function
     if (!cif_c.func) {
         cif_c.func = function;
-        ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, getFFIType(ret_size), cif_c.arg_types.data());
+        ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, ret_size == 64 ? &ffi_type_double : getFFIType(ret_size, ret_size >> 16), cif_c.arg_types.data());
         cached_cifs.push_back(cif_c);
     }
     cif_c.cif.arg_types = cif_c.arg_types.data();
