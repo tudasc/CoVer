@@ -238,9 +238,7 @@ void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
 
 void ContractManagerAnalysis::addValueDefinition(std::string name, Value* val) {
     if (IS_DEBUG) {
-        WithColor(errs(), HighlightColor::Remark) << "[ContractManager] IR Value \"";
-        val->print(WithColor(errs(), HighlightColor::Remark)),
-        WithColor(errs(), HighlightColor::Remark) << "\" stored for contract value \"" << name << "\"\n";
+        WithColor(errs(), HighlightColor::Remark) << "[ContractManager] IR Value " << *val  << "\" stored for contract value \"" << name << "\"\n";
     }
     curDatabase.ContractVariableData[name].insert(val);
 }
