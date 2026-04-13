@@ -154,6 +154,12 @@ PreservedAnalyses InstrumentPass::run(Module &M,
         instrumentRW(M);
     instrumentFunctions(M);
 
+    std::vector<Function*> to_remove;
+    for (Function& F : M) {
+        if (F.getName().starts_with("contract_definitions_fort")) to_remove.push_back(&F);
+    }
+    for (Function* F : to_remove) F->eraseFromParent();
+
     return PreservedAnalyses::none();
 }
 

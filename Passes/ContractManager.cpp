@@ -95,7 +95,6 @@ void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
 }
 
 void ContractManagerAnalysis::extractFromFunction(Module& M) {
-    std::vector<Function*> to_remove;
     for (Function& F : M) {
         F.removeFnAttr(Attribute::NoInline);
         if (F.getName().starts_with("contract_definitions_fort")) {
@@ -194,15 +193,7 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                     }
                 }
             }
-            // This function is unreachable, and should definitely not be analysed, so no need to compile. Drop it
-            to_remove.push_back(&F);
         }
-    }
-    // Remove unneeded functions
-    for (Function* F : to_remove)
-        F->eraseFromParent();
-    if (to_remove.empty()) {
-        errs() << "Note: No contract declarations found using Declare_Contract calls\n";
     }
 }
 
