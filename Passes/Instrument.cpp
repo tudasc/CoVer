@@ -314,13 +314,20 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             std::shared_ptr<const ParamOperation> pOP = static_pointer_cast<const ParamOperation>(op);
             std::vector<Constant*> reqCs;
             bool hasIntCmp = false;
+            bool hasZeroInit = false;
             for (ParamRequirement const& req : pOP->reqs) {
                 Constant* var = Basic_Types.Null_Const;
                 try {
                     int ivalue = std::stoi(req.value);
                     var = Basic_Types.getInt64(ivalue);
                     var = ConstantExpr::getIntToPtr(var, Basic_Types.Ptr_Type);
-                    reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(false)}));
+                    Constant* CS = ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(false)});
+                    if (CS->isZeroValue() && !hasZeroInit) hasZeroInit = true;
+                    else if (CS->isZeroValue()) {
+                        if (IS_DEBUG) errs() << "[InstrumentPass] Duplicate paramreq detected and filtered.\n";
+                        continue;
+                    }
+                    reqCs.push_back(CS);
                     hasIntCmp = req.isArg ? hasIntCmp : true;
                 } catch(std::exception& e) {
                     if (!DB->ContractVariableData.contains(req.value)) {
@@ -334,7 +341,12 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
                         if (!isa<Constant>(var)) {
                             errs() << "Weird param error in instr pass\n";
                         }
-                        reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(!isC && (var->getName().starts_with("_QQ")))}));
+                        Constant* CS = ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(!isC && (var->getName().starts_with("_QQ")))});
+                        if (CS->isZeroValue() && !hasZeroInit) hasZeroInit = true;
+                        else if (CS->isZeroValue()) {
+                            if (IS_DEBUG) errs() << "[InstrumentPass] Duplicate paramreq detected and filtered.\n";
+                            continue;
+                        }
                         hasIntCmp = ContractPassUtility::fortCheckAndGetGlbInt(var) ? true : hasIntCmp;
                     }
                 }
