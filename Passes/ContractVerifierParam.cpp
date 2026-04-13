@@ -56,7 +56,7 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
 
             // Perform the check on each callsite
             for (User* U : C.F->users()) {
-                if (CallBase* CB = dyn_cast<CallBase>(U)) {
+                if (CallBase* CB = dyn_cast<CallBase>(U); CB && CB->getCalledOperand() == C.F) {
                     for (ParamRequirement const& req : ParamOp->reqs) {
                         // Figure out value(s) to check against
                         std::set<Value*> vars;

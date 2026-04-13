@@ -519,7 +519,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
     if (already_instrumented.contains(F)) return;
     std::vector<CallBase*> callsites;
     for (User* U : F->users()) {
-        if (CallBase* CB = dyn_cast<CallBase>(U)) {
+        if (CallBase* CB = dyn_cast<CallBase>(U); CB && CB->getCalledOperand() == F) {
             callsites.push_back(CB);
         }
     }
