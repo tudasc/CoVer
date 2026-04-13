@@ -153,7 +153,7 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     // Call the intercepted function
     if (!cif_c.func) {
         cif_c.func = function;
-        ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, ret_size == 64 ? &ffi_type_double : getFFIType(ret_size, ret_size >> 16), cif_c.arg_types.data());
+        ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, getFFIType(ret_size, ret_size >> 16), cif_c.arg_types.data());
         cached_cifs.push_back(cif_c);
     }
     cif_c.cif.arg_types = cif_c.arg_types.data(); // Might have been moved, need to keep updated here.
