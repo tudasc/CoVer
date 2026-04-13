@@ -109,8 +109,6 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                     // Only care about this intrinsic
                     #warning TODO probably should figure out a less hacky way.
                     if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64" && CB->getCalledFunction()->getName() != "llvm.memcpy.p0.p0.i64") continue;
-                    // Add CONTRACT { ... } brace. Its explicitly needed for C(++) to make sure we are not parsing irrelevant stuff,
-                    // but for fortran its already implicit in declare_contract, making it superfluous
                     std::string CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString().str();
                     // Call is from memmove -> insertvalue -> extractvalue -> funccall. on -O0, and memcpy -> funccall on -O1 and above
                     Instruction const* cur = CB->getNextNode();
@@ -135,6 +133,8 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                             }
                         }
                         if (!has_callsite) continue;
+                        // Add CONTRACT { ... } brace. Its explicitly needed for C(++) to make sure we are not parsing irrelevant annotations,
+                        // but for Fortran its already implicit in declare_contract, making it superfluous
                         addContract("CONTRACT { " + CallStr + " }", (Function*)(ContrCall->getArgOperand(0)));
                     } else if (ContrCall->getCalledOperand()->getName() == "declare_value_") {
                         #warning really super duper should find out a less hacky way
