@@ -49,6 +49,12 @@ static cl::opt<std::string> GenerateJSONReport("generate-json-report",
     cl::value_desc("JSON output path"),
     cl::cat(WrapperCategory));
 
+static cl::opt<std::string> DebuggerCoVerPlugin("debugger-cover-plugin",
+    cl::desc("Run debugger on opt step"),
+    cl::ValueOptional,
+    cl::value_desc("Debugger path"),
+    cl::cat(WrapperCategory));
+
 // String option with ValueOptional to handle "full", "funconly", and "filtered=path.json"
 static cl::opt<std::string> InstrumentContracts("instrument-contracts",
     cl::desc("Perform instrumentation for runtime analysis.\n"
@@ -90,7 +96,11 @@ std::vector<std::string> link_time_sources; // For predef fort contracts
 
 std::string opt_flags = "";
 
-std::string exec(std::string const& cmd) {
+std::string exec(std::string const& cmd, bool interactive = true) {
+    if (interactive) {
+        std::system(cmd.c_str());
+        return "";
+    }
     std::array<char, 128> buffer;
     std::string result;
     FILE* pipe = popen(cmd.c_str(), "r");
@@ -179,7 +189,7 @@ void sanityCheckCompiler() {
 
     // Check for LLVM-based compiler
     cmd = WrapTarget + " --version | head -n 1";
-    compiler_ident  = exec(cmd);
+    compiler_ident  = exec(cmd, false);
     if (compiler_ident.find("clang") == std::string::npos && compiler_ident.find("flang") == std::string::npos) {
         std::cerr << "Unknown compiler \"" << compiler_ident.substr(0, compiler_ident.size()-1) << "\"!\n";
         std::cerr << "Make sure to use an LLVM-based compiler that supports outputting bitcode.\n";
@@ -286,6 +296,8 @@ int main(int argc, const char** argv) {
 
     // Call LLVM passes
     std::string passlist = "function(sroa),instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
+    // ALWAYS FIRST OPT THEN INSTR!
+    // Otherwise significant performance loss!
     if (!opt_level.empty()) {
         passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
     }
@@ -295,7 +307,7 @@ int main(int argc, const char** argv) {
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
-    execSafe("opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
+    execSafe(DebuggerCoVerPlugin + " opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
 
     // Finalize executable
