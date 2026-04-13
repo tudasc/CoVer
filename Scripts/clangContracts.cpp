@@ -98,7 +98,8 @@ std::string opt_flags = "";
 
 std::string exec(std::string const& cmd, bool interactive = true) {
     if (interactive) {
-        std::system(cmd.c_str());
+        int rc = std::system(cmd.c_str());
+        if (rc) exit(rc);
         return "";
     }
     std::array<char, 128> buffer;
