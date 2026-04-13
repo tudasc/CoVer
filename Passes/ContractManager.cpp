@@ -122,22 +122,19 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                     CallBase const* ContrCall = dyn_cast<CallBase>(cur);
                     if (ContrCall->getCalledOperand()->getName() == "declare_contract_") {
                         const Function* ContrSup = (Function*)ContrCall->getArgOperand(0);
-                        if (!ContrSup->getName().starts_with("CoVer_")) {
-                            // Check if this function is actually used in the code apart from the contract definition.
-                            // If not, no need to analyse this contract and can safely skip it.
-                            // Exception: CoVer intrinsics (CoVer_*), such as stack var tracking pseudofunc.
-                            if (ContrSup->hasOneUser()) continue;
-                            bool has_callsite = false;
-                            for (const User* U : ContrSup->users() ) {
-                                if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-                                    if (CB->getCalledOperand() == ContrSup) {
-                                        has_callsite = true;
-                                        break;
-                                    }
+                        // Check if this function is actually used in the code apart from the contract definition.
+                        // If not, no need to analyse this contract and can safely skip it.
+                        if (ContrSup->hasOneUser()) continue;
+                        bool has_callsite = false;
+                        for (const User* U : ContrSup->users() ) {
+                            if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                                if (CB->getCalledOperand() == ContrSup) {
+                                    has_callsite = true;
+                                    break;
                                 }
                             }
-                            if (!has_callsite) continue;
                         }
+                        if (!has_callsite) continue;
                         addContract("CONTRACT { " + CallStr + " }", (Function*)(ContrCall->getArgOperand(0)));
                     } else if (ContrCall->getCalledOperand()->getName() == "declare_value_") {
                         #warning really super duper should find out a less hacky way
