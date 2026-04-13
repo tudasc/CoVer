@@ -484,10 +484,10 @@ void __attribute__((weak)) CoVer_FreeStack(void* ptr) CONTRACT( POST {{ free!(0)
 void __attribute__((weak)) CoVer_RegisterGlobal(void* ptr, int64_t size) CONTRACT( POST {{ alloc!(0[ 1 _arg ]) }}) {{}};
 
 
-void* calloc(size_t num, size_t size) CONTRACT( POST {{ alloc!(R[ 0 _arg * 1 _arg]) }});
-void* malloc(size_t size) CONTRACT( POST {{ alloc!(R[0 _arg]) }});
+void* calloc(size_t num, size_t size) CONTRACT( POST {{ alloc!(R[ 0 _arg * 1 _arg]) }}) __THROW;
+void* malloc(size_t size) CONTRACT( POST {{ alloc!(R[0 _arg]) }}) __THROW;
 
-void free(void*) CONTRACT( POST {{ free!(0) }});
+void free(void*) CONTRACT( POST {{ free!(0) }}) __THROW;
 
 """
 
