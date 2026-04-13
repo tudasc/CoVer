@@ -1,4 +1,3 @@
-#include <bitset>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -115,7 +114,7 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     static std::vector<void*> ffi_arg_values_ptr;
     static std::vector<void*> ffi_arg_values_store;
 
-    cifCache cif_c = {nullptr };
+    cifCache cif_c = {nullptr};
     for (cifCache& entry : cached_cifs) {
         if (function == entry.func) {
             cif_c = entry;
@@ -134,15 +133,14 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     for (int i = 0; i < num_params; i++) {
         uint32_t param_size = va_arg(list,uint32_t);
         void* param_val = va_arg(list,void*);
-        std::bitset<8> flags(param_size >> 16);
-        if (flags.test(0)) {
+        if ((param_size >> 17) & 0b1) {
             // Need to deref value first
             callsite.params.push_back({*(void**)param_val, param_size & 0xFF});   
         } else {
             callsite.params.push_back({param_val, param_size & 0xFF});
         }
         if (!cif_c.func) {
-            cif_c.arg_types.push_back(getFFIType(param_size >> 8, flags.test(1)));
+            cif_c.arg_types.push_back(getFFIType(param_size >> 8, (param_size >> 16) & 0b10));
         }
         ffi_arg_values_store.push_back(param_val);
         ffi_arg_values_ptr.push_back(&ffi_arg_values_store[i]);
