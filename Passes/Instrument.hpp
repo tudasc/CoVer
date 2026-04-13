@@ -70,7 +70,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         StructType* ParamReq_Type;
 
         // Helpers
-        bool checkIsStrParam(Value const* I);
+        bool checkIsStrParam(CallBase* CB, int idx);
 
         // Misc
         bool isC = true;
@@ -79,6 +79,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         std::unordered_set<Instruction*> instrument_ignore;
 
         ContractManagerAnalysis::ContractDatabase* DB;
+        ModuleAnalysisManager* MAM;
 };
 
 } // namespace llvm

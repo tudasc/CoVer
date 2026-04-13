@@ -50,8 +50,9 @@ static cl::opt<std::string> ClInstrumentType(
 
 PreservedAnalyses InstrumentPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
-    DB = &AM.getResult<ContractManagerAnalysis>(M);
-    Basic_Types = AM.getResult<BasicTypesAnalysis>(M);
+    MAM = &AM;
+    DB = &MAM->getResult<ContractManagerAnalysis>(M);
+    Basic_Types = MAM->getResult<BasicTypesAnalysis>(M);
 
     Function* mainF = M.getFunction("main");
     if (!mainF) return PreservedAnalyses::all(); // No point
@@ -583,7 +584,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                         if (cur_argno >= callsite->arg_size() - stringnum) {
                             size_act = size_call = callsite->getParent()->getDataLayout().getTypeAllocSize(actual_param->getType());
                         } else {
-                            if (checkIsStrParam(U)) stringnum++;
+                            if (checkIsStrParam(callsite, cur_argno)) stringnum++;
                             // All parameters are sent as pointers. Need to check exact size using dbg info
                             DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
                             size_act = param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits();
@@ -637,7 +638,8 @@ bool InstrumentPass::isRelevant(Instruction const* I) const {
     return false;
 }
 
-bool InstrumentPass::checkIsStrParam(Value const* V) {
+bool InstrumentPass::checkIsStrParam(CallBase* CB, int idx) {
+    Value const* V  = CB->getArgOperand(idx);
     // We want to check if I is a string param. If so, instrumentation should omit the string size arg
     // Lowered FIR does not make this easy.
     // If its a str var, its just some global, then the str size appended as another (fake) param
@@ -655,6 +657,16 @@ bool InstrumentPass::checkIsStrParam(Value const* V) {
                 StructType const* T = dyn_cast<StructType>(IV2->getType());
                 return T && T->getElementType(0)->isPointerTy() && T->getElementType(1)->isIntegerTy(64);
             }
+        }
+    }
+
+    // If optimization is turned it it will just do load from str -> store.
+    // So first do this, then check if global
+    StoreInst* SI = ContractPassUtility::getLastStore(CB, idx, &MAM->getResult<FunctionAnalysisManagerModuleProxy>(*CB->getModule()).getManager());
+    if (SI && isa<LoadInst>(SI->getValueOperand())) {
+        LoadInst* LI = dyn_cast<LoadInst>(SI->getValueOperand());
+        if (isa<GlobalVariable>(LI->getPointerOperand())) {
+            V = LI->getPointerOperand();
         }
     }
 

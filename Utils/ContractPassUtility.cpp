@@ -52,14 +52,14 @@ const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
     return b;
 }
 
-StoreInst* ContractPassUtility::getLastStore(CallBase* CB, int idx, Instruction* loc, FunctionAnalysisManager* FAM) {
-    MemoryDependenceResults& MDR = FAM->getResult<MemoryDependenceAnalysis>(*loc->getFunction());
-    MemoryLocation Loc = MemoryLocation::getForArgument(CB, idx, FAM->getResult<TargetLibraryAnalysis>(*CB->getFunction()));
-    MemDepResult x = MDR.getPointerDependencyFrom(Loc, true, CB->getIterator(), CB->getParent());
-    if (x.getInst()) {
-        if (StoreInst* S = dyn_cast<StoreInst>(x.getInst())) {
-            return S;
+StoreInst* ContractPassUtility::getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM) {
+    Instruction* cur = CB->getPrevNode();
+    while (cur) {
+        if (isa<CallBase>(cur) && !dyn_cast<CallBase>(cur)->getCalledOperand()->getName().starts_with("PPDCV")) break;
+        if (StoreInst* SI = dyn_cast<StoreInst>(cur)) {
+            if (SI->getPointerOperand() == CB->getArgOperand(idx)) return SI;
         }
+        cur = cur->getPrevNode();
     }
     return nullptr;
 }

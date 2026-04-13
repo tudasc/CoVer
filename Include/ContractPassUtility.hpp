@@ -83,7 +83,7 @@ namespace ContractPassUtility {
     /*
     * Get last storeinst to a call argument, null if it could not be determined
     */
-    StoreInst* getLastStore(CallBase* CB, int idx, Instruction* loc, FunctionAnalysisManager* FAM);
+    StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM);
 };
 
 template<typename T>
