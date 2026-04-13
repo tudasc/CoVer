@@ -71,6 +71,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
 
         // Helpers
         bool checkIsStrParam(CallBase* CB, int idx);
+        Instruction* anyValToPtr(Value** V, Instruction* pos);
 
         // Misc
         bool isC = true;

@@ -411,6 +411,19 @@ GlobalVariable* InstrumentPass::createConstantGlobal(Module& M, Constant* C, std
     return GV;
 }
 
+Instruction* InstrumentPass::anyValToPtr(Value** V, Instruction* pos) {
+    if ((*V)->getType()->isVoidTy()) { *V = Basic_Types.Null_Const; return pos; }
+    if (!(*V)->getType()->isPointerTy()) {
+        if ((*V)->getType()->isFloatingPointTy()) {
+            *V = CastInst::Create(Instruction::CastOps::BitCast, *V, Basic_Types.Int64_Type, "", pos->getIterator());
+        }
+        // Now, actual pointer cast
+        *V = CastInst::Create(Instruction::CastOps::IntToPtr, *V, Basic_Types.Ptr_Type, "", pos->getIterator());
+        return dyn_cast<Instruction>(*V)->getNextNode();
+    }
+    return pos;
+}
+
 void InstrumentPass::createTypes(Module& M) {
     // Operations
     Param_Type = StructType::create(M.getContext(), "CallParam_t");
@@ -553,13 +566,7 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                 int size_act = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
                 params.push_back(Basic_Types.getInt((size_act << 8) | (size_act & 0xFF)));
                 // Store actual parameter, making sure to cast if necessary
-                if (!U->getType()->isPointerTy()) {
-                    if (U->getType()->isFloatingPointTy()) {
-                        actual_param = CastInst::Create(Instruction::CastOps::BitCast, actual_param, Basic_Types.Int_Type, "", callsite->getIterator());
-                    }
-                    // Now, actual pointer cast
-                    actual_param = CastInst::Create(Instruction::CastOps::IntToPtr, actual_param, Basic_Types.Ptr_Type, "", callsite->getIterator());
-                }
+                anyValToPtr(&actual_param, callsite);
             } else {
                 if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
                     DISubprogram const* Dbg = F->getSubprogram();
