@@ -160,10 +160,10 @@ namespace {
                     break;
                 case UNARY_ALLOC:
                     if (isPre) addAnalysis<AllocAnalysis>(form, func_supplier, (AllocOp_t*)form->data);
-                    break; // Normal to have alloc in post, but unused.
+                    break; // Normal to have alloc in post, but only used by the precond "actual check".
                 case UNARY_FREE:
                     if (isPre) DynamicUtils::createMessage("Did not expect freeop in precondition!");
-                    break; // Normal to find free in post, but unused.
+                    break; // Normal to have free in post, but only used by the precond "actual check".
                 default: 
                     DynamicUtils::createMessage("Unknown top-level operation!");
                     break;

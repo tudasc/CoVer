@@ -158,7 +158,7 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
         ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, ret_size == 64 ? &ffi_type_double : getFFIType(ret_size, ret_size >> 16), cif_c.arg_types.data());
         cached_cifs.push_back(cif_c);
     }
-    cif_c.cif.arg_types = cif_c.arg_types.data();
+    cif_c.cif.arg_types = cif_c.arg_types.data(); // Might have been moved, need to keep updated here.
     void* res = nullptr;
     ffi_call(&cif_c.cif, FFI_FN(function), &res, ffi_arg_values_ptr.data());
 
