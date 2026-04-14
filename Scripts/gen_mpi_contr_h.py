@@ -479,6 +479,9 @@ boilerplate_header_c = f"""
 {get_param_values("c")}
 
 #ifdef __cplusplus
+
+void* operator new[](size_t size) CONTRACT(POST {{alloc!(R[0 _arg])}});
+
 extern "C" {{
 #endif
 
