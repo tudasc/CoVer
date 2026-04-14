@@ -24,7 +24,7 @@ set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_VISIBILITY_PRESET hidden)
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY C_VISIBILITY_PRESET hidden)
 set_property(TARGET CoVerDynamicAnalyzer PROPERTY VISIBILITY_INLINES_HIDDEN ON)
 
-target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions -fomit-frame-pointer -fno-stack-protector)
+target_compile_options(CoVerDynamicAnalyzer PUBLIC -fno-rtti -fno-exceptions -fomit-frame-pointer -fno-stack-protector -fno-math-errno -fno-trapping-math)
 target_link_libraries(CoVerDynamicAnalyzer libffi)
 target_include_directories(CoVerDynamicAnalyzer PRIVATE "${FFI_LIBRARIES}")
 
