@@ -36,7 +36,7 @@ namespace {
     };
 
     std::unordered_set<void const*> visitedLocs;
-    
+
     std::filesystem::path const& coverage_prefix = std::getenv("COVER_COVERAGE_FOLDER") ? std::filesystem::path(std::getenv("COVER_COVERAGE_FOLDER")) : std::filesystem::current_path();
 
     std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
