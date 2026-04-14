@@ -478,6 +478,10 @@ boilerplate_header_c = f"""
 
 {get_param_values("c")}
 
+#ifdef __cplusplus
+extern "C" {{
+#endif
+
 void __attribute__((weak)) CoVer_AllocStack(void* ptr) CONTRACT( POST {{ alloc!(0) }}) {{}};
 void __attribute__((weak)) CoVer_FreeStack(void* ptr) CONTRACT( POST {{ free!(0) }}) {{}};
 
@@ -488,6 +492,10 @@ void* calloc(size_t num, size_t size) __THROW CONTRACT( POST {{ alloc!(R[ 0 _arg
 void* malloc(size_t size) __THROW CONTRACT( POST {{ alloc!(R[0 _arg]) }});
 
 void free(void*) __THROW CONTRACT( POST {{ free!(0) }});
+
+#ifdef __cplusplus
+}}
+#endif
 
 """
 
