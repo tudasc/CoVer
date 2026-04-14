@@ -622,25 +622,30 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
 void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I) {
     if (!isRelevant(I) && (isa<LoadInst>(I) || isa<StoreInst>(I)) && ClInstrumentType.starts_with("filtered")) return;
     params.insert(params.begin(), Basic_Types.getBool(isRelevant(I)));
-    CallInst* callbackCI = CallInst::Create(FC, params);
-    callbackCI->setDebugLoc(I->getDebugLoc());
+    CallBase* callbackCB;
+    if (InvokeInst const* II = dyn_cast<InvokeInst>(I)) {
+        callbackCB = InvokeInst::Create(FC, II->getNormalDest(), II->getUnwindDest(), params);
+    } else {
+        callbackCB = CallInst::Create(FC, params);
+    }
+    callbackCB->setDebugLoc(I->getDebugLoc());
     if (CallBase* CB = dyn_cast<CallBase>(I)) {
         Type* OrigRT = CB->getCalledFunction()->getReturnType();
         if (!OrigRT->isPointerTy() && !OrigRT->isVoidTy()) {
-            callbackCI->insertBefore(I->getIterator());
+            callbackCB->insertBefore(I->getIterator());
             if (OrigRT->isIntegerTy()) {
-                CastInst* CI = CastInst::Create(Instruction::PtrToInt, callbackCI, OrigRT);
+                CastInst* CI = CastInst::Create(Instruction::PtrToInt, callbackCB, OrigRT);
                 ReplaceInstWithInst(I, CI);
             } else if (OrigRT->isFloatingPointTy()) {
-                CastInst* CI = CastInst::Create(Instruction::PtrToInt, callbackCI, Basic_Types.Int64_Type, "", I->getIterator());
+                CastInst* CI = CastInst::Create(Instruction::PtrToInt, callbackCB, Basic_Types.Int64_Type, "", I->getIterator());
                 CI = CastInst::Create(Instruction::BitCast, CI, OrigRT);
                 ReplaceInstWithInst(I, CI);
             }
         } else {
-            ReplaceInstWithInst(I, callbackCI);
+            ReplaceInstWithInst(I, callbackCB);
         }
     }
-    else callbackCI->insertBefore(I->getIterator());
+    else callbackCB->insertBefore(I->getIterator());
 }
 
 bool InstrumentPass::isRelevant(Instruction const* I) const {
