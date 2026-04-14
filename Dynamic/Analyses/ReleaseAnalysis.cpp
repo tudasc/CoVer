@@ -53,7 +53,7 @@ CallBacks ReleaseAnalysis::requiredCallbacksImpl() const {
     return {true, false, !rwOp->isWrite, rwOp->isWrite};
 }
 
-Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, bool const isPre, CallsiteInfo const& callsite) {
+Fulfillment ReleaseAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo const& callsite) {
     if (!forbiddenCallsites.empty()) {
         // First, check if release
         for (void const* const& rel_func : rel_funcs) {

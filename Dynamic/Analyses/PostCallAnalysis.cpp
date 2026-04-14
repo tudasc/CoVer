@@ -22,7 +22,7 @@ PostCallAnalysis::PostCallAnalysis(void const* _func_supplier, CallTagOp_t* call
     target_funcs = DynamicUtils::getFunctionsForTag(callop->target_tag);
 }
 
-Fulfillment PostCallAnalysis::functionCBImpl(void* const& func, bool const isPre, CallsiteInfo const& callsite) {
+Fulfillment PostCallAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo const& callsite) {
     for (void const* const& target_func : target_funcs) {
         if (target_func == func) {
             // Target function found, maybe analysis success

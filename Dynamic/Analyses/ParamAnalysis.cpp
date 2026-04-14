@@ -15,7 +15,7 @@ static constexpr int64_t sign_extend(uintptr_t const ptr, int const size) {
     return ptr;
 }
 
-Fulfillment ParamAnalysis::functionCBImpl(void* const& func, bool const isPre, CallsiteInfo const& callsite) {
+Fulfillment ParamAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo const& callsite) {
     if (func != func_supplier) return Fulfillment::UNKNOWN;
 
     void const* act_callp = callsite.params[idx].value;

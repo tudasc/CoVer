@@ -148,7 +148,7 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     va_end(list);
 
     // Run event handlers and remove analysis if done
-    HANDLE_CALLBACK(analyses_with_funcPreCB, onFunctionCall, function, true, callsite);
+    HANDLE_CALLBACK(analyses_with_funcPreCB, onFunctionCallPre, function, callsite);
 
     // Call the intercepted function
     if (!cif_c.func) {
@@ -162,7 +162,7 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
 
     // Run event handlers again for the postCBs, including the newly returned value
     callsite.retval = res;
-    HANDLE_CALLBACK(analyses_with_funcPostCB, onFunctionCall, function, false, callsite);
+    HANDLE_CALLBACK(analyses_with_funcPostCB, onFunctionCallPost, function, callsite);
 
     return res;
 }

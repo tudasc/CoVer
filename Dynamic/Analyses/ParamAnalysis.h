@@ -12,7 +12,8 @@ struct ParamAnalysis : BaseAnalysis<ParamAnalysis> {
             }
         }
 
-        ANALYSIS_PREAMBLE Fulfillment functionCBImpl(void* const& func, bool const isPre, CallsiteInfo const& callsite);
+        ANALYSIS_PREAMBLE Fulfillment functionPreCBImpl(void* const& func, CallsiteInfo const& callsite);
+        ANALYSIS_PREAMBLE Fulfillment functionPostCBImpl(void* const& func, CallsiteInfo const& callsite) { return Fulfillment::UNKNOWN; };
         ANALYSIS_PREAMBLE Fulfillment memoryCBImpl(CodePtr const& location, void const* const& memory, bool const& isWrite) const { return Fulfillment::UNKNOWN; }
         ANALYSIS_PREAMBLE Fulfillment exitCBImpl(CodePtr const& location) const { return Fulfillment::FULFILLED; }; // Evidently none of the callsites were erroneous 
 
