@@ -25,4 +25,4 @@ struct ContractValuePair {
 // Define a name for a constant value
 // Example: CONTRACT_VALUE_PAIR(zero,0)
 #define CONTRACT_VALUE_PAIR(x,y) \
-    ContractValuePair_t MACRO_CONCAT(ContractValueInfo_, __COUNTER__ ) __attribute__((used)) = {#x, (void*)y};
+    static ContractValuePair_t MACRO_CONCAT(ContractValueInfo_, __COUNTER__ ) __attribute__((used)) = {#x, (void*)y};
