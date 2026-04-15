@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 // Stack allocation intrinsics (i.e. for IR allocas)
-void __attribute__((visibility("default"))) CoVer_AllocStack(void const* ptr) {};
+void __attribute__((visibility("default"))) CoVer_AllocStack(void const* ptr, size_t size) {};
 void __attribute__((visibility("default"))) CoVer_FreeStack(void const* ptr) {};
 
 // Global "allocation" intrinsic (i.e. for Global variables or pseudoglobals in fortran)

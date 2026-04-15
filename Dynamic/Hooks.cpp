@@ -133,6 +133,11 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     for (int i = 0; i < num_params; i++) {
         uint32_t param_size = va_arg(list,uint32_t);
         void* param_val = va_arg(list,void*);
+        if (param_size >> 16 & 0b100) {
+            // This is an undefined value. The program must be buggy af
+            // LLVM is sometimes funny and chooses valid ptrs for undef. Need to undermine this.
+            param_val = (void*)0xDEADBEEF;
+        }
         if ((param_size >> 16) & 0b1) {
             // Need to deref value first
             callsite.params.push_back({*(void**)param_val, param_size & 0xFF});   
@@ -140,7 +145,7 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
             callsite.params.push_back({param_val, param_size & 0xFF});
         }
         if (!cif_c.func) {
-            cif_c.arg_types.push_back(getFFIType(param_size >> 8, param_size >> 17));
+            cif_c.arg_types.push_back(getFFIType(param_size >> 8, (param_size >> 16) & 0b10));
         }
         ffi_arg_values_store.push_back(param_val);
         ffi_arg_values_ptr.push_back(&ffi_arg_values_store[i]);
@@ -153,7 +158,7 @@ extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(b
     // Call the intercepted function
     if (!cif_c.func) {
         cif_c.func = function;
-        ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, getFFIType(ret_size, ret_size >> 17), cif_c.arg_types.data());
+        ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, getFFIType(ret_size, (ret_size >> 16) & 0b10), cif_c.arg_types.data());
         cached_cifs.push_back(cif_c);
     }
     cif_c.cif.arg_types = cif_c.arg_types.data(); // Might have been moved, need to keep updated here.

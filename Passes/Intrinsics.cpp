@@ -11,6 +11,7 @@
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Intrinsics.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/PassManager.h>
@@ -32,7 +33,7 @@ PreservedAnalyses IntrinsicsPass::run(Module &M, ModuleAnalysisManager &AM) {
 
 void IntrinsicsPass::createCallees(Module& M) {
     // Get callee for alloca instr
-    FunctionType* FunctionAllocStackType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type}, false);
+    FunctionType* FunctionAllocStackType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int64_Type}, false);
     allocStackCallee = calleeHelper(M, "CoVer_AllocStack", FunctionAllocStackType);
 
     FunctionType* FunctionFreeStackType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type}, false);
@@ -52,23 +53,25 @@ void IntrinsicsPass::createCallees(Module& M) {
 
 void IntrinsicsPass::instrumentIntrinsics(Module& M) {
     // Instrument all allocas
+    Function *FrameAddrIntrin = Intrinsic::getOrInsertDeclaration(&M, Intrinsic::frameaddress, {Basic_Types.Ptr_Type});
+    Function *StackSaveIntrin = Intrinsic::getOrInsertDeclaration(&M, Intrinsic::stacksave, {Basic_Types.Ptr_Type});
     for (Function& F : M) {
-        std::vector<AllocaInst*> stack_vars;
-        for (BasicBlock& BB : F) {
-            for (Instruction& I : BB) {
-                if (AllocaInst* AI = dyn_cast<AllocaInst>(&I)) {
-                    stack_vars.push_back(AI);
-                    CallInst* intrinsicCI = CallInst::Create(allocStackCallee, {AI});
-                    intrinsicCI->setDebugLoc(I.getDebugLoc());
-                    intrinsicCI->insertAfter(AI);
-                }
-            }
-        }
+        if (F.isDeclaration()) continue;
+
+        IRBuilder<> Builder(&*F.getEntryBlock().getFirstNonPHIOrDbgOrAlloca());
+
+        CallInst *BasePtr = Builder.CreateCall(FrameAddrIntrin, {Basic_Types.getInt(0)}, "base_ptr");
+        CallInst *StackPtr = Builder.CreateCall(StackSaveIntrin, {}, "stack_ptr");
+
+        Value *BaseInt = Builder.CreatePtrToInt(BasePtr, Basic_Types.Int64_Type, "base_int");
+        Value *StackInt = Builder.CreatePtrToInt(StackPtr, Basic_Types.Int64_Type, "stack_int");
+
+        Value *StackSize = Builder.CreateSub(BaseInt, StackInt, "stack_size");
+        Builder.CreateCall(allocStackCallee, {StackPtr, StackSize});
+
         EscapeEnumerator EE(F, "", false);
         while (IRBuilder<>* IRB = EE.Next()) {
-            for (AllocaInst* AI : stack_vars) {
-                IRB->CreateCall(freeStackCallee, {AI});
-            }
+            IRB->CreateCall(freeStackCallee, {StackPtr});
         }
     }
 

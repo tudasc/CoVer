@@ -564,7 +564,9 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             // Store size of data type
             if (isC) {
                 int size_act = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
-                params.push_back(Basic_Types.getInt((size_act << 8) | (size_act & 0xFF)));
+                int size_meta = (size_act << 8) | size_act;
+                if (isa<UndefValue>(actual_param)) size_meta |= 0b100 << 16;
+                params.push_back(Basic_Types.getInt(size_meta));
                 // Store actual parameter, making sure to cast if necessary
                 anyValToPtr(&actual_param, callsite);
             } else {

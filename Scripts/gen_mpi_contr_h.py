@@ -485,7 +485,7 @@ void* operator new[](size_t size) CONTRACT(POST {{alloc!(R[0 _arg])}});
 extern "C" {{
 #endif
 
-void __attribute__((weak)) CoVer_AllocStack(void* ptr) CONTRACT( POST {{ alloc!(0) }}) {{}};
+void __attribute__((weak)) CoVer_AllocStack(void* ptr, size_t size) CONTRACT( POST {{ alloc!(0[1 _arg]) }}) {{}};
 void __attribute__((weak)) CoVer_FreeStack(void* ptr) CONTRACT( POST {{ free!(0) }}) {{}};
 
 void __attribute__((weak)) CoVer_RegisterGlobal(void* ptr, int64_t size) CONTRACT( POST {{ alloc!(0[ 1 _arg ]) }}) {{}};
@@ -523,8 +523,9 @@ fortran_lang_intrinsics = """
         end subroutine FortFree
 
         ! CoVer intrinsics
-        subroutine CoVer_AllocStack(ptr) bind(c, name="CoVer_AllocStack")
+        subroutine CoVer_AllocStack(ptr,size) bind(c, name="CoVer_AllocStack")
             integer, pointer :: ptr
+            integer(kind=8) :: size
         end subroutine CoVer_AllocStack
         subroutine CoVer_FreeStack() bind(c, name="CoVer_FreeStack")
         end subroutine CoVer_FreeStack
@@ -533,7 +534,7 @@ fortran_lang_intrinsics = """
     end interface
     call Declare_Contract(FortAlloc, \"POST { alloc!(*0[1 _arg]) }\")
     call Declare_Contract(FortFree, \"POST { free!(0) }\")
-    call Declare_Contract(CoVer_AllocStack, \"POST { alloc!(0) }\")
+    call Declare_Contract(CoVer_AllocStack, \"POST { alloc!(0[1 _arg]) }\")
     call Declare_Contract(CoVer_FreeStack, \"POST { free!(0) }\")
     call Declare_Contract(CoVer_RegisterGlobal, \"POST { alloc!(0) }\")
 """
