@@ -56,7 +56,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
 
     // Annotations done, now add value pairs to database
     for (GlobalVariable& GV : M.globals()) {
-        if (GV.getName().starts_with("ContractValueInfo_")) {
+        if (GV.getName().contains("ContractValueInfo_")) {
             Constant* data = GV.getInitializer();
             StringRef name =  dyn_cast<ConstantDataArray>(dyn_cast<GlobalVariable>(data->getOperand(0))->getInitializer())->getAsCString();
             Value* val = data->getOperand(1);
