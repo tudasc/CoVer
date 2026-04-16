@@ -4,6 +4,7 @@
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/BinaryFormat/Dwarf.h>
 #include <llvm/IR/Analysis.h>
+#include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/DIBuilder.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -57,6 +58,16 @@ void IntrinsicsPass::instrumentIntrinsics(Module& M) {
     Function *StackSaveIntrin = Intrinsic::getOrInsertDeclaration(&M, Intrinsic::stacksave, {Basic_Types.Ptr_Type});
     for (Function& F : M) {
         if (F.isDeclaration()) continue;
+        bool hasAlloca = false;
+        for (BasicBlock const& BB : F) {
+            for (Instruction const& I : BB) {
+                if (isa<AllocaInst>(&I)) {
+                    hasAlloca = true;
+                    break;
+                }
+            }
+        }
+        if (!hasAlloca) continue;
 
         IRBuilder<> Builder(&*F.getEntryBlock().getFirstNonPHIOrDbgOrAlloca());
 
