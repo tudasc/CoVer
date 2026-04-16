@@ -8,6 +8,13 @@
 #include <utility>
 #include <vector>
 
+int vecContains(std::vector<MemOpFunc_t> vec, void* f) {
+    for (int i = 0; i < vec.size(); i++) {
+        if (vec[i].func == f) return i;
+    }
+    return -1;
+}
+
 Fulfillment AllocAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo const& callsite) {
     if (func == func_supplier) {
         uintptr_t ptr = (uintptr_t)callsite.params[idx].value;
@@ -22,10 +29,11 @@ Fulfillment AllocAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo con
 }
 
 Fulfillment AllocAnalysis::functionPostCBImpl(void* const& func, CallsiteInfo const& callsite) {
-    if (mem_allocators.contains(func)) {
-        uintptr_t alloc = (uintptr_t)(mem_allocators[func]->rwOp->idx == 99 ? callsite.retval : callsite.params[mem_allocators[func]->rwOp->idx].value);
-        if (mem_allocators[func]->rwOp->accType == ParamAccess::DEREF) alloc = (uintptr_t)*(void**)alloc;
-        MathExpr_t const* cur = mem_allocators[func]->size;
+    if (int idx = vecContains(mem_allocators, func); idx != -1) {
+        MemOpFunc_t const& memop = mem_allocators[idx];
+        uintptr_t alloc = (uintptr_t)(memop.rwOp->idx == 99 ? callsite.retval : callsite.params[memop.rwOp->idx].value);
+        if (memop.rwOp->accType == ParamAccess::DEREF) alloc = (uintptr_t)*(void**)alloc;
+        MathExpr_t const* cur = memop.size;
         size_t res = cur->isArgValue ? (size_t)callsite.params[cur->value].value : cur->value;
         while (cur->other != nullptr) {
             switch (cur->type) {
@@ -37,11 +45,17 @@ Fulfillment AllocAnalysis::functionPostCBImpl(void* const& func, CallsiteInfo co
             }
             cur = cur->other;
         }
-        allocated[alloc] = res;
+        allocated.push_back({alloc, res});
     }
-    else if (mem_deallocators.contains(func)) {
-        if (mem_deallocators[func]->rwOp->idx == 99) allocated.erase((uintptr_t const)callsite.retval);
-        else allocated.erase((uintptr_t const)callsite.params[mem_deallocators[func]->rwOp->idx].value);
+    else if (int idx = vecContains(mem_deallocators, func); idx != -1) {
+        MemOpFunc_t const& memop = mem_deallocators[idx];
+        uintptr_t const& target = (uintptr_t)(memop.rwOp->idx == 99 ? callsite.retval : callsite.params[memop.rwOp->idx].value);
+        for (int i = 0; i < allocated.size(); i++) {
+            if (target == allocated[i].first) {
+                allocated.erase(allocated.begin() + i);
+                break;
+            }
+        }
     }
     return Fulfillment::UNKNOWN;
 }

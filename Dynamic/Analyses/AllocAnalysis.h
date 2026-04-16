@@ -4,16 +4,15 @@
 #include "DynamicAnalysis.h"
 #include <cstddef>
 #include <cstdint>
-#include <unordered_map>
 
 struct AllocAnalysis : BaseAnalysis<AllocAnalysis> {
     public:
         AllocAnalysis(void const* _func_supplier, AllocOp_t* allocop) : idx(allocop->idx), acc(allocop->accType), func_supplier(_func_supplier) {
             for (int i = 0; i < allocop->num_allocators; i++) {
-                mem_allocators[allocop->allocators[i].func] = &allocop->allocators[i];
+                mem_allocators.push_back(allocop->allocators[i]);
             }
             for (int i = 0; i < allocop->num_deallocators; i++) {
-                mem_deallocators[allocop->deallocators[i].func] = &allocop->deallocators[i];
+                mem_deallocators.push_back(allocop->deallocators[i]);
             }
         }
 
@@ -29,7 +28,7 @@ struct AllocAnalysis : BaseAnalysis<AllocAnalysis> {
         void const* func_supplier;
         int const idx;
         ParamAccess const acc;
-        std::unordered_map<uintptr_t, size_t> allocated;
-        std::unordered_map<void const*, MemOpFunc_t const*> mem_allocators;
-        std::unordered_map<void const*, MemOpFunc_t const*> mem_deallocators;
+        std::vector<std::pair<uintptr_t, size_t>> allocated;
+        std::vector<MemOpFunc_t> mem_allocators;
+        std::vector<MemOpFunc_t> mem_deallocators;
 };
