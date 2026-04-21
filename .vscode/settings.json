@@ -1,0 +1,21 @@
+{
+  "terminal.integrated.profiles.linux": {
+      "CoVer Wrapper Bash": {
+          "path": "bash",
+          "args": [
+              "--init-file",
+              "${workspaceFolder}/.vscode/bash_init.sh"
+          ]
+      }
+  },
+  "terminal.integrated.defaultProfile.linux": "CoVer Wrapper Bash",
+  "cmake.configureArgs": [
+    "-DMPI_HOME=/home/archuser/Desktop/ompi/install",
+    "-DENABLE_TESTS=ON",
+  ],
+  "cmake.testEnvironment": {
+    "COVER_WRAP_TARGET_mpifort": "~/Desktop/ompi/install/bin/mpifort",
+    "COVER_WRAP_TARGET_mpicc": "~/Desktop/ompi/install/bin/mpicc",
+    "COVER_WRAP_TARGET_mpicxx": "~/Desktop/ompi/install/bin/mpicxx",
+  },
+}

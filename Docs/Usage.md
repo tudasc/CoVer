@@ -46,10 +46,6 @@ See the predefined contract sources for examples.
 The predefined contracts can be included simply using the compile wrappers' `--predefined-contracts` option,
 with some limitations. See [language support](LanguageSupport.md) for details.
 
-## Adding Analyses
-
-TODO
-
 ## Runtime Analysis
 
 Runtime analysis depends on the `addr2line` utility.

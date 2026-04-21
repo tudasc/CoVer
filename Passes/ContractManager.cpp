@@ -78,6 +78,7 @@ void ContractManagerAnalysis::extractFromAnnotations(const Module& M) {
 void ContractManagerAnalysis::extractFromFunction(Module& M) {
     std::vector<Function*> to_remove;
     for (Function& F : M) {
+        F.removeFnAttr(Attribute::NoInline);
         if (F.getName().starts_with("contract_definitions_fort")) {
             if (F.isDeclaration()) {
                 errs() << "Contract definition by function body failed, function body not found!\n";
