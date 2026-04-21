@@ -30,6 +30,7 @@ PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
+    MAM = &AM;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
         for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
@@ -65,18 +66,18 @@ void ContractVerifierPreCallPass::appendDebugStr(std::string Target, bool isTag,
     // Generic error message
     err.push_back({
         .error_id = "PreCall",
-        .text = "[ContractVerifierPreCall] Did not find precall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters before "
-                    + demangle(Provider->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
+        .text = "Did not find precall function " + Target + (isTag ? " (Tag)" : "") + " with required parameters before "
+                    + demangle(Provider->getCalledOperand()->getName()) + " at " + ContractPassUtility::getInstrLocStr(Provider),
         .references = {ContractPassUtility::getFileReference(Provider)},
     });
 
     // if (!candidates.empty()) {
     //     // There were candidates, none fit
     //     for (const CallBase* CB : candidates)
-    //         err.push_back("[ContractVerifierPreCall] Unfitting Candidate: " + demangle(CB->getCalledFunction()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
+    //         err.push_back("Unfitting Candidate: " + demangle(CB->getCalledOperand()->getName()) + " at " + ContractPassUtility::getInstrLocStr(CB));
     // } else {
     //     // No candidates at all
-    //     err.push_back("[ContractVerifierPreCall] No candidates were found.");
+    //     err.push_back("No candidates were found.");
     // }
 }
 
@@ -107,7 +108,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
             // Paramcheck is resolved once target found
             return cur;
         }
-        if (CB->getCalledFunction() == Data->F) {
+        if (CB->getCalledOperand() == Data->F) {
             // Found contract supplier. Either paramcheck or error
             if (cur.CurVal != CallStatusVal::PARAMCHECK) {
                 appendDebugStr(Data->Target, Data->isTag, CB, cur.candidate, Data->err);
@@ -116,7 +117,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
             }
             for (CallParam param : Data->reqParams) {
                 for (const CallBase* Candidate : cur.candidate) {
-                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags)) {
+                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags, MAM)) {
                         // Success!
                         cur.CurVal = CallStatusVal::CALLED;
                         return cur;
@@ -138,7 +139,7 @@ std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallP
     std::set<const CallBase*> intersect;
     std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
                  std::inserter(intersect, intersect.begin()));
-    ContractVerifierPreCallPass::CallStatus cs;
+    CallStatus cs;
     cs.candidate = intersect;
     cs.CurVal = std::max(prev.CurVal, cur.CurVal);
     if ((prev.CurVal == CallStatusVal::CALLED || cur.CurVal == CallStatusVal::CALLED) &&
@@ -171,7 +172,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     CallStatusVal res = CallStatusVal::CALLED;
     for (std::pair<const Instruction*, CallStatus> AI : AnalysisInfo) {
         if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
-            if (CB->getCalledFunction() == C.F) {
+            if (CB->getCalledOperand() == C.F) {
                 res = std::max(AI.second.CurVal, res);
             }
         }
