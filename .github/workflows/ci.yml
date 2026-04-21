@@ -10,10 +10,9 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-latest
     env:
-      LLVM_VER: "21"
-      OPENMPI_VER: "5.0.10"
+      LLVM_VER: "22"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: 'recursive'
       - name: Install Dependencies
@@ -28,36 +27,36 @@ jobs:
           echo "/usr/lib/llvm-${{ env.LLVM_VER }}/bin/" >> "$GITHUB_PATH"
       - name: Cache OpenMPI
         id: cache-openmpi
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
-          path: openmpi-${{ env.OPENMPI_VER }}
-          key: ${{ runner.os }}-openmpi-llvm-${{ env.LLVM_VER }}
-      - name: Compile OpenMPI if not cached
+          path: ~/ompi_inst
+          key: ${{ runner.os }}-openmpi-llvm_${{ env.LLVM_VER }}
+      - name: Compile and Install OpenMPI if not cached
         if: steps.cache-openmpi.outputs.cache-hit != 'true'
         run: |
-          wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${{ env.OPENMPI_VER }}.tar.bz2
-          tar xvf openmpi-${{ env.OPENMPI_VER }}.tar.bz2
-          cd openmpi-${{ env.OPENMPI_VER }}
-          ./configure CC=clang CXX=clang++ FC=flang --prefix=/usr
+          git clone --recursive https://github.com/open-mpi/ompi/
+          cd ompi
+          mkdir -p ~/ompi_inst
+          ./autogen.pl
+          ./configure CC=clang CXX=clang++ FC=flang --prefix=$HOME/ompi_inst --with-pmix=internal
           make -j8
-      - name: Install OpenMPI
-        run: |
-          cd openmpi-${{ env.OPENMPI_VER }}
-          sudo make install
+          make install
+      - name: Add OpenMPI to PATH
+        run: echo "$HOME/ompi_inst/bin" >> "$GITHUB_PATH"
       - name: Cache ccache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ccache
-          key: ${{ runner.os }}-llvm-${{ env.LLVM_VER }}-ccache-${{ github.sha }}
+          key: ${{ runner.os }}-llvm_${{ env.LLVM_VER }}-ccache-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-llvm-${{ env.LLVM_VER }}-ccache-
+            ${{ runner.os }}-llvm_${{ env.LLVM_VER }}-ccache-
       - name: CMake configure
         run: |
           export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
           ccache -M 1G
           mkdir build
           cd build
-          cmake .. -DENABLE_TESTS=ON -DCMAKE_PREFIX_PATH=/usr/lib/llvm-${{ env.LLVM_VER }}/ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          cmake .. -DENABLE_TESTS=ON -DCMAKE_PREFIX_PATH=/usr/lib/llvm-${{ env.LLVM_VER }}/ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DMPI_HOME=$HOME/ompi_inst
       - name: Build
         run: |
           export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
@@ -67,7 +66,6 @@ jobs:
       - name: Run CTest
         run: |
           cd build
-          export NO_TS29113=1
           ctest --output-on-failure --output-junit report.xml
       - name: Postprocess JUnit XML
         if: success() || failure() # Run even if tests fail

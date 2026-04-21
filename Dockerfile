@@ -9,12 +9,19 @@ RUN apt-get update \
         zstd \
         git \
         python3 \
+        autoconf \
+        automake \
+        autotools-dev \
+        libtool \
+        flex \
         python3-venv \
         unzip \
         nano \
         libzstd-dev \
         wget \
         lsb-release \
+        pkg-config \
+        libffi-dev \
         software-properties-common \
         libdw-dev \
         openjdk-25-jre openjdk-25-jdk
@@ -22,10 +29,10 @@ RUN apt-get update \
 # Add LLVM Repo
 RUN wget https://apt.llvm.org/llvm.sh
 RUN chmod +x llvm.sh
-RUN ./llvm.sh 21 all
-RUN apt install -y -qq flang-21
-RUN ln -s /usr/lib/llvm-21/build/utils/lit/lit.py /usr/bin/lit
-ENV PATH="/usr/lib/llvm-21/bin:$PATH"
+RUN ./llvm.sh 22 all
+RUN apt install -y -qq flang-22
+RUN ln -s /usr/lib/llvm-22/build/utils/lit/lit.py /usr/bin/lit
+ENV PATH="/usr/lib/llvm-22/bin:$PATH"
 
 ENV CC=clang
 ENV CXX=clang++
@@ -33,12 +40,10 @@ ENV OMPI_CC=$CC
 ENV OMPI_CXX=$CXX
 
 # Compile OpenMPI (Cant use prebuilt as its module files are gfortran specific)
-RUN wget https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-5.0.10.tar.gz
-RUN tar xvf openmpi-5.0.10.tar.gz
-RUN cd openmpi-5.0.10 && ./configure CC=clang CXX=clang++ FC=flang --prefix=/usr
-RUN cd openmpi-5.0.10 && make -j8 install
+RUN git clone --recursive https://github.com/open-mpi/ompi/
+RUN cd ompi && ./autogen.pl && ./configure CC=clang CXX=clang++ FC=flang --prefix=/usr --with-pmix=internal
+RUN cd ompi && make -j8 install
 
-ENV NO_TS29113=1
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
 ENV OMPI_ALLOW_RUN_AS_ROOT_CONFIRM=1
 ENV PMIX_MCA_gds="hash"
