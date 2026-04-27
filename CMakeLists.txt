@@ -224,7 +224,7 @@ set(COVER_INTRINSICS_LIB_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerIntrinsics.a)
 set(DSA_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/DSA.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include")
 
-function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CONTRACT_INCLUDES PREMADE_CONTRACT_SOURCES)
+function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CONTRACT_INCLUDES PREMADE_CONTRACT_SOURCES PASSLIST_PREFIX)
   list(TRANSFORM PREMADE_CONTRACT_INCLUDES PREPEND "${CONTR_INCLUDE_PATH}/" OUTPUT_VARIABLE PREMADE_CONTRACT_INCLUDES)
   list(TRANSFORM PREMADE_CONTRACT_SOURCES PREPEND "${CONTR_INCLUDE_PATH}/" OUTPUT_VARIABLE PREMADE_CONTRACT_SOURCES)
   string(REPLACE ";" "\", \"" PREMADE_CONTRACT_INCLUDES "${PREMADE_CONTRACT_INCLUDES}")
@@ -232,6 +232,7 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   set(COMPILER_WRAP_TARGET "${TARGET_NAME}")
   set(COMPILE_SRC_FILE_ENDINGS "${FILE_ENDINGS}")
   set(EXECUTABLE_WRAPPER_NAME "${WRAPPER_NAME}")
+  set(OPT_PASSLIST_PREFIX "${PASSLIST_PREFIX}")
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CoVerWrapper.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
   add_executable(${WRAPPER_NAME} "${WRAPPER_NAME}.cpp")
   target_link_libraries(${WRAPPER_NAME} LLVM)
@@ -247,10 +248,10 @@ if (MPI_C_FOUND)
   endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
 endif (MPI_C_FOUND)
 
-create_compile_wrapper("CoVerCC" "mpicc" ".*\\\\.c$" "${C_HEADER_FILES}" "")
-create_compile_wrapper("CoVerCXX" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "${C_HEADER_FILES}" "")
-create_compile_wrapper("CoVerFC" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08ts.f90")
-create_compile_wrapper("CoVerFC-no-ts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08.f90")
+create_compile_wrapper("CoVerCC" "mpicc" ".*\\\\.c$" "${C_HEADER_FILES}" "" "")
+create_compile_wrapper("CoVerCXX" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "${C_HEADER_FILES}" "" "")
+create_compile_wrapper("CoVerFC" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08ts.f90" "function(sroa),")
+create_compile_wrapper("CoVerFC-no-ts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08.f90" "function(sroa),")
 
 ##
 ## Testing
