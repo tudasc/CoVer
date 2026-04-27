@@ -51,6 +51,14 @@ const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
     }
     return b;
 }
+Function const* getParentFunction(Value const* V) {
+    if (Instruction const* I = dyn_cast<Instruction>(V))
+        return I->getFunction();
+    if (Argument const* Arg = dyn_cast<Argument>(V))
+        return Arg->getParent();
+    return nullptr;
+}
+
 // Map from function to indirect calls to it, as gotten by annotations
 std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
 
@@ -67,11 +75,11 @@ StoreInst* ContractPassUtility::getLastStore(CallBase* CB, int idx, FunctionAnal
 }
 
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
-    if (!isa<Instruction>(Ip)) return {};
-    std::set<std::pair<const Instruction*,int>> candidates = {{dyn_cast<Instruction>(Ip), 0}};
+    if (!isa<Instruction>(Ip) && !isa<Argument>(Ip)) return {};
+    std::set<std::pair<const Value*,int>> candidates = {{Ip, 0}};
     std::map<const Value*,int> candidatesConsidered;
     while (!candidates.empty()) {
-        const Instruction* I = candidates.begin()->first;
+        const Value* I = candidates.begin()->first;
         int curSteps = candidates.begin()->second;
         candidatesConsidered.insert({candidates.begin()->first, candidates.begin()->second});
         candidates.erase(candidates.begin());
@@ -84,8 +92,24 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
                 I = dyn_cast<Instruction>(ContractPassUtility::betterGetPointerOperand(I));
             }
         }
+        if (const Argument* Arg = dyn_cast<Argument>(I)) {
+            const Function* tmp = Arg->getParent();
+            for (const User* U : tmp->users()) {
+                if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                    // Callsite with correct argument
+                    int offset = 0;
+                    if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "__kmpc_fork_call")
+                        offset = 1;
+                    if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(Arg->getArgNo() + offset))) {
+                        if (!candidatesConsidered.contains(cI)) {
+                            candidates.insert({cI, curSteps});   
+                        }
+                    }
+                }
+            }
+        }
         if (const AllocaInst* AI = dyn_cast<AllocaInst>(I)) {
-            // Possibly a function parameter, check args against storeinst users
+            // Pre-sroa: Possibly a function parameter, check args against storeinst users
             const Function* tmp = AI->getParent()->getParent();
             for (int i = 0; i < tmp->arg_size(); i++) {
                 for (const User* UA : AI->users() ) {
@@ -309,15 +333,13 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     // Only use DSA for Fortran
     if (!isFort) {
         // Resolve function differences.
-        // If one is a global, this does not matter, so check if they are instructions first
-        if (isa<Instruction>(source) && isa<Instruction>(target)) {
-            const Function* Fs = {dyn_cast<Instruction>(source)->getParent()->getParent()};
-            const Function* Ft = {dyn_cast<Instruction>(target)->getParent()->getParent()};
-            if (Fs != Ft) {
-                // Definitely different functions
-                diff = resolveFunctionDifference(&source, &target);
-                if (diff == INT_MAX) return false;
-            }
+        // If one is a global, this does not matter, so check if they have a parent function first
+        const Function* Fs = getParentFunction(source);
+        const Function* Ft = getParentFunction(target);
+        if (Fs && Ft && Fs != Ft) {
+            // Definitely different functions
+            diff = resolveFunctionDifference(&source, &target);
+            if (diff == INT_MAX) return false;
         }
     }
 
