@@ -301,7 +301,7 @@ int main(int argc, const char** argv) {
     execSafe("llvm-link" + bitcode_files + " -o " + tmpfile);
 
     // Call LLVM passes
-    std::string passlist = "function(sroa),instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
+    std::string passlist = "@OPT_PASSLIST_PREFIX@instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
     // ALWAYS FIRST OPT THEN INSTR!
     // Otherwise significant performance loss!
     if (!opt_level.empty()) {
