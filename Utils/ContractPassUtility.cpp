@@ -5,6 +5,7 @@
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Argument.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/GlobalValue.h>
@@ -22,6 +23,7 @@
 #include <string>
 #include <optional>
 #include <sys/types.h>
+#include <utility>
 #include <vector>
 
 #include "dsa/DSNode.h"
@@ -52,6 +54,57 @@ Function const* getParentFunction(Value const* V) {
 // Map from function to indirect calls to it, as gotten by annotations
 std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
 
+std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int curSteps, std::map<const Value*,int> candidatesConsidered) {
+    // First step: Collect the arguments represented by the value
+    std::set<Argument const*> args;
+    if (const Argument* Arg = dyn_cast<Argument>(I)) {
+        args.insert(Arg);
+    }
+    if (const AllocaInst* AI = dyn_cast<AllocaInst>(I)) {
+        // Pre-sroa: Possibly a function parameter, check args against storeinst users
+        const Function* tmp = AI->getFunction();
+        for (const User* UA : AI->users() ) {
+            if (!isa<StoreInst>(UA)) continue;
+            Value const* potentialArg = dyn_cast<StoreInst>(UA)->getValueOperand();
+            if (Argument const* Arg = dyn_cast<Argument>(potentialArg)) {
+                args.insert(Arg);
+                curSteps--;
+                break;
+            }
+        }
+    }
+
+    // Second step: extract callsites and add to candidate list
+    std::set<std::pair<const Value*, int>> candidates;
+    for (Argument const* Arg : args) {
+        Function const* F = Arg->getParent(); 
+        for (const User* U : F->users()) {
+            if (const CallBase* CB = dyn_cast<CallBase>(U)) {
+                if (CB->getCalledOperand() != F) continue;
+                // Callsite with correct argument
+                int offset = 0;
+                if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "__kmpc_fork_call")
+                    offset = 1;
+                if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(Arg->getArgNo() + offset))) {
+                    if (!candidatesConsidered.contains(cI)) {
+                        candidates.insert({cI, curSteps});   
+                    }
+                }
+            }
+        }
+        if (AnnotFuncReverse.contains(F)) {
+            for (CallBase* indirectCall : AnnotFuncReverse[F]) {
+                if (const Instruction* cI = dyn_cast<Instruction>(indirectCall->getArgOperand(Arg->getArgNo()))) {
+                    if (!candidatesConsidered.contains(cI)) {
+                        candidates.insert({cI, curSteps});   
+                    }
+                }
+            }
+        }
+    }
+    return candidates;
+}
+
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
     if (!isa<Instruction>(Ip) && !isa<Argument>(Ip)) return {};
     std::set<std::pair<const Value*,int>> candidates = {{Ip, 0}};
@@ -70,55 +123,8 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
                 I = dyn_cast<Instruction>(ContractPassUtility::betterGetPointerOperand(I));
             }
         }
-        if (const Argument* Arg = dyn_cast<Argument>(I)) {
-            const Function* tmp = Arg->getParent();
-            for (const User* U : tmp->users()) {
-                if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-                    // Callsite with correct argument
-                    int offset = 0;
-                    if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "__kmpc_fork_call")
-                        offset = 1;
-                    if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(Arg->getArgNo() + offset))) {
-                        if (!candidatesConsidered.contains(cI)) {
-                            candidates.insert({cI, curSteps});   
-                        }
-                    }
-                }
-            }
-        }
-        if (const AllocaInst* AI = dyn_cast<AllocaInst>(I)) {
-            // Pre-sroa: Possibly a function parameter, check args against storeinst users
-            const Function* tmp = AI->getParent()->getParent();
-            for (int i = 0; i < tmp->arg_size(); i++) {
-                for (const User* UA : AI->users() ) {
-                    if (!isa<StoreInst>(UA)) continue;
-                    if (tmp->getArg(i) != dyn_cast<StoreInst>(UA)->getValueOperand()) continue;
-                    // Yup, is an argument
-                    for (const User* U : tmp->users()) {
-                        if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-                            // Callsite with correct argument
-                            int offset = 0;
-                            if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "__kmpc_fork_call")
-                                offset = 1;
-                            if (const Instruction* cI = dyn_cast<Instruction>(CB->getArgOperand(i + offset))) {
-                                if (!candidatesConsidered.contains(cI)) {
-                                    candidates.insert({cI, --curSteps});   
-                                }
-                            }
-                        }
-                    }
-                    if (AnnotFuncReverse.contains(tmp)) {
-                        for (CallBase* indirectCall : AnnotFuncReverse[tmp]) {
-                            if (const Instruction* cI = dyn_cast<Instruction>(indirectCall->getArgOperand(i))) {
-                                if (!candidatesConsidered.contains(cI)) {
-                                    candidates.insert({cI, --curSteps});   
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        std::set<std::pair<const Value*,int>> parentFuncCandidates = resolveArgForFuncDiff(I, curSteps, candidatesConsidered);
+        candidates.insert(parentFuncCandidates.begin(), parentFuncCandidates.end());
     }
     return candidatesConsidered;
 }
