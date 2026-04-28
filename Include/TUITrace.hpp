@@ -97,8 +97,8 @@ std::vector<TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* t
             start_loc = ContractPassUtility::getInstrLocStr(cur_trace->loc->getPrevNode(), false); // Second try
         }
         std::string end_loc;
-        if (&*last_entry->loc->getParent()->getParent()->getEntryBlock().begin() == last_entry->loc) // Function begin does not have dbg info, but header does
-            end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc->getParent()->getParent(), false) + " (Function \"" + last_entry->loc->getParent()->getParent()->getName().str() + "\" entrypoint)";
+        if (&*last_entry->loc->getFunction()->getEntryBlock().begin() == last_entry->loc) // Function begin does not have dbg info, but header does
+            end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc->getFunction(), false) + " (Function \"" + last_entry->loc->getFunction()->getName().str() + "\" entrypoint)";
         else
             end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc, false);
         std::string full_line;
