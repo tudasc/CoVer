@@ -138,7 +138,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
                 ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transfer, merge, &data, CallStatus::NOTCALLED);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
-                    if (isa<ReturnInst>(x.first) && x.first->getParent()->getParent()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
+                    if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
                         appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, *Expr.ErrorInfo, x.first);
                         ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierPostCallPass::handleDebug, WLRes, C);
                         WLRes.handleDebug = handleDebug_inst;
