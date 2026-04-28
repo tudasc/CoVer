@@ -2,7 +2,6 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
-#include "TUIManager.hpp"
 #include "ErrorMessage.h"
 
 #include <algorithm>
