@@ -150,7 +150,7 @@ int resolveFunctionDifference(const Value** A, const Value** B) {
             if (isa<Instruction>(Av.first) && isa<Instruction>(Bv.first)) {
                 const Instruction* IAv = dyn_cast<Instruction>(Av.first);
                 const Instruction* IBv = dyn_cast<Instruction>(Bv.first);
-                if (IAv->getParent()->getParent() == IBv->getParent()->getParent()) {
+                if (IAv->getFunction() == IBv->getFunction()) {
                     *A = IAv;
                     *B = IBv;
                     return Av.second - Bv.second;
