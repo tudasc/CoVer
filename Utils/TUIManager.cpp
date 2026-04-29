@@ -199,7 +199,7 @@ bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, st
         std::shared_ptr<ContractExpression> Expr = std::dynamic_pointer_cast<ContractExpression>(Form);
         return Expr->WorklistInfo->handleDebug();
     } else {
-        return ShowContractFormula(Form->Children[selected], title);
+        return ShowContractFormula(Form->Children[--selected], title);
     }
 }
 
