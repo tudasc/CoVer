@@ -315,7 +315,7 @@ int main(int argc, const char** argv) {
     }
     do {
         std::string target_file = std::filesystem::exists("CoVer_reanalyse.ll") ? "CoVer_reanalyse.ll" : tmpfile;
-        execSafe(DebuggerCoVerPlugin + "opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + target_file + " -o " + tmpfile + ".opt");
+        execSafe(DebuggerCoVerPlugin + " opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + target_file + " -o " + tmpfile + ".opt");
     } while (std::filesystem::exists("CoVer_reanalyse.ll"));
     close(fd);
 
