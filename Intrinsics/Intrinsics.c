@@ -3,6 +3,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+// Annotation Interface
+void __attribute__((visibility("default"))) CoVer_AnnotFP(void* ptr, void* func);
+void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* ptr, bool shouldAlias, int group);
+
 // Stack allocation intrinsics (i.e. for IR allocas)
 void __attribute__((visibility("default"))) CoVer_AllocStack(void const* ptr, size_t size) {};
 void __attribute__((visibility("default"))) CoVer_FreeStack(void const* ptr) {};

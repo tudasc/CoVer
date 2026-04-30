@@ -169,6 +169,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     if (isInteractive) {
         bool reanalyse = TUIManager::ResultsScreen(ViolatedContracts);
         if (!reanalyse) std::filesystem::remove("CoVer_reanalyse.ll");
+        else exit(0);
     }
 
     // Write json to file and database
