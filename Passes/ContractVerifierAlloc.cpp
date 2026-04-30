@@ -168,18 +168,18 @@ std::pair<ContractVerifierAllocPass::AllocStatus,bool> ContractVerifierAllocPass
 }
 
 ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocReq(const AllocOperation* AllocOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, Module const& M, const Function* F, std::string& err) {
-    const Function* mainF = M.getFunction("main");
+    Function* mainF = M.getFunction("main");
     if (!mainF) {
         err = "Cannot find main function, cannot construct path to check precall!";
         return AllocStatusVal::ERROR;
     }
-    const Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
+    Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
 
     AllocStatus init;
     IterTypeAlloc data = { {}, {}, AllocOp->contrP, F };
     auto bound_transfer = std::bind(&ContractVerifierAllocPass::transferAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     auto bound_merge = std::bind(&ContractVerifierAllocPass::mergeAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    std::map<const Instruction *, AllocStatus> AnalysisInfo = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, bound_transfer, bound_merge, &data, init);
+    ContractPassUtility::WorklistResult<AllocStatus> WLRes = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, bound_transfer, bound_merge, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
@@ -187,7 +187,7 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     // Take max over all analysis info
     // Correct usage will not contain error
     AllocStatusVal res = AllocStatusVal::ALLOC;
-    for (std::pair<const Instruction*, AllocStatus> AI : AnalysisInfo) {
+    for (std::pair<const Instruction*, AllocStatus> AI : WLRes.AnalysisInfo) {
         if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
             if (CB->getCalledFunction() == F) {
                 res = std::max(AI.second.CurVal, res);

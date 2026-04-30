@@ -13,6 +13,7 @@
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/Support/Casting.h>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -52,6 +53,10 @@ constexpr auto TraceCommands = std::to_array<CmdInfo>({
     {"child",     "[block num] [child num]", "Show different predecessor blocks", 2},
     {"view",      "[source|ir] [block num]", "Present a preview of IR or a source code approximation of a block", 2},
     {"fp-target", "[block num] [instr num]", "Annotate possible function pointer target(s)", 2},
+    {"alias-create", "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5},
+    {"alias-add", "[group num] [block num] [value]", "Add a value to an existing alias group", 3},
+    {"alias-rm", "[group num] [value num]", "Remove a value from an existing alias group (by index in group, see alias-get)", 2},
+    {"alias-get", "", "Get info on current alias annotations", 0},
     {"reanalyse", "",                        "Re-run all analyses (e.g. after adding annotations)", 0},
     {"exit",      "",                        "Exit the debugger", 0},
     {"quit",      "",                        "Exit the debugger", 0},
@@ -172,6 +177,13 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
                 full_trace.insert(full_trace.end(), formatted_lines.begin(), formatted_lines.end());
             }
         }
+
+        // Print current module
+        const llvm::Module* M = trace->loc->getModule();
+        std::error_code rc;
+        llvm::raw_fd_stream reanalyse_file("CoVer_reanalyse.ll", rc);
+        M->print(reanalyse_file, nullptr);
+
         std::string input = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
 
         // Verify input
@@ -190,13 +202,7 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
 
         // Execute command
         if (input == "exit" || input == "quit") return false;
-        if (input == "reanalyse") {
-            const llvm::Module* M = trace->loc->getModule();
-            std::error_code rc;
-            llvm::raw_fd_stream reanalyse_file("CoVer_reanalyse.ll", rc);
-            M->print(reanalyse_file, nullptr);
-            return true;
-        }
+        if (input == "reanalyse") { return true; }
         else if (input == "help") {
             // Show help
             std::vector<ftxui::Element> lines;
@@ -338,6 +344,107 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
                 selected_trace->loc->addAnnotationMetadata(std::format("CoVer_AnnotFP|{}", func));
             }
             last_res = std::format("Added {} possible target(s) to {}.{}", sel_funcs.size(), block, instr);
+        } else if (input.starts_with("alias-create")) {
+            if (args[0] != "yes" && args[0] != "y" && args[0] != "no" && args[0] != "n") {
+                last_res = "Unknown alias type " + args[0];
+                continue;
+            }
+            bool isAlias = args[0].starts_with("y");
+
+            int block1, block2;
+            try {
+                block1 = std::stoi(args[1]);
+                block2 = std::stoi(args[3]);
+            } catch (...) {
+                last_res = "Block Argument(s) are not numbers!";
+                continue;
+            }
+            if (block1 < 0 || block1 >= trace_by_blocks.size() || block2 < 0 || block2 >= trace_by_blocks.size()) {
+                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
+                continue;
+            }
+            Value* V1 = ContractPassUtility::getValueByName(args[2], trace_by_blocks[block1].first_entry->loc->getFunction());
+            Value* V2 = ContractPassUtility::getValueByName(args[4], trace_by_blocks[block2].first_entry->loc->getFunction());
+            if (!V1) {
+                last_res = "Could not identify value " + args[2];
+                continue;
+            }
+            if (!V2) {
+                last_res = "Could not identify value " + args[4];
+                continue;
+            }
+            ContractPassUtility::createAliasGroup(isAlias, V1, V2);
+            last_res = std::format("Values {} and {} {} alias", V1->getNameOrAsOperand(), V2->getNameOrAsOperand(), isAlias ? "should" : "should not");
+        } else if (input.starts_with("alias-add")) {
+            int group;
+            try {
+                group = std::stoi(args[0]);
+            } catch (...) {
+                last_res = "Group Argument is not a number!";
+                continue;
+            }
+            if (!ContractPassUtility::getAliasAnnots().contains(group)) {
+                last_res = "Invalid Alias group! Check existing groups using alias-get";
+                continue;
+            };
+            int block;
+            try {
+                block = std::stoi(args[1]);
+            } catch (...) {
+                last_res = "Block Argument(s) are not numbers!";
+                continue;
+            }
+            if (block < 0 || block >= trace_by_blocks.size()) {
+                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
+                continue;
+            }
+            Value* V = ContractPassUtility::getValueByName(args[2], trace_by_blocks[block].first_entry->loc->getFunction());
+            if (!V) {
+                last_res = "Could not identify value " + args[2];
+                continue;
+            }
+            ContractPassUtility::addToAliasGroup(group, V);
+            last_res = std::format("Values {} added to alias group {}", V->getNameOrAsOperand(), group);
+        } else if (input.starts_with("alias-rm")) {
+            int group;
+            try {
+                group = std::stoi(args[0]);
+            } catch (...) {
+                last_res = "Group Argument is not a number!";
+                continue;
+            }
+            if (!ContractPassUtility::getAliasAnnots().contains(group)) {
+                last_res = "Invalid Alias group! Check existing groups using alias-get";
+                continue;
+            };
+            int idx;
+            try {
+                idx = std::stoi(args[1]);
+            } catch (...) {
+                last_res = "Group Member Index Argument is not a number!";
+                continue;
+            }
+            ContractPassUtility::AliasGroup sel = ContractPassUtility::getAliasAnnots().at(group);
+            if (idx < 0 || idx >= sel.members.size()) {
+                last_res = std::format("Group Member index must be between 0 and {}", sel.members.size());
+                continue;
+            }
+            ContractPassUtility::removeFromAliasGroup(group, idx);
+            last_res = std::format("Removed alias annotation {:>3}.{:0>3}", group, idx);
+        } else if (input.starts_with("alias-get")) {
+            std::map<int, ContractPassUtility::AliasGroup> const AGs = ContractPassUtility::getAliasAnnots();
+            std::vector<ftxui::Element> group_lines;
+            for (std::pair<int, ContractPassUtility::AliasGroup> const& G : AGs) {
+                group_lines.push_back(ftxui::text(std::format("Group {}, {}", G.first, G.second.areAliasing ? "should alias" : "should not alias")));
+                int num = 0;
+                for (Value const* V : G.second.members) {
+                    std::string out;
+                    raw_string_ostream strstream(out);
+                    V->print(strstream);
+                    group_lines.push_back(ftxui::text(std::format("{}.{:0>3} | {}", G.first, num++, out)));
+                }
+            }
+            TUIManager::ShowLines(group_lines, "Current Alias Groups");
         } else {
             last_res = "Unknown command: " + input;
         }

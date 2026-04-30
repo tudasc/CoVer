@@ -1,7 +1,9 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
+#include "../Passes/BasicTypes.hpp"
 #include <climits>
+#include <iterator>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Analysis/MemoryDependenceAnalysis.h>
@@ -12,6 +14,7 @@
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
 #include <llvm/IR/DebugProgramInstruction.h>
+#include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalValue.h>
 #include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
@@ -22,6 +25,7 @@
 #include <llvm/IR/Operator.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
+#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/WithColor.h>
 #include <map>
@@ -40,11 +44,20 @@
 
 using namespace llvm;
 
+// The module to analyse
+Module* curM;
+
+// Basic Types
+BasicTypesAnalysis::BasicTypes Basic_Types;
+
 // To only warn once if a CB is calling an unknown function
 static std::set<const CallBase*> UnknownCalledParam;
 
 // For language-specific stuff
 static bool isFort = false;
+
+// Annotation infos
+std::map<int, ContractPassUtility::AliasGroup> aliasInfo;
 
 const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
     const Value* b = getPointerOperand(V);
@@ -185,8 +198,27 @@ int resolveFunctionDifference(const Value** A, const Value** B) {
 
 namespace ContractPassUtility {
 
-void Initialize(Module& M) {
+std::map<int, AliasGroup> const getAliasAnnots() { return aliasInfo; }
+
+void Initialize(Module& M, ModuleAnalysisManager& MAM) {
+    Basic_Types = MAM.getResult<BasicTypesAnalysis>(M);
+
     isFort = M.getFunction("_QQmain");
+    curM = &M;
+
+    FunctionType* AnnotAliasT = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type}, false);
+    FunctionCallee AnnotAliasCallee = M.getOrInsertFunction("CoVer_AnnotAlias", AnnotAliasT);
+    for (User* U : AnnotAliasCallee.getCallee()->users()) {
+        if (CallBase* CB = dyn_cast<CallBase>(U)) {
+            if (CB->getCalledOperand() == AnnotAliasCallee.getCallee()) {
+                int groupIdx = dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue();
+                if (!aliasInfo.contains(groupIdx)) aliasInfo[groupIdx];
+                aliasInfo[groupIdx].areAliasing = dyn_cast<ConstantInt>(CB->getArgOperand(1))->getZExtValue();
+                #warning TODO need to get actual value here maybe
+                aliasInfo[groupIdx].members.insert(CB->getArgOperand(0));
+            }
+        }
+    }
 }
 
 std::optional<uint> getLineNumber(const Instruction* I) {
@@ -336,6 +368,13 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         return false;
     }
 
+    // Annotated infos
+    for (std::pair<int, AliasGroup> AG : aliasInfo) {
+        if (AG.second.members.contains(source) && AG.second.members.contains(target)) {
+            return AG.second.areAliasing;
+        }
+    }
+
     // Only use DSA for Fortran
     if (!isFort) {
         // Resolve function differences.
@@ -427,6 +466,63 @@ bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const
         return checkParamMatch(sourceParam, candidateParam, P.contrParamAccess, MAM);
     }
     return false;
+}
+
+Value* getValueByName(std::string name, Function* F) {
+    if (name.empty()) return nullptr;
+    if (name.starts_with("%")) {
+        if (F && !F->isDeclaration()) {
+            // Try instructions first
+            for (BasicBlock& BB : *F) {
+                for (Instruction& I : BB) {
+                    if (I.getNameOrAsOperand() == name || "%" + I.getNameOrAsOperand() == name) {
+                        return &I;
+                    }
+                }
+            }
+        }
+    }
+    return F->getParent()->getNamedValue(name.substr(1));
+}
+
+void createAliasGroup(bool shouldAlias, Value* V1, Value* V2) {
+    aliasInfo[aliasInfo.empty() ? 0 : aliasInfo.rbegin()->first + 1] = {{V1, V2}, shouldAlias};
+    FunctionType* AnnotAliasT = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type}, false);
+    FunctionCallee AnnotAliasCallee = curM->getOrInsertFunction("CoVer_AnnotAlias", AnnotAliasT);
+    for (Value* V : {V1, V2}) {
+        if (Instruction* I = dyn_cast<Instruction>(V)) {
+            CallInst* CI = CallInst::Create(AnnotAliasCallee, {I, Basic_Types.getBool(shouldAlias), Basic_Types.getInt(aliasInfo.rbegin()->first)});
+            CI->insertAfter(I);
+        }
+    }
+}
+
+void addToAliasGroup(int idx, Value* V) {
+    if (aliasInfo[idx].members.contains(V)) return; // Need to do early return to not double-instrument
+    aliasInfo[idx].members.insert(V);
+    FunctionType* AnnotAliasT = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type}, false);
+    FunctionCallee AnnotAliasCallee = curM->getOrInsertFunction("CoVer_AnnotAlias", AnnotAliasT);
+    if (Instruction* I = dyn_cast<Instruction>(V)) {
+        CallInst* CI = CallInst::Create(AnnotAliasCallee, {I, Basic_Types.getBool(aliasInfo[idx].areAliasing), Basic_Types.getInt(idx)});
+        CI->insertAfter(I);
+    }
+}
+void removeFromAliasGroup(int group, int idx) {
+    errs() << group << " " << idx << "\n";
+    Value* V = *std::next(aliasInfo[idx].members.begin(), idx);
+    aliasInfo[idx].members.erase(V);
+    if (Instruction* I = dyn_cast<Instruction>(V)) {
+        for (Instruction* cur = I->getNextNode(); cur && isa<CallBase>(cur); cur = cur->getNextNode()) {
+            CallBase* CB = dyn_cast<CallBase>(cur);
+            if (CB->getCalledOperand()->getName().starts_with("CoVer_AnnotAlias")) {
+                if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() == idx) {
+                    CB->eraseFromParent();
+                    break;
+                }
+            }
+        }
+    }
+    if (aliasInfo[idx].members.empty()) aliasInfo.erase(idx);
 }
 
 }

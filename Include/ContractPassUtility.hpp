@@ -35,7 +35,7 @@ using namespace llvm;
 
 namespace ContractPassUtility {
     // Called automatically by ContractManager
-    void Initialize(Module& M);
+    void Initialize(Module& M, ModuleAnalysisManager& MAM);
 
     template<typename T>
     using TransferFunction = std::function<T(T,const Instruction*,void*)>;
@@ -115,11 +115,40 @@ namespace ContractPassUtility {
     * Get last storeinst to a call argument, null if it could not be determined
     */
     StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM);
-    
+
     /*
     * Get annotations used by CoVer
     */
     std::vector<std::string> getCoVerAnnotations(Instruction* I);
+
+    /*
+    * Get a value from its name, where F is the parent function if it exists
+    */
+    Value* getValueByName(std::string name, Function* F);
+
+    /*
+    * Holds info on annotated alias groups
+    */
+    struct AliasGroup {
+        std::set<Value*, std::less<>> members;
+        bool areAliasing;
+    };
+
+    /*
+    * Annotate whether two values should alias or not
+    */
+    void createAliasGroup(bool shouldAlias, Value* V1, Value* V2);
+
+    /*
+    * Add or remove from an existing alias group
+    */
+    void addToAliasGroup(int idx, Value* V);
+    void removeFromAliasGroup(int group, int idx);
+
+    /*
+    * Get alias info
+    */
+    std::map<int, AliasGroup> const getAliasAnnots();
 };
 
 extern std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
