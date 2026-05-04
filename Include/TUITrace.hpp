@@ -1,24 +1,11 @@
 #pragma once
 
 #include <algorithm>
-#include <filesystem>
-#include <format>
-#include <ftxui/component/component.hpp>
-#include <ftxui/component/component_options.hpp>
 #include <ftxui/component/screen_interactive.hpp>
-#include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Metadata.h>
-#include <llvm/Support/Casting.h>
-#include <map>
-#include <set>
-#include <string>
 #include <vector>
 #include "ContractPassUtility.hpp"
-#include "TUIManager.hpp"
+#include "TUICmds.hpp"
 
 namespace TUITrace {
 
@@ -28,40 +15,24 @@ using JumpTraceEntry = ContractPassUtility::JumpTraceEntry<T>;
 template<typename T>
 using TraceDB = ContractPassUtility::TraceDB<T>;
 
-using TraceKind = ContractPassUtility::TraceKind;
-
 template<typename T>
-struct TraceBlock {
-    std::string trace_list;
-    JumpTraceEntry<T>* first_entry;
-    JumpTraceEntry<T>* last_entry;
-};
-
-struct CmdInfo {
-    std::string_view name;
-    std::string_view usage;
-    std::string_view helptext;
-    int num_params;
-};
-
-bool verifyInputArgs(std::string_view const& usage, std::string_view const& input, std::vector<std::string>& args, int const& num_inputs);
-std::string traceKindToStr(TraceKind kind);
-
-constexpr auto TraceCommands = std::to_array<CmdInfo>({
-    {"collapse",  "[block num]",             "Hide IR for block, making it unavailable for annotation", 1},
-    {"expand",    "[block num]",             "Show IR for block, and make available for annotation", 1},
-    {"child",     "[block num] [child num]", "Show different predecessor blocks", 2},
-    {"view",      "[source|ir] [block num]", "Present a preview of IR or a source code approximation of a block", 2},
-    {"fp-target", "[block num] [instr num]", "Annotate possible function pointer target(s)", 2},
-    {"alias-create", "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5},
-    {"alias-add", "[group num] [block num] [value]", "Add a value to an existing alias group", 3},
-    {"alias-rm", "[group num] [value num]", "Remove a value from an existing alias group (by index in group, see alias-get)", 2},
-    {"alias-get", "", "Get info on current alias annotations", 0},
-    {"reanalyse", "",                        "Re-run all analyses (e.g. after adding annotations)", 0},
-    {"exit",      "",                        "Exit the debugger", 0},
-    {"quit",      "",                        "Exit the debugger", 0},
-    {"help",      "",                        "Show this help text", 0},
-});
+std::vector<CmdInfo<T>> GetTraceCommands() {
+    return {
+        {"collapse",      "[block num]",                                              "Hide IR for block, making it unavailable for annotation", 1, CmdCollapse<T>},
+        {"expand",        "[block num]",                                              "Show IR for block, and make available for annotation", 1, CmdExpand<T>},
+        {"child",         "[block num] [child num]",                                  "Show different predecessor blocks", 2, CmdChild<T>},
+        {"view",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdView<T>},
+        {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdFpTarget<T>},
+        {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAliasCreate<T>},
+        {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAliasAdd<T>},
+        {"alias-rm",      "[group num] [value num]",                                  "Remove a value from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
+        {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet<T>},
+        {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
+        {"exit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
+        {"quit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
+        {"help",          "",                                                         "Show this help text", 0, CmdHelp<T>},
+    };
+}
 
 template<typename T>
 std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::function<std::string(T)> infoToStr) {
@@ -80,12 +51,11 @@ std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::functio
 template<typename T>
 JumpTraceEntry<T>* getLinearTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, int& siblings) {
     JumpTraceEntry<T>* cur_trace = trace;
-    std::vector<std::string> trace_lines;
     siblings = 0;
     do {
         siblings = cur_trace->predecessors.size();
         if (siblings == 1) cur_trace = cur_trace->predecessors[0];
-    } while  (siblings == 1 && (cur_trace->kind != TraceKind::FUNCEXIT && cur_trace->kind != TraceKind::FUNCENTRY)); // Always show funcentry
+    } while (siblings == 1 && (cur_trace->kind != TraceKind::FUNCEXIT && cur_trace->kind != TraceKind::FUNCENTRY)); // Always show funcentry
     return cur_trace;
 }
 
@@ -147,10 +117,7 @@ template<typename T>
 void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
     std::vector<std::string> lines = getBlockLines(block, transToSource, infoToStr);
     std::vector<ftxui::Element> elems;
-    for (std::string line : lines) {
-        elems.push_back(ftxui::text(line));
-    }
-
+    for (std::string line : lines) elems.push_back(ftxui::text(line));
     std::string title = "Block Preview";
     if (transToSource) title += ", Source Approx.";
     else title += ", LLVM IR";
@@ -186,11 +153,12 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
 
         std::string input = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
 
-        // Verify input
-        auto used_cmd = std::find_if(TraceCommands.begin(), TraceCommands.end(), [&](CmdInfo const& cmd){
+        // Get command and verify input sizing
+        std::vector<CmdInfo<T>> commands = GetTraceCommands<T>();
+        auto used_cmd = std::find_if(commands.begin(), commands.end(), [&](CmdInfo<T> const& cmd){
             return input.starts_with(cmd.name);
         });
-        if (used_cmd == TraceCommands.end()) {
+        if (used_cmd == commands.end()) {
             last_res = "Unknown command: " + input;
             continue;
         }
@@ -200,255 +168,11 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             continue;
         }
 
-        // Execute command
-        if (input == "exit" || input == "quit") return false;
-        if (input == "reanalyse") { return true; }
-        else if (input == "help") {
-            // Show help
-            std::vector<ftxui::Element> lines;
-            lines = {
-                ftxui::text("Trace debug menu"),
-                ftxui::text(""),
-                ftxui::text("Commands:"),
-            };
-            for (CmdInfo const& cmd : TraceCommands) {
-                lines.push_back(ftxui::text(std::format("    {} {}", cmd.name, cmd.usage)));
-                lines.push_back(ftxui::text(std::format("        {}", cmd.helptext)));
-            }
-            TUIManager::ShowLines(lines, "Worklist Trace Help Menu");
-        } else if (input.starts_with("child")) {
-            int block, child;
-            try {
-                block = std::stoi(args[0]);
-                child = std::stoi(args[1]);
-            } catch (...) {
-                last_res = "Argument(s) are not numbers!";
-                continue;
-            }
-            if (block < 0 || block >= trace_by_blocks.size() - 1) {
-                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 2);
-                continue;
-            }
-            TraceBlock<T> selected_block = trace_by_blocks[block];
-            if (child < 0 || child >= selected_block.last_entry->predecessors.size()) { // Exclude last, because that one does not have preds
-                last_res = "Invalid child number! Must be between 0 and " + std::to_string(selected_block.last_entry->predecessors.size() - 1);
-                continue;
-            }
-            last_res = "Switching child view for block " + std::to_string(block) + " to child " + std::to_string(child);
-            sibling_select[selected_block.last_entry] = child;
-        } else if (input.starts_with("view")) {
-            if (args[0] != "source" && args[0] != "ir") {
-                last_res = "Unknown source representation: " + args[0];
-                continue;
-            }
-            int block;
-            try {
-                block = std::stoi(args[1]);
-            } catch (...) {
-                last_res = "Second Argument not a number!";
-                continue;
-            }
-            if (block < 0 || block >= trace_by_blocks.size()) {
-                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
-                continue;
-            }
-            last_res = "";
-            TraceBlock<T> selected_block = trace_by_blocks[block];
-            ShowBlock(selected_block, args[0] == "source", infoToStr);
-        } else if (input.starts_with("expand")) {
-            int block;
-            try {
-                block = std::stoi(args[0]);
-            } catch (...) {
-                last_res = "Argument is not a number!";
-                continue;
-            }
-            if (block < 0 || block >= trace_by_blocks.size()) {
-                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
-                continue;
-            }
-            last_res = "Expanding block " + std::to_string(block);
-            expand_select[trace_by_blocks[block].last_entry] = true;
-        } else if (input.starts_with("collapse")) {
-            int block;
-            try {
-                block = std::stoi(args[0]);
-            } catch (...) {
-                last_res = "Argument is not a number!";
-                continue;
-            }
-            if (block < 0 || block >= trace_by_blocks.size()) {
-                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
-                continue;
-            }
-            last_res = "Collapsing block " + std::to_string(block);
-            expand_select[trace_by_blocks[block].last_entry] = false;
-        } else if (input.starts_with("fp-target")) {
-            int block, instr;
-            try {
-                block = std::stoi(args[0]);
-                instr = std::stoi(args[1]);
-            } catch (...) {
-                last_res = "Argument(s) are not numbers!";
-                continue;
-            }
-            if (block < 0 || block >= trace_by_blocks.size()) {
-                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
-                continue;
-            }
-            std::vector<ftxui::Element> elem;
-            int count = 0;
-            JumpTraceEntry<T>* selected_trace = nullptr;
-            JumpTraceEntry<T>* cur_trace = trace_by_blocks[block].first_entry;
-            for (JumpTraceEntry<T>* cur_trace = trace_by_blocks[block].first_entry;; cur_trace = cur_trace->predecessors[0]) {
-                if (count == instr) {
-                    selected_trace = cur_trace;
-                    break;
-                }
-                if (cur_trace == trace_by_blocks[block].last_entry) break;
-                count++;
-            }
-            if (selected_trace == nullptr) {
-                last_res = "No such instruction!";
-                continue;
-            }
-            if (!isa<CallBase>(selected_trace->loc) || !dyn_cast<CallBase>(selected_trace->loc)->isIndirectCall()) {
-                last_res = "Instruction is not an indirect function call!";
-                continue;
-            }
-            std::vector<std::string> funcs;
-            Module* M = selected_trace->loc->getModule();
-            for (Function const& F : M->functions()) {
-                funcs.push_back(F.getName().str());
-            }
-            std::vector<std::string> existing_annots = ContractPassUtility::getCoVerAnnotations(selected_trace->loc);
-            std::set<std::string> previously_selected;
-            for (std::string annot : existing_annots) {
-                if (annot.starts_with("CoVer_AnnotFP")) {
-                    previously_selected.insert(annot.substr(annot.find("|") + 1));
-                }
-            }
-            std::vector<std::string> sel_funcs = TUIManager::RenderMultiMenu(funcs, "Select Function Target", previously_selected);
-            selected_trace->loc->eraseMetadataIf([](uint kind, MDNode* node) {
-                if (kind != LLVMContext::MD_annotation) return false;
-                MDTuple* Tuple = cast<MDTuple>(node);
-                for (MDOperand const& N : Tuple->operands()) {
-                    if (isa<MDString>(N.get())) {
-                        std::string annot = cast<MDString>(N.get())->getString().str();
-                        if (annot.starts_with("CoVer_AnnotFP")) return true;
-                    }
-                }
-                return false;
-            });
-            for (std::string func : sel_funcs) {
-                selected_trace->loc->addAnnotationMetadata(std::format("CoVer_AnnotFP|{}", func));
-            }
-            last_res = std::format("Added {} possible target(s) to {}.{}", sel_funcs.size(), block, instr);
-        } else if (input.starts_with("alias-create")) {
-            if (args[0] != "yes" && args[0] != "y" && args[0] != "no" && args[0] != "n") {
-                last_res = "Unknown alias type " + args[0];
-                continue;
-            }
-            bool isAlias = args[0].starts_with("y");
-
-            int block1, block2;
-            try {
-                block1 = std::stoi(args[1]);
-                block2 = std::stoi(args[3]);
-            } catch (...) {
-                last_res = "Block Argument(s) are not numbers!";
-                continue;
-            }
-            if (block1 < 0 || block1 >= trace_by_blocks.size() || block2 < 0 || block2 >= trace_by_blocks.size()) {
-                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
-                continue;
-            }
-            Value* V1 = ContractPassUtility::getValueByName(args[2], trace_by_blocks[block1].first_entry->loc->getFunction());
-            Value* V2 = ContractPassUtility::getValueByName(args[4], trace_by_blocks[block2].first_entry->loc->getFunction());
-            if (!V1) {
-                last_res = "Could not identify value " + args[2];
-                continue;
-            }
-            if (!V2) {
-                last_res = "Could not identify value " + args[4];
-                continue;
-            }
-            ContractPassUtility::createAliasGroup(isAlias, V1, V2);
-            last_res = std::format("Values {} and {} {} alias", V1->getNameOrAsOperand(), V2->getNameOrAsOperand(), isAlias ? "should" : "should not");
-        } else if (input.starts_with("alias-add")) {
-            int group;
-            try {
-                group = std::stoi(args[0]);
-            } catch (...) {
-                last_res = "Group Argument is not a number!";
-                continue;
-            }
-            if (!ContractPassUtility::getAliasAnnots().contains(group)) {
-                last_res = "Invalid Alias group! Check existing groups using alias-get";
-                continue;
-            };
-            int block;
-            try {
-                block = std::stoi(args[1]);
-            } catch (...) {
-                last_res = "Block Argument(s) are not numbers!";
-                continue;
-            }
-            if (block < 0 || block >= trace_by_blocks.size()) {
-                last_res = "Invalid block number! Must be between 0 and " + std::to_string(trace_by_blocks.size() - 1);
-                continue;
-            }
-            Value* V = ContractPassUtility::getValueByName(args[2], trace_by_blocks[block].first_entry->loc->getFunction());
-            if (!V) {
-                last_res = "Could not identify value " + args[2];
-                continue;
-            }
-            ContractPassUtility::addToAliasGroup(group, V);
-            last_res = std::format("Values {} added to alias group {}", V->getNameOrAsOperand(), group);
-        } else if (input.starts_with("alias-rm")) {
-            int group;
-            try {
-                group = std::stoi(args[0]);
-            } catch (...) {
-                last_res = "Group Argument is not a number!";
-                continue;
-            }
-            if (!ContractPassUtility::getAliasAnnots().contains(group)) {
-                last_res = "Invalid Alias group! Check existing groups using alias-get";
-                continue;
-            };
-            int idx;
-            try {
-                idx = std::stoi(args[1]);
-            } catch (...) {
-                last_res = "Group Member Index Argument is not a number!";
-                continue;
-            }
-            ContractPassUtility::AliasGroup sel = ContractPassUtility::getAliasAnnots().at(group);
-            if (idx < 0 || idx >= sel.members.size()) {
-                last_res = std::format("Group Member index must be between 0 and {}", sel.members.size());
-                continue;
-            }
-            ContractPassUtility::removeFromAliasGroup(group, idx);
-            last_res = std::format("Removed alias annotation {:>3}.{:0>3}", group, idx);
-        } else if (input.starts_with("alias-get")) {
-            std::map<int, ContractPassUtility::AliasGroup> const AGs = ContractPassUtility::getAliasAnnots();
-            std::vector<ftxui::Element> group_lines;
-            for (std::pair<int, ContractPassUtility::AliasGroup> const& G : AGs) {
-                group_lines.push_back(ftxui::text(std::format("Group {}, {}", G.first, G.second.areAliasing ? "should alias" : "should not alias")));
-                int num = 0;
-                for (Value const* V : G.second.members) {
-                    std::string out;
-                    raw_string_ostream strstream(out);
-                    V->print(strstream);
-                    group_lines.push_back(ftxui::text(std::format("{}.{:0>3} | {}", G.first, num++, out)));
-                }
-            }
-            TUIManager::ShowLines(group_lines, "Current Alias Groups");
-        } else {
-            last_res = "Unknown command: " + input;
-        }
+        // Run command
+        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, infoToStr};
+        CmdResult result = used_cmd->handler(args, ctx, last_res);
+        if (result.has_value()) return result.value();
     }
 }
 
-}
+} // namespace TUITrace
