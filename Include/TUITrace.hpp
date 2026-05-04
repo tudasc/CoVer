@@ -1,11 +1,12 @@
 #pragma once
 
-#include <algorithm>
+#include <filesystem>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/screen/color.hpp>
 #include <vector>
 #include "ContractPassUtility.hpp"
-#include "TUICmds.hpp"
+#include "TUIManager.hpp"
+#include "TUITraceTypes.hpp"
 
 namespace TUITrace {
 
@@ -14,25 +15,6 @@ using JumpTraceEntry = ContractPassUtility::JumpTraceEntry<T>;
 
 template<typename T>
 using TraceDB = ContractPassUtility::TraceDB<T>;
-
-template<typename T>
-std::vector<CmdInfo<T>> GetTraceCommands() {
-    return {
-        {"collapse",      "[block num]",                                              "Hide IR for block, making it unavailable for annotation", 1, CmdCollapse<T>},
-        {"expand",        "[block num]",                                              "Show IR for block, and make available for annotation", 1, CmdExpand<T>},
-        {"child",         "[block num] [child num]",                                  "Show different predecessor blocks", 2, CmdChild<T>},
-        {"view",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdView<T>},
-        {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdFpTarget<T>},
-        {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAliasCreate<T>},
-        {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAliasAdd<T>},
-        {"alias-rm",      "[group num] [value num]",                                  "Remove a value from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
-        {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet<T>},
-        {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
-        {"exit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
-        {"quit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
-        {"help",          "",                                                         "Show this help text", 0, CmdHelp<T>},
-    };
-}
 
 template<typename T>
 std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::function<std::string(T)> infoToStr) {
@@ -126,6 +108,7 @@ void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::strin
 
 template<typename T>
 bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
+    std::vector<std::pair<std::string, CmdResult>> input_history;
     std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::map<JumpTraceEntry<T>*,bool> expand_select;
     std::string last_res = "";
@@ -151,27 +134,14 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
         llvm::raw_fd_stream reanalyse_file("CoVer_reanalyse.ll", rc);
         M->print(reanalyse_file, nullptr);
 
-        std::string input = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
+        std::string input_command = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
 
-        // Get command and verify input sizing
-        std::vector<CmdInfo<T>> commands = GetTraceCommands<T>();
-        auto used_cmd = std::find_if(commands.begin(), commands.end(), [&](CmdInfo<T> const& cmd){
-            return input.starts_with(cmd.name);
-        });
-        if (used_cmd == commands.end()) {
-            last_res = "Unknown command: " + input;
-            continue;
-        }
-        std::vector<std::string> args;
-        if (!verifyInputArgs(used_cmd->name, input, args, used_cmd->num_params)) {
-            last_res = std::format("Invalid syntax. Usage: {} {}", used_cmd->name, used_cmd->usage);
-            continue;
-        }
+        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, input_history, infoToStr};
+        CmdResult res = ExecuteTUICommand(input_command, ctx);
+        last_res = res.res;
 
-        // Run command
-        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, infoToStr};
-        CmdResult result = used_cmd->handler(args, ctx, last_res);
-        if (result.has_value()) return result.value();
+        if (res.code == CmdResultCode::SUCCESS_EXIT) return false;
+        if (res.code == CmdResultCode::SUCCESS_REANALYSE) return true;
     }
 }
 
