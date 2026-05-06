@@ -188,14 +188,9 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
         return {*contrF->Status, *contrF->Status == Fulfillment::FULFILLED ? std::nullopt : contrF->Message};
     }
     std::vector<Fulfillment> fs;
-    std::optional<std::string> outStr = contrF->Message->text;
     std::optional<ErrorMessage> outMsg = contrF->Message;
     for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
         std::pair<Fulfillment,std::optional<ErrorMessage>> children = resolveFormula(Form);
-        if (children.second) {
-            if (!outStr) outStr = "";
-            *outStr += ", " + children.second->text;
-        }
         fs.push_back(children.first);
     }
     switch (contrF->type) {
