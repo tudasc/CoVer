@@ -632,7 +632,7 @@ void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> pa
     }
     callbackCB->setDebugLoc(I->getDebugLoc());
     if (CallBase* CB = dyn_cast<CallBase>(I)) {
-        Type* OrigRT = CB->getCalledFunction()->getReturnType();
+        Type* OrigRT = ((Function*)CB->getCalledOperand())->getReturnType();
         if (!OrigRT->isPointerTy() && !OrigRT->isVoidTy()) {
             callbackCB->insertBefore(I->getIterator());
             if (OrigRT->isIntegerTy()) {
