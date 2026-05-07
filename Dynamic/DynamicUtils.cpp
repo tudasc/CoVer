@@ -134,7 +134,6 @@ namespace DynamicUtils {
         if (!dladdr(location, &info)) {
             return std::nullopt;
         }
-        intptr_t resolvedLocation = (intptr_t)location;
         if ((intptr_t)info.dli_fbase != (intptr_t)0x400000) {
             // if the filebase is not 0x400000, we have an VMA offset that we have to subtract
             // otherwise, it is a PIE so we can just use the codePtr
