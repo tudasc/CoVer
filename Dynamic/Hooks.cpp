@@ -29,7 +29,7 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
             for (int i = 0; i < DB->num_references; i++)
                 relevantLocs.insert(&DB->references[i]);
             std::vector<std::pair<std::string, void*>> coverageVisited;
-            for (std::filesystem::path const& entry : coverage_prefix) {
+            for (std::filesystem::path const& entry : std::filesystem::directory_iterator(coverage_prefix)) {
                 if (entry.filename().string().starts_with("CoVerCoverage")) {
                     DynamicUtils::out() << "Reading coverage file " << entry.filename() << "...\n";
                     std::ifstream coverage_file(entry);
