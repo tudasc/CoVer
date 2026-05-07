@@ -8,7 +8,6 @@ add_library(CoVerDynamicAnalyzer STATIC
   DynamicUtils.cpp
 )
 
-set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_STANDARD 20)
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD OFF)
 else()
