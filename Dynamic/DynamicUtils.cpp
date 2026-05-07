@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <dlfcn.h>
+#include <format>
 #include <ios>
 #include <iostream>
 #include <optional>
@@ -119,14 +120,21 @@ namespace DynamicUtils {
     std::string getFileRefStr(std::string file, void const* parsed_loc) {
         std::stringstream exec_cmd;
 #ifdef CMAKE_ADDR2LINE
-        exec_cmd << CMAKE_ADDR2LINE " -e " << file << " " << std::hex << parsed_loc;
-        std::string result = exec(exec_cmd.str());
-        result.pop_back();
+        constexpr int SCAN_RANGE = 64;
+        for (int i = 0; i <= SCAN_RANGE; i++) {
+            std::string scan_cmd = std::format("{} -e {} {:x}", CMAKE_ADDR2LINE, file, (uintptr_t)parsed_loc - i);
+            std::string scan_results = exec(scan_cmd);
+            scan_results.pop_back();
+            if (!scan_results.empty() && !scan_results.ends_with(":?") && !scan_results.ends_with(":0")) {
+                return scan_results;
+            }
+        }
+        return "";
 #else
         exec_cmd << file << std::hex << "[" << parsed_loc << "] (Cannot resolve: No addr2line support configured)\n";
         std::string result = exec_cmd.str();
-#endif
         return result;
+#endif
     }
 
     std::optional<std::pair<std::string, void const*>> getDLInfo(void const* location) {
