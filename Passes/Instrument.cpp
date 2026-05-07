@@ -419,6 +419,7 @@ Instruction* InstrumentPass::anyValToPtr(Value** V, Instruction* pos) {
         }
         // Now, actual pointer cast
         *V = CastInst::Create(Instruction::CastOps::IntToPtr, *V, Basic_Types.Ptr_Type, "", pos->getIterator());
+        dyn_cast<CastInst>(*V)->setDebugLoc(pos->getDebugLoc());
         return dyn_cast<Instruction>(*V)->getNextNode();
     }
     return pos;
