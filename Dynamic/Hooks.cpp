@@ -53,7 +53,10 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
             }
             if (!relevantLocs.empty()) {
                 DynamicUtils::out() << "Coverage error detected!\n";
+                std::unordered_set<std::string> reportedLocs;
                 for (Reference_t* const& unvisited : relevantLocs) {
+                    if (reportedLocs.contains(std::string(unvisited->ref) + unvisited->type)) continue;
+                    reportedLocs.insert(std::string(unvisited->ref) + unvisited->type);
                     DynamicUtils::out() << "Relevant location " << unvisited->ref << " of error \"" << unvisited->type << "\" not checked!\n";
                 }
                 exit(EXIT_FAILURE);
