@@ -110,7 +110,9 @@ CmdResult CmdFpTarget(std::vector<std::string>& args, CmdContext<T>& ctx) {
     }
     std::vector<std::string> funcs;
     Module* M = selected_trace->loc->getModule();
-    for (Function const& F : M->functions()) funcs.push_back(F.getName().str());
+    for (Function const& F : M->functions()) {
+        if (!F.getName().starts_with("CoVer_") && !F.getName().starts_with("llvm.")) funcs.push_back(F.getName().str());
+    }
     std::set<Function*> selected_func = ContractPassUtility::getFPAnnots(dyn_cast<CallBase>(selected_trace->loc));
     std::set<std::string> previously_selected;
     std::transform(selected_func.begin(), selected_func.end(), std::inserter(previously_selected, previously_selected.end()), [](Function* F){ return F->getName().str(); });
