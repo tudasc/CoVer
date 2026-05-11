@@ -311,7 +311,7 @@ int main(int argc, const char** argv) {
         // Need instrumentation, so add instr pass...
         passlist += ",instrumentContracts";
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
-        rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
+        rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -Wl,--whole-archive @COVER_ANNOT_VERIFIER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
     std::string target_file = tmpfile;
     do {

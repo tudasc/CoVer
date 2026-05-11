@@ -179,7 +179,7 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     IterTypeAlloc data = { {}, {}, AllocOp->contrP, F };
     auto bound_transfer = std::bind(&ContractVerifierAllocPass::transferAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     auto bound_merge = std::bind(&ContractVerifierAllocPass::mergeAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    ContractPassUtility::WorklistResult<AllocStatus> WLRes = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, bound_transfer, bound_merge, &data, init);
+    ContractPassUtility::WorklistResult<AllocStatus> WLRes = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, true, bound_transfer, bound_merge, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());

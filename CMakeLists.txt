@@ -157,6 +157,12 @@ add_subdirectory(Intrinsics)
 add_subdirectory(Dynamic)
 
 ##
+## Dynamic Verification of annotations
+##
+
+add_subdirectory(AnnotVerifier)
+
+##
 ## Premade MPI header for convenience and quick testing
 ##
 
@@ -210,6 +216,7 @@ endif(MPI_C_FOUND AND Python_FOUND)
 
 set(CONTR_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerPlugin.so")
 set(COVER_DYNAMIC_ANALYSER_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerDynamicAnalyzer.a)
+set(COVER_ANNOT_VERIFIER_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerAnnotVerifier.a)
 set(COVER_INTRINSICS_LIB_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerIntrinsics.a)
 set(DSA_PLUGIN_PATH "${CMAKE_INSTALL_PREFIX}/lib/DSA.so")
 set(CONTR_INCLUDE_PATH "${CMAKE_INSTALL_PREFIX}/include")
