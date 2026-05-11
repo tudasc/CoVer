@@ -117,9 +117,14 @@ namespace ContractPassUtility {
     StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM);
 
     /*
-    * Get annotations used by CoVer
+    * Get currently selected targets for FP annotation. Returns empty if CB is not an indirect call
     */
-    std::vector<std::string> getCoVerAnnotations(Instruction* I);
+    std::set<Function*> const getFPAnnots(CallBase* CB);
+
+    /*
+    * Add FP target to indirect call. indirect MUST be an indirect call!
+    */
+    void setFPTarget(CallBase* indirect, std::set<Function*> targets);
 
     /*
     * Get a value from its name, where F is the parent function if it exists
@@ -279,18 +284,15 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
                     }
                 } else {
                     // Check for annotations
-                    std::vector<std::string> annots = getCoVerAnnotations(CB);
+                    std::set<Function*> annots = getFPAnnots(CB);
                     bool foundnext = false;
-                    for (std::string annot : annots) {
-                        if (annot.starts_with("CoVer_AnnotFP")) {
-                            Function* target_func = CB->getModule()->getFunction(annot.substr(annot.find("|") + 1));
-                            std::stack<CallBase*> new_stack = stack;
-                            new_stack.push(CB);
-                            AnnotFuncReverse[target_func].insert(CB);
-                            updateJumpTrace(jumptraces, &target_func->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, postAccess[cur]);
-                            todoList.push( {&target_func->getEntryBlock().front(), postAccess[cur], new_stack} );
-                            foundnext = true;
-                        }
+                    for (Function* F : annots) {
+                        std::stack<CallBase*> new_stack = stack;
+                        new_stack.push(CB);
+                        AnnotFuncReverse[F].insert(CB);
+                        updateJumpTrace(jumptraces, &F->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, postAccess[cur]);
+                        todoList.push( {&F->getEntryBlock().front(), postAccess[cur], new_stack} );
+                        foundnext = true;
                     }
                     if (foundnext) goto next_iter;
                 }
