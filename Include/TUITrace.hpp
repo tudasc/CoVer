@@ -7,6 +7,7 @@
 #include "ContractPassUtility.hpp"
 #include "TUIManager.hpp"
 #include "TUITraceTypes.hpp"
+#include "TUICmds.hpp"
 
 namespace TUITrace {
 

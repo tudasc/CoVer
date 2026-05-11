@@ -1,9 +1,11 @@
 #pragma once
 
+#include <algorithm>
 #include <format>
 #include <ftxui/component/component_base.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <iterator>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Metadata.h>
@@ -15,6 +17,7 @@
 #include <vector>
 #include "TUIManager.hpp"
 #include "TUITraceTypes.hpp"
+#include "ContractPassUtility.hpp"
 
 namespace TUITrace {
 
@@ -108,27 +111,14 @@ CmdResult CmdFpTarget(std::vector<std::string>& args, CmdContext<T>& ctx) {
     std::vector<std::string> funcs;
     Module* M = selected_trace->loc->getModule();
     for (Function const& F : M->functions()) funcs.push_back(F.getName().str());
-    std::vector<std::string> existing_annots = ContractPassUtility::getCoVerAnnotations(selected_trace->loc);
+    std::set<Function*> selected_func = ContractPassUtility::getFPAnnots(dyn_cast<CallBase>(selected_trace->loc));
     std::set<std::string> previously_selected;
-    for (std::string annot : existing_annots) {
-        if (annot.starts_with("CoVer_AnnotFP"))
-            previously_selected.insert(annot.substr(annot.find("|") + 1));
-    }
-    std::vector<std::string> sel_funcs = TUIManager::RenderMultiMenu(funcs, "Select Function Target", previously_selected);
-    selected_trace->loc->eraseMetadataIf([](uint kind, MDNode* node) {
-        if (kind != LLVMContext::MD_annotation) return false;
-        MDTuple* Tuple = cast<MDTuple>(node);
-        for (MDOperand const& N : Tuple->operands()) {
-            if (isa<MDString>(N.get())) {
-                std::string annot = cast<MDString>(N.get())->getString().str();
-                if (annot.starts_with("CoVer_AnnotFP")) return true;
-            }
-        }
-        return false;
-    });
-    for (std::string func : sel_funcs)
-        selected_trace->loc->addAnnotationMetadata(std::format("CoVer_AnnotFP|{}", func));
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{}.{} now has {} possible target(s)", *block, instr, sel_funcs.size())};
+    std::transform(selected_func.begin(), selected_func.end(), std::inserter(previously_selected, previously_selected.end()), [](Function* F){ return F->getName().str(); });
+    std::vector<std::string> sel_func_str = TUIManager::RenderMultiMenu(funcs, "Select Function Target", previously_selected);
+    selected_func.clear();
+    std::transform(sel_func_str.begin(), sel_func_str.end(), std::inserter(selected_func, selected_func.end()), [&](std::string Fstr){ return M->getFunction(Fstr); });
+    ContractPassUtility::setFPTarget(dyn_cast<CallBase>(selected_trace->loc), selected_func);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{}.{} now has {} possible target(s)", *block, instr, selected_func.size())};
 }
 
 template<typename T>

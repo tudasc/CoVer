@@ -28,6 +28,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/WithColor.h>
+#include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <map>
 #include <memory>
 #include <set>
@@ -199,6 +200,20 @@ int resolveFunctionDifference(const Value** A, const Value** B) {
 namespace ContractPassUtility {
 
 std::map<int, AliasGroup> const getAliasAnnots() { return aliasInfo; }
+std::set<Function*> const getFPAnnots(CallBase* CB) {
+    if (!CB->isIndirectCall()) return {};
+
+    std::set<Function*> fp_targets;
+    if (CB->getPrevNode() && isa<CallBase>(CB->getPrevNode())) {
+        CallBase* annotCall = dyn_cast<CallBase>(CB->getPrevNode());
+        if (annotCall->getCalledOperand()->getName() == "CoVer_AnnotFP") {
+            for (int i = 2; i < annotCall->arg_size(); i++) {
+                fp_targets.insert(CB->getModule()->getFunction(annotCall->getArgOperand(i)->getName()));
+            }
+        }
+    }
+    return fp_targets;
+}
 
 void Initialize(Module& M, ModuleAnalysisManager& MAM) {
     Basic_Types = MAM.getResult<BasicTypesAnalysis>(M);
@@ -523,6 +538,21 @@ void removeFromAliasGroup(int group, int idx) {
         }
     }
     if (aliasInfo[idx].members.empty()) aliasInfo.erase(idx);
+}
+
+void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
+    assert(indirect->isIndirectCall());
+
+    FunctionType* FPAnnotTy = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int_Type}, true);
+    FunctionCallee FC = indirect->getModule()->getOrInsertFunction("CoVer_AnnotFP", FPAnnotTy);
+    std::vector<Value*> args = {indirect->getCalledOperand(), Basic_Types.getInt(targets.size())};
+    args.insert(args.end(), targets.begin(), targets.end());
+    CallInst* CI = CallInst::Create(FC, args);
+    if (indirect->getPrevNode() && isa<CallBase>(indirect->getPrevNode()) && dyn_cast<CallBase>(indirect->getPrevNode())->getCalledOperand()->getName() == "CoVer_AnnotFP") {
+        ReplaceInstWithInst(indirect->getPrevNode(), CI);
+    } else {
+        CI->insertBefore(indirect->getIterator());
+    }
 }
 
 }
