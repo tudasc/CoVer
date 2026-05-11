@@ -135,7 +135,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand() == C.F) {
                 data.callsite = CB;
-                ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(CB->getNextNode(), transfer, merge, &data, CallStatus::NOTCALLED);
+                ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(CB, false, transfer, merge, &data, CallStatus::NOTCALLED);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {

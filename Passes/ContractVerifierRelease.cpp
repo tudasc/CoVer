@@ -212,7 +212,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand() == C.F) {
                 data.callsite = CB;
-                ContractPassUtility::WorklistResult<ReleaseStatus> WLRes = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB->getNextNode(), transfer, merge, &data, ReleaseStatus::FORBIDDEN);
+                ContractPassUtility::WorklistResult<ReleaseStatus> WLRes = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB, false, transfer, merge, &data, ReleaseStatus::FORBIDDEN);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
                 data.err.clear();
