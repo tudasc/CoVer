@@ -70,7 +70,7 @@ namespace ContractPassUtility {
     * Need Start param to make sure that the initialization of parameters does not count as operation
     */
     template <typename T>
-    WorklistResult<T> GenericWorklist(Instruction* Start,  TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init);
+    WorklistResult<T> GenericWorklist(Instruction* Start, bool transferFirst, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init);
 
     /*
     * Get line number, or get a string representation of the location
@@ -197,17 +197,22 @@ std::pair<T, bool> getMergeResult(std::map<Instruction*, T>& AI, ContractPassUti
  * Need Start param to make sure that the initialization of parameters does not count as operation
  */
 template <typename T>
-ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
+ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Instruction* Start, bool transferFirst, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
     // Jumptrace
     TraceDB<T> jumptraces;
-    updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
-
     // Analysis Info mapping
     std::map<Instruction*, T> postAccess;
-
     // Worklist
     std::queue<WorklistEntry<T>> todoList;
-    todoList.push({Start, init, {}});
+
+    if (!transferFirst) {
+        updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
+        todoList.push({Start->getNextNode(), init, {}});
+        updateJumpTrace(jumptraces, Start->getNextNode(), Start, TraceKind::LINEAR, init);
+    } else {
+        todoList.push({Start, init, {}});
+        updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
+    }
 
     // Map of OpenMP functions to index with function pointer
     std::map<StringRef,int> OMPNames = {{"__kmpc_omp_task_alloc", 5}, {"__kmpc_fork_call", 2}};

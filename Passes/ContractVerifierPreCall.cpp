@@ -162,7 +162,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
     ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPreCallPass::transferPreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPreCallPass::mergePreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(Entry, transfer, merge, &data, init);
+    ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(Entry, true, transfer, merge, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
