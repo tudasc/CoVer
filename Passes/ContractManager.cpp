@@ -55,6 +55,11 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     curDatabase.allowMultiReports = ClMultiReports;
     curDatabase.isInteractive = ClIsInteractive;
 
+    // Function list must be sorted for clean diff on interactive analysis
+    M.getFunctionList().sort([](const llvm::Function &A, const llvm::Function &B) {
+        return A.getName() < B.getName();
+    });
+
     errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
 
     extractFromAnnotations(M);
@@ -79,7 +84,15 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     errs() << timestr;
 
     ContractPassUtility::Initialize(M, AM);
-    if (curDatabase.isInteractive) TUIManager::StartMenu(curDatabase);
+    if (curDatabase.isInteractive) {
+        TUIManager::StartMenu(curDatabase);
+        if (M.getName() != "CoVer_Reanalyse.ll") {
+            // Write original module
+            std::error_code rc;
+            llvm::raw_fd_stream orig_file("CoVer_InteractStart.ll", rc);
+            M.print(orig_file, nullptr);
+        }
+    }
 
     return curDatabase;
 }

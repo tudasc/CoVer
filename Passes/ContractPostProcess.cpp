@@ -168,7 +168,10 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
 
     if (isInteractive) {
         bool reanalyse = TUIManager::ResultsScreen(ViolatedContracts);
-        if (!reanalyse) std::filesystem::remove("CoVer_reanalyse.ll");
+        if (!reanalyse) {
+            std::filesystem::remove("CoVer_InteractStart.ll");
+            std::filesystem::remove("CoVer_Reanalyse.ll");
+        }
         else exit(0);
     }
 

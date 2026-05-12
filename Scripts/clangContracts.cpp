@@ -316,8 +316,8 @@ int main(int argc, const char** argv) {
     std::string target_file = tmpfile;
     do {
         execSafe(DebuggerCoVerPlugin + " opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + target_file + " -o " + tmpfile + ".opt");
-        target_file = "CoVer_reanalyse.ll";
-    } while (std::filesystem::exists("CoVer_reanalyse.ll"));
+        target_file = "CoVer_Reanalyse.ll";
+    } while (std::filesystem::exists("CoVer_Reanalyse.ll"));
     close(fd);
 
     // Finalize executable

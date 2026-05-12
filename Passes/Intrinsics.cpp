@@ -50,6 +50,13 @@ void IntrinsicsPass::createCallees(Module& M) {
 
     FunctionType* FunctionFDeallocIntrinsicType = FunctionType::get(Basic_Types.Int_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type}, false);
     fdeallocPointerCallee = calleeHelper(M, "CoVer_FPointerDeallocate", FunctionFDeallocIntrinsicType);
+
+    // Annotations
+    FunctionType* FunctionFPAnnotType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int_Type}, true);
+    calleeHelper(M, "CoVer_AnnotFP", FunctionFPAnnotType);
+
+    FunctionType* FunctionAnnotAliasType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type}, false);
+    calleeHelper(M, "CoVer_AnnotAlias", FunctionAnnotAliasType);
 }
 
 void IntrinsicsPass::instrumentIntrinsics(Module& M) {
@@ -58,6 +65,8 @@ void IntrinsicsPass::instrumentIntrinsics(Module& M) {
     Function *StackSaveIntrin = Intrinsic::getOrInsertDeclaration(&M, Intrinsic::stacksave, {Basic_Types.Ptr_Type});
     for (Function& F : M) {
         if (F.isDeclaration()) continue;
+        if (F.getFnAttribute("CoVer_Instrumented").getValueAsString() == "y") continue;
+        F.addFnAttr("CoVer_Instrumented", "y");
         bool hasAlloca = false;
         for (BasicBlock const& BB : F) {
             for (Instruction const& I : BB) {

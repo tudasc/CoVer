@@ -154,6 +154,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
         instrumentRW(M);
     instrumentFunctions(M);
 
+    // Need to remove contr definition calls
     std::vector<Function*> to_remove;
     for (Function& F : M) {
         if (F.getName().starts_with("contract_definitions_fort")) to_remove.push_back(&F);

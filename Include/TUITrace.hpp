@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/screen/color.hpp>
+#include <system_error>
 #include <vector>
 #include "ContractPassUtility.hpp"
 #include "TUIManager.hpp"
@@ -132,7 +133,7 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
         // Print current module
         const llvm::Module* M = trace->loc->getModule();
         std::error_code rc;
-        llvm::raw_fd_stream reanalyse_file("CoVer_reanalyse.ll", rc);
+        llvm::raw_fd_stream reanalyse_file("CoVer_Reanalyse.ll", rc);
         M->print(reanalyse_file, nullptr);
 
         std::string input_command = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);

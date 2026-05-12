@@ -59,7 +59,4 @@ struct CmdInfo {
 bool verifyInputArgs(std::string_view const& usage, std::string_view const& input, std::vector<std::string>& args, int const& num_inputs);
 std::string traceKindToStr(TraceKind kind);
 
-template<typename T>
-CmdResult ExecuteTUICommand(std::string input_command, CmdContext<T> ctx);
-
 } // namespace TUITrace
