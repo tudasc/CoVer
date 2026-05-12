@@ -543,16 +543,15 @@ void removeFromAliasGroup(int group, int idx) {
 void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     assert(indirect->isIndirectCall());
 
-    FunctionType* FPAnnotTy = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int_Type}, true);
-    FunctionCallee FC = indirect->getModule()->getOrInsertFunction("CoVer_AnnotFP", FPAnnotTy);
     std::vector<Value*> args = {indirect->getCalledOperand(), Basic_Types.getInt(targets.size())};
     args.insert(args.end(), targets.begin(), targets.end());
-    CallInst* CI = CallInst::Create(FC, args);
+    CallInst* CI = CallInst::Create(indirect->getModule()->getFunction("CoVer_AnnotFP"), args);
     if (indirect->getPrevNode() && isa<CallBase>(indirect->getPrevNode()) && dyn_cast<CallBase>(indirect->getPrevNode())->getCalledOperand()->getName() == "CoVer_AnnotFP") {
         ReplaceInstWithInst(indirect->getPrevNode(), CI);
     } else {
         CI->insertBefore(indirect->getIterator());
     }
+    if (targets.empty()) indirect->getPrevNode()->eraseFromParent();
 }
 
 }

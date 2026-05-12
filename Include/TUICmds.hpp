@@ -1,6 +1,8 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdlib>
+#include <filesystem>
 #include <format>
 #include <ftxui/component/component_base.hpp>
 #include <ftxui/dom/elements.hpp>
@@ -186,6 +188,24 @@ CmdResult CmdAliasGet(std::vector<std::string>&, CmdContext<T>&) {
 }
 
 template<typename T>
+CmdResult CmdDiff(std::vector<std::string>& args, CmdContext<T>& ctx) {
+    Module* M = ctx.trace_by_blocks.begin()->first_entry->loc->getModule();
+    int rc = std::system(std::format("diff -c -I '^; ModuleID' CoVer_InteractStart.ll CoVer_Reanalyse.ll > {}", args[0]).c_str());
+    if (!WIFEXITED(rc) || (WEXITSTATUS(rc) && WEXITSTATUS(rc) != 1)) return {CmdResultCode::INVALID_INPUT, std::format("Error, diff returned exit code {}", WEXITSTATUS(rc))};
+    return {CmdResultCode::SUCCESS_CONTINUE, "Wrote patch file to " + args[0]};
+}
+
+template<typename T>
+CmdResult CmdPatch(std::vector<std::string>& args, CmdContext<T>& ctx) {
+    if (!std::filesystem::exists(args[0])) {
+        return {CmdResultCode::INVALID_INPUT, "File does not exist!"};
+    }
+    int rc = std::system(std::format("patch CoVer_Reanalyse.ll < {}", args[0]).c_str());
+    if ((!WIFEXITED(rc) || WEXITSTATUS(rc))) return {CmdResultCode::INVALID_INPUT, std::format("Error, patch returned exit code {}", WEXITSTATUS(rc))};
+    return {CmdResultCode::SUCCESS_REANALYSE, "Applied patch from " + args[0]};
+}
+
+template<typename T>
 CmdResult CmdHistory(std::vector<std::string>&, CmdContext<T>& ctx) {
     int constexpr res_size = 17;
     std::vector<ftxui::Element> lines;
@@ -263,6 +283,8 @@ std::vector<CmdInfo<T>> TraceCommands = {
         {"alias-rm",      "[group num] [value num]",                                  "Remove a value from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
         {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet<T>},
         {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
+        {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdDiff<T>},
+        {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdPatch<T>},
         {"history",       "",                                                         "Print the current commands applied", 0, CmdHistory<T>},
         {"exit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
         {"quit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
@@ -276,7 +298,7 @@ CmdResult ExecuteTUICommand(std::string input_command, CmdContext<T> ctx) {
 
     // Get command and verify input sizing
     auto used_cmd = std::find_if(TraceCommands<T>.begin(), TraceCommands<T>.end(), [&](CmdInfo<T> const& cmd){
-        return input_command.starts_with(cmd.name);
+        return input_command == cmd.name || input_command.starts_with(std::format("{} ", cmd.name));
     });
     if (used_cmd == TraceCommands<T>.end()) {
         result = {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
