@@ -139,6 +139,20 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     initFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
 
     // Create initialization routine for tool
+    if (mainF->arg_size() < 2) {
+        // main was declared without argc/argv (e.g. int main(void)); add them.
+        std::vector<Type*> newParams = {Basic_Types.Int_Type, Basic_Types.Ptr_Type};
+        FunctionType* newFT = FunctionType::get(mainF->getReturnType(), newParams, mainF->isVarArg());
+        Function* newMain = Function::Create(newFT, mainF->getLinkage(), "", &M);
+        newMain->copyAttributesFrom(mainF);
+        newMain->takeName(mainF);
+        for (unsigned i = 0; i < mainF->arg_size(); ++i)
+            mainF->getArg(i)->replaceAllUsesWith(newMain->getArg(i));
+        newMain->splice(newMain->begin(), mainF);
+        mainF->replaceAllUsesWith(newMain);
+        mainF->eraseFromParent();
+        mainF = newMain;
+    }
     Value* Vargc = mainF->getArg(0);
     Value* Vargv = mainF->getArg(1);
     AllocaInst* argcptr = new AllocaInst(Basic_Types.Int_Type, 0, "argc_ptr", mainF->getEntryBlock().getFirstNonPHIOrDbg());
