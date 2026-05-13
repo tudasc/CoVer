@@ -10,7 +10,7 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotFP(void const*
     va_start(list, num_targets);
     for (int i = 0; i < num_targets; i++) {
         void* target = va_arg(list, void*);
-        if (target == ptr) return;
+        if (target == ptr) { va_end(list); return; }
     }
     std::cerr << "CoVer-Dynamic: Annotation verification failed! (Funcptr)\n";
     va_end(list);
