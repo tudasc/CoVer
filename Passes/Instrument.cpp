@@ -33,6 +33,7 @@
 #include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Support/WithColor.h>
+#include <llvm/Transforms/Utils/Cloning.h>
 #include <map>
 #include <memory>
 #include <string>
@@ -146,9 +147,9 @@ PreservedAnalyses InstrumentPass::run(Module &M,
         Function* newMain = Function::Create(newFT, mainF->getLinkage(), "", &M);
         newMain->copyAttributesFrom(mainF);
         newMain->takeName(mainF);
-        for (unsigned i = 0; i < mainF->arg_size(); ++i)
-            mainF->getArg(i)->replaceAllUsesWith(newMain->getArg(i));
-        newMain->splice(newMain->begin(), mainF);
+        ValueToValueMapTy VMap;
+        SmallVector<ReturnInst *, 8> Returns;
+        CloneFunctionInto(newMain, mainF, VMap, CloneFunctionChangeType::LocalChangesOnly, Returns);
         mainF->replaceAllUsesWith(newMain);
         mainF->eraseFromParent();
         mainF = newMain;

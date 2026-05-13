@@ -157,7 +157,7 @@ add_subdirectory(Intrinsics)
 add_subdirectory(Dynamic)
 
 ##
-## Dynamic Verification of annotations
+## Dynamic verification of annotations
 ##
 
 add_subdirectory(AnnotVerifier)
