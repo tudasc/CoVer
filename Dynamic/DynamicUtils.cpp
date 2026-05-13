@@ -131,9 +131,7 @@ namespace DynamicUtils {
         }
         return "";
 #else
-        exec_cmd << file << std::hex << "[" << parsed_loc << "] (Cannot resolve: No addr2line support configured)\n";
-        std::string result = exec_cmd.str();
-        return result;
+        return std::format("{}[0x{:x}] (Cannot resolve: No addr2line support configured)\n", file, (uintptr_t)parsed_loc);
 #endif
     }
 
