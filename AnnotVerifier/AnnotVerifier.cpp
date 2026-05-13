@@ -23,6 +23,8 @@ namespace {
         }
         return result;
     }
+
+    std::ostream& AnnotErr() { return std::cerr << "CoVer-AnnotVerifier: "; }
 }
 
 namespace {
@@ -91,8 +93,8 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotFP(void const*
         void* target = va_arg(list, void*);
         if (target == ptr) { va_end(list); return; }
     }
-    std::cerr << "CoVer-AnnotVerifier: Annotation verification failed!\n";
-    std::cerr << "CoVer-AnnotVerifier: Function pointer call at " << getFileRefStr(__builtin_return_address(0)) << " targets " << getFuncName(ptr) << ", which is not in the annotation allowlist!\n";
+    AnnotErr() << "Annotation verification failed!\n";
+    AnnotErr() << "Function pointer call at " << getFileRefStr(__builtin_return_address(0)) << " targets " << getFuncName(ptr) << ", which is not in the annotation allowlist!\n";
     va_end(list);
 }
 
@@ -107,8 +109,10 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* pt
         if (Agroup.idx == group) {
             if (shouldAlias && ptr == Agroup.cmp) return;
             if (!shouldAlias && ptr != Agroup.cmp) return;
-            std::cerr << "CoVer-Dynamic: Annotation verification failed! (Alias)\n";
-            #warning addr2line here
+            AnnotErr() << "Annotation verification failed!\n";
+            AnnotErr() << "Alias group " << group << " has two values which " << (shouldAlias ? "do not alias" : "alias") << " even though they should" << (shouldAlias ? "" : " not") << "\n";
+            AnnotErr() << "First value found at " << getFileRefStr(Agroup.prev_loc) << "\n";
+            AnnotErr() << "Second value found at " << getFileRefStr(__builtin_return_address(0)) << "\n";
             return;
         }
     }
