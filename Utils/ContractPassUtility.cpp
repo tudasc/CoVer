@@ -384,7 +384,8 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
 
     // Annotated infos
     for (std::pair<int, AliasGroup> AG : aliasInfo) {
-        if (AG.second.members.contains(source) && AG.second.members.contains(target)) {
+        if ((AG.second.members.contains(source) || AG.second.members.contains(betterGetPointerOperand(source)))
+         && (AG.second.members.contains(target) || AG.second.members.contains(betterGetPointerOperand(target)))) {
             return AG.second.areAliasing;
         }
     }
