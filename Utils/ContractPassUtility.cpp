@@ -552,6 +552,7 @@ void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
         CI->insertBefore(indirect->getIterator());
     }
     if (targets.empty()) indirect->getPrevNode()->eraseFromParent();
+    else indirect->getPrevNode()->setDebugLoc(indirect->getDebugLoc());
 }
 
 }
