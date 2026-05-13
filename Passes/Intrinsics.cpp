@@ -97,13 +97,17 @@ void IntrinsicsPass::instrumentIntrinsics(Module& M) {
 
     // Instrument global vars
     if (M.getFunction("main")) {
-        auto Entry = M.getFunction("main")->getEntryBlock().getFirstNonPHIOrDbgOrAlloca();
-        for (GlobalVariable& GV : M.globals()) {
-            if (!GV.hasInitializer()) continue;
-            if (GV.hasPrivateLinkage() || GV.hasComdat()) continue;
-            if (GV.getName().starts_with("llvm.") || GV.getName().starts_with("ContractValueInfo")) continue;
-            size_t gv_size = GV.getParent()->getDataLayout().getTypeAllocSize(GV.getInitializer()->getType());
-            CallInst::Create(globalRegCallee, {&GV, Basic_Types.getInt64(gv_size)}, "", Entry);
+        Function* mainF = M.getFunction("main");
+        if (mainF->getFnAttribute("CoVer_GlobalsInstr").getValueAsString() != "y") {
+            mainF->addFnAttr("CoVer_GlobalsInstr", "y");
+            auto Entry = M.getFunction("main")->getEntryBlock().getFirstNonPHIOrDbgOrAlloca();
+            for (GlobalVariable& GV : M.globals()) {
+                if (!GV.hasInitializer()) continue;
+                if (GV.hasPrivateLinkage() || GV.hasComdat()) continue;
+                if (GV.getName().starts_with("llvm.") || GV.getName().starts_with("ContractValueInfo")) continue;
+                size_t gv_size = GV.getParent()->getDataLayout().getTypeAllocSize(GV.getInitializer()->getType());
+                CallInst::Create(globalRegCallee, {&GV, Basic_Types.getInt64(gv_size)}, "", Entry);
+            }
         }
     }
 
