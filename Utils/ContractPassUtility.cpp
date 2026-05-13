@@ -221,11 +221,10 @@ void Initialize(Module& M, ModuleAnalysisManager& MAM) {
     isFort = M.getFunction("_QQmain");
     curM = &M;
 
-    FunctionType* AnnotAliasT = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type}, false);
-    FunctionCallee AnnotAliasCallee = M.getOrInsertFunction("CoVer_AnnotAlias", AnnotAliasT);
-    for (User* U : AnnotAliasCallee.getCallee()->users()) {
+    Function* AnnotAlias = M.getFunction("CoVer_AnnotAlias");
+    for (User* U : AnnotAlias->users()) {
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
-            if (CB->getCalledOperand() == AnnotAliasCallee.getCallee()) {
+            if (CB->getCalledOperand() == AnnotAlias) {
                 int groupIdx = dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue();
                 if (!aliasInfo.contains(groupIdx)) aliasInfo[groupIdx];
                 aliasInfo[groupIdx].areAliasing = dyn_cast<ConstantInt>(CB->getArgOperand(1))->getZExtValue();
@@ -501,25 +500,19 @@ Value* getValueByName(std::string name, Function* F) {
 }
 
 void createAliasGroup(bool shouldAlias, Value* V1, Value* V2) {
-    aliasInfo[aliasInfo.empty() ? 0 : aliasInfo.rbegin()->first + 1] = {{V1, V2}, shouldAlias};
-    FunctionType* AnnotAliasT = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type}, false);
-    FunctionCallee AnnotAliasCallee = curM->getOrInsertFunction("CoVer_AnnotAlias", AnnotAliasT);
+    aliasInfo[aliasInfo.empty() ? 0 : aliasInfo.rbegin()->first + 1] = {{}, shouldAlias};
     for (Value* V : {V1, V2}) {
-        if (Instruction* I = dyn_cast<Instruction>(V)) {
-            CallInst* CI = CallInst::Create(AnnotAliasCallee, {I, Basic_Types.getBool(shouldAlias), Basic_Types.getInt(aliasInfo.rbegin()->first)});
-            CI->insertAfter(I);
-        }
+        addToAliasGroup(aliasInfo.rbegin()->first, V);
     }
 }
 
 void addToAliasGroup(int idx, Value* V) {
     if (aliasInfo[idx].members.contains(V)) return; // Need to do early return to not double-instrument
     aliasInfo[idx].members.insert(V);
-    FunctionType* AnnotAliasT = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type}, false);
-    FunctionCallee AnnotAliasCallee = curM->getOrInsertFunction("CoVer_AnnotAlias", AnnotAliasT);
     if (Instruction* I = dyn_cast<Instruction>(V)) {
-        CallInst* CI = CallInst::Create(AnnotAliasCallee, {I, Basic_Types.getBool(aliasInfo[idx].areAliasing), Basic_Types.getInt(idx)});
+        CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlias"), {I, Basic_Types.getBool(aliasInfo[idx].areAliasing), Basic_Types.getInt(idx)});
         CI->insertAfter(I);
+        CI->setDebugLoc(I->getDebugLoc());
     }
 }
 void removeFromAliasGroup(int group, int idx) {
