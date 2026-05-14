@@ -29,6 +29,16 @@ struct CallParam_t {
     int32_t contrP;
     ParamAccess accType;
 };
+enum Comparator : int32_t { NEQ, GT, GTEQ, LT, LTEQ, EXEQ, EQ };
+
+// Number must match those defined in ContractTree.hpp!
+enum MathType : int32_t { UNARY_VALUE, MULT };
+struct MathExpr_t {
+    int32_t const value;
+    bool const isArgValue;
+    MathType const type;
+    MathExpr_t const* other = nullptr;
+};
 
 struct RWOp_t {
     int32_t idx;
@@ -52,9 +62,49 @@ struct ReleaseOp_t {
     void** forbidden_op;
     int32_t forbidden_op_kind;
 };
+struct ParamReq_t {
+    const Comparator comparator;
+    const void* value;
+    const bool isArg;
+    const bool reqval_need_deref;
+};
+struct ParamOp_t {
+    const int32_t idx;
+    const ParamReq_t* requirements;
+    const int32_t num_reqs;
+    const bool callval_need_deref;
+};
+struct MemOpFunc_t {
+    const void* func;
+    const RWOp_t* rwOp;
+    const MathExpr_t* size = 0;
+};
+struct AllocOp_t {
+    const int32_t idx;
+    const ParamAccess accType;
+    MemOpFunc_t* allocators;
+    int32_t num_allocators;
+    MemOpFunc_t* deallocators;
+    int32_t num_deallocators;
+};
 
 // Number must match those defined in enums in ContractTree.hpp (operation + connective)!
-enum ContractConnective : int32_t { UNARY_READ = 0, UNARY_WRITE = 1, UNARY_CALL = 2, UNARY_CALLTAG = 3, UNARY_RELEASE = 4, AND = 5, OR = 6, XOR = 7 };
+enum ContractConnective : int32_t {
+    // Connectives
+    AND,
+    OR,
+    XOR,
+    // Operations
+    UNARY_RWOP,
+    UNARY_READ,
+    UNARY_WRITE,
+    UNARY_ALLOC,
+    UNARY_FREE,
+    UNARY_CALL,
+    UNARY_CALLTAG,
+    UNARY_RELEASE,
+    UNARY_PARAM
+};
 struct ContractFormula_t {
     ContractFormula_t* children;
     int32_t num_children;
@@ -89,7 +139,7 @@ extern "C" {
 
 // Callback function declarations
 void PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB);
-void PPDCV_FunctionCallback(bool isRel, void* function, int32_t num_params, ...); // relevancy, funcptr, num params, then sizeof param and param each
+void* PPDCV_FunctionCallback(bool isRel, void* function, int32_t ret_size, int32_t num_params, ...); // relevancy, funcptr, num params, then sizeof param and param each
 void PPDCV_MemRCallback(bool const isRel, void const* buf);
 void PPDCV_MemWCallback(bool const isRel, void const* buf);
 

@@ -50,10 +50,10 @@ ReleaseAnalysis::ReleaseAnalysis(void const* _func_supplier, ReleaseOp_t* rOP) {
 CallBacks ReleaseAnalysis::requiredCallbacksImpl() const {
     if (!forbIsRW) return {true, false, false};
     RWOp_t* rwOp = (RWOp_t*)forbiddenOp;
-    return {true, !rwOp->isWrite, rwOp->isWrite};
+    return {true, false, !rwOp->isWrite, rwOp->isWrite};
 }
 
-Fulfillment ReleaseAnalysis::functionCBImpl(void* const& func, CallsiteInfo const& callsite) {
+Fulfillment ReleaseAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo const& callsite) {
     if (!forbiddenCallsites.empty()) {
         // First, check if release
         for (void const* const& rel_func : rel_funcs) {

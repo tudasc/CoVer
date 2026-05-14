@@ -28,6 +28,9 @@ using namespace llvm;
 #define IS_DEBUG (getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1)
 
 namespace ContractPassUtility {
+    // Called automatically by ContractManager
+    void Initialize(Module& M);
+
     template<typename T>
     using TransferFunction = std::function<T(T,const Instruction*,void*)>;
     template<typename T>
@@ -66,6 +69,21 @@ namespace ContractPassUtility {
     * Get Pointer operand of a load, store, GEPinst *or GEPOp*. Last one would not work on normal getPointerOperand!
     */
     const Value* betterGetPointerOperand(const Value* V);
+
+    /*
+    * Check if V is definitely allocated
+    */
+    bool isTrivialAlloc(const Value* V);
+
+    /*
+    * Fortran Heuristic: Check if global, if so check if constint and return
+    */
+    ConstantInt* fortCheckAndGetGlbInt(Value* V);
+
+    /*
+    * Get last storeinst to a call argument, null if it could not be determined
+    */
+    StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM);
 };
 
 template<typename T>

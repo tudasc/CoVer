@@ -22,7 +22,7 @@ PreCallAnalysis::PreCallAnalysis(void const* _func_supplier, CallTagOp_t* callop
     target_funcs = DynamicUtils::getFunctionsForTag(callop->target_tag);
 }
 
-Fulfillment PreCallAnalysis::functionCBImpl(void* const& func, CallsiteInfo const& callsite) {
+Fulfillment PreCallAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo const& callsite) {
     for (void const* const& target_func : target_funcs) {
         if (target_func == func) {
             // Possible match for precall

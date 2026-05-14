@@ -12,6 +12,8 @@
 #include "Analyses/BaseAnalysis.h"
 #include "DynamicUtils.h"
 
+#include "Analyses/AllocAnalysis.h"
+#include "Analyses/ParamAnalysis.h"
 #include "Analyses/PreCallAnalysis.h"
 #include "Analyses/PostCallAnalysis.h"
 #include "Analyses/ReleaseAnalysis.h"
@@ -26,7 +28,7 @@ namespace {
 
     std::unordered_map<void*, std::vector<Contract_t>> contrs;
 
-    using AnalysisVariant = std::variant<PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
+    using AnalysisVariant = std::variant<ParamAnalysis*,AllocAnalysis*,PreCallAnalysis*,PostCallAnalysis*,ReleaseAnalysis*>;
 
     struct AnalysisPair {
         ContractFormula_t* formula;
@@ -34,14 +36,15 @@ namespace {
     };
 
     std::unordered_set<void const*> visitedLocs;
-    
+
     std::filesystem::path const& coverage_prefix = std::getenv("COVER_COVERAGE_FOLDER") ? std::filesystem::path(std::getenv("COVER_COVERAGE_FOLDER")) : std::filesystem::current_path();
 
     std::unordered_map<ContractFormula_t*, Fulfillment> contract_status;
     std::unordered_map<ContractFormula_t*, ContractFormula_t*> formula_parents;
     std::unordered_map<ContractFormula_t*, Contract_t*> toplevel_to_contract;
     std::vector<AnalysisPair> all_analyses;
-    std::vector<AnalysisPair> analyses_with_funcCB;
+    std::vector<AnalysisPair> analyses_with_funcPreCB;
+    std::vector<AnalysisPair> analyses_with_funcPostCB;
     std::vector<AnalysisPair> analyses_with_memRCB;
     std::vector<AnalysisPair> analyses_with_memWCB;
     std::unordered_map<ContractFormula_t*, std::vector<void const*>> analysis_references;
@@ -57,12 +60,13 @@ namespace {
         CallBacks reqCB = fastVisit([&](auto& analysis) {
             return analysis->requiredCallbacks();
         }, new_pair.analysis);
-        if (reqCB.FUNCTION) analyses_with_funcCB.push_back(new_pair);
+        if (reqCB.FUNCTION_PRE) analyses_with_funcPreCB.push_back(new_pair);
+        if (reqCB.FUNCTION_POST) analyses_with_funcPostCB.push_back(new_pair);
         if (reqCB.MEMORY_R) analyses_with_memRCB.push_back(new_pair);
         if (reqCB.MEMORY_W) analyses_with_memWCB.push_back(new_pair);
     }
 
-    #define HANDLE_CALLBACK(pairs, CB, ...) \
+    #define HANDLE_CALLBACK(pairs, CB, ...) {\
         void const* location = __builtin_return_address(0);\
         if (isRef) visitedLocs.insert(location);\
         _Pragma("unroll(5)") for (auto it = pairs.begin(); it < pairs.end();) { \
@@ -76,10 +80,17 @@ namespace {
                 }\
                 return ++it;\
             }, it->analysis);\
-        }
+        }}
 
     void validateState(ContractFormula_t* form) {
-        if (formula_parents[form] && contract_status.contains(formula_parents[form])) return; // If parent already decided return early
+        if (formula_parents[form] && contract_status.contains(formula_parents[form])) {
+            if (contract_status[form] == Fulfillment::VIOLATED && contract_status[formula_parents[form]] == Fulfillment::VIOLATED && !formula_parents[formula_parents[form]]) {
+                // Another child of top-level formula violated. Two possible errors, though maybe just a symptom of the first one.
+                DynamicUtils::out() << "Note: Possible secondary issue detected! This may be a true FP or a side effect of the previous report.\n";
+                formatError(recurseCreateErrorMsg(form));
+            }
+            return; // If parent already decided return early
+        }
         if (contract_status[form] != Fulfillment::VIOLATED &&
             !(contract_status[form] == Fulfillment::FULFILLED && formula_parents[form] && formula_parents[form]->conn == XOR)) return;
 
@@ -143,6 +154,16 @@ namespace {
                     if (isPre) DynamicUtils::createMessage("Did not expect releaseop in precond!");
                     else addAnalysis<ReleaseAnalysis>(form, func_supplier, (ReleaseOp_t*)form->data);
                     break;
+                case UNARY_PARAM:
+                    if (isPre) addAnalysis<ParamAnalysis>(form, func_supplier, (ParamOp_t*)form->data);
+                    else DynamicUtils::createMessage("Did not expect paramop in postcond!");
+                    break;
+                case UNARY_ALLOC:
+                    if (isPre) addAnalysis<AllocAnalysis>(form, func_supplier, (AllocOp_t*)form->data);
+                    break; // Normal to have alloc in post, but only used by the precond "actual check".
+                case UNARY_FREE:
+                    if (isPre) DynamicUtils::createMessage("Did not expect freeop in precondition!");
+                    break; // Normal to have free in post, but only used by the precond "actual check".
                 default: 
                     DynamicUtils::createMessage("Unknown top-level operation!");
                     break;
@@ -153,20 +174,28 @@ namespace {
     }
 
     ErrorMessage recurseCreateErrorMsg(ContractFormula_t* form) {
-        if (contract_status[form] != Fulfillment::VIOLATED) return {};
+        if (!contract_status.contains(form) || contract_status[form] != Fulfillment::VIOLATED) return {};
         if (form->num_children == 0) {
             ErrorMessage msg;
             msg.msg = {std::string("Operation Message (if defined) or contract string: ") + form->msg};
             switch (form->conn) {
+                #warning this should really be in the analyses themselves
                 case UNARY_CALL:
                 case UNARY_CALLTAG: {
                     CallTagOp_t* cOP = (CallTagOp_t*)form->data;
                     msg.msg.push_back(std::string("Did not find call to ") + cOP->target_tag);
                     break;
                 }
+                case UNARY_PARAM: {
+                    msg.msg.push_back("Invalid param!");
+                    break;
+                }
+                case UNARY_ALLOC: {
+                    msg.msg.push_back("Buffer not allocated or use-after-free!");
+                    break;
+                }
                 case UNARY_RELEASE: {
-                    ReleaseOp_t* rOP = (ReleaseOp_t*)form->data;
-                    msg.msg.push_back(std::string("Found forbidden operation!"));
+                    msg.msg.push_back("Found forbidden operation!");
                     break;
                 }
                 default: __builtin_unreachable();

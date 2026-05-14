@@ -1,5 +1,6 @@
 // RUN: %clangContracts %run_common
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
 

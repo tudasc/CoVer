@@ -11,6 +11,8 @@
 #include <vector>
 #include <cstdarg>
 
+#include <ffi.h>
+
 #include "DynamicAnalysis.h"
 #include "DynamicUtils.h"
 
@@ -88,19 +90,86 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
     DynamicUtils::createMessage("Finished Initializing!");
 }
 
-extern "C" void __attribute__((visibility("default"))) PPDCV_FunctionCallback(bool isRef, void* function, int32_t num_params, ...) {
+ffi_type* getFFIType(int32_t size, bool isFloat) {
+    switch (size) {
+        case 0: return &ffi_type_void;
+        case 16: return &ffi_type_uint16;
+        case 32: return isFloat ? &ffi_type_float : &ffi_type_uint32;
+        default: return isFloat ? &ffi_type_double : &ffi_type_pointer;
+    }
+}
+
+struct cifCache {
+    void* func;
+    std::vector<ffi_type*> arg_types;
+    ffi_cif cif;
+};
+static std::vector<cifCache> cached_cifs;
+
+extern "C" void* __attribute__((visibility("default"))) PPDCV_FunctionCallback(bool isRef, void* function, int32_t ret_size, int32_t num_params, ...) {
     CallsiteInfo callsite = { .location = __builtin_return_address(0) };
+    callsite.params.reserve(num_params);
     std::va_list list;
+    static std::vector<ffi_type*> ffi_arg_types;
+    static std::vector<void*> ffi_arg_values_ptr;
+    static std::vector<void*> ffi_arg_values_store;
+
+    cifCache cif_c = {nullptr};
+    for (cifCache& entry : cached_cifs) {
+        if (function == entry.func) {
+            cif_c = entry;
+            break;
+        }
+    }
+    ffi_arg_values_store.reserve(num_params);
+    ffi_arg_values_store.clear();
+    ffi_arg_values_ptr.reserve(num_params);
+    ffi_arg_values_ptr.clear();
+    if (!cif_c.func) {
+        cif_c.arg_types.reserve(num_params);
+    }
+
     va_start(list, num_params);
     for (int i = 0; i < num_params; i++) {
         uint32_t param_size = va_arg(list,uint32_t);
-        void const* param_val = va_arg(list,void*);
-        callsite.params.push_back({param_val, param_size});
+        void* param_val = va_arg(list,void*);
+        if (param_size >> 16 & 0b100) {
+            // This is an undefined value. The program must be buggy af
+            // LLVM is sometimes funny and chooses valid ptrs for undef. Need to undermine this.
+            param_val = (void*)0xDEADBEEF;
+        }
+        if ((param_size >> 16) & 0b1) {
+            // Need to deref value first
+            callsite.params.push_back({*(void**)param_val, param_size & 0xFF});   
+        } else {
+            callsite.params.push_back({param_val, param_size & 0xFF});
+        }
+        if (!cif_c.func) {
+            cif_c.arg_types.push_back(getFFIType(param_size >> 8, (param_size >> 16) & 0b10));
+        }
+        ffi_arg_values_store.push_back(param_val);
+        ffi_arg_values_ptr.push_back(&ffi_arg_values_store[i]);
     }
     va_end(list);
 
     // Run event handlers and remove analysis if done
-    HANDLE_CALLBACK(analyses_with_funcCB, onFunctionCall, function, callsite);
+    HANDLE_CALLBACK(analyses_with_funcPreCB, onFunctionCallPre, function, callsite);
+
+    // Call the intercepted function
+    if (!cif_c.func) {
+        cif_c.func = function;
+        ffi_prep_cif(&cif_c.cif, FFI_DEFAULT_ABI, num_params, getFFIType(ret_size, (ret_size >> 16) & 0b10), cif_c.arg_types.data());
+        cached_cifs.push_back(cif_c);
+    }
+    cif_c.cif.arg_types = cif_c.arg_types.data(); // Might have been moved, need to keep updated here.
+    void* res = nullptr;
+    ffi_call(&cif_c.cif, FFI_FN(function), &res, ffi_arg_values_ptr.data());
+
+    // Run event handlers again for the postCBs, including the newly returned value
+    callsite.retval = res;
+    HANDLE_CALLBACK(analyses_with_funcPostCB, onFunctionCallPost, function, callsite);
+
+    return res;
 }
 
 extern "C" void __attribute__((visibility("default"))) PPDCV_MemRCallback(bool isRef, void const* buf) {

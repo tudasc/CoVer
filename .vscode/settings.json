@@ -8,6 +8,15 @@
           ]
       }
   },
+  "cmake.ctest.failurePatterns": [
+    {
+      "regexp": "(.+):(\\d+):(\\d+): error: CHECK: (.+)",
+      "file": 1,
+      "line": 2,
+      "column": 3,
+      "message": 4,
+    },
+  ],
   "terminal.integrated.defaultProfile.linux": "CoVer Wrapper Bash",
   "cmake.configureArgs": [
     "-DMPI_HOME=/home/archuser/Desktop/ompi/install",
@@ -18,4 +27,10 @@
     "COVER_WRAP_TARGET_mpicc": "~/Desktop/ompi/install/bin/mpicc",
     "COVER_WRAP_TARGET_mpicxx": "~/Desktop/ompi/install/bin/mpicxx",
   },
+  "terminal.integrated.env.linux": {
+    "COVER_WRAP_TARGET_mpifort": "~/Desktop/ompi/install/bin/mpifort",
+    "COVER_WRAP_TARGET_mpicc": "~/Desktop/ompi/install/bin/mpicc",
+    "COVER_WRAP_TARGET_mpicxx": "~/Desktop/ompi/install/bin/mpicxx",
+  },
+  "cmake.ctest.testSuiteDelimiter": "-|::",
 }

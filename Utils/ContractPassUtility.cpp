@@ -4,18 +4,25 @@
 #include <climits>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
+#include <llvm/Analysis/MemoryDependenceAnalysis.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
 #include <llvm/Demangle/Demangle.h>
+#include <llvm/IR/Constants.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
+#include <llvm/IR/DebugProgramInstruction.h>
 #include <llvm/IR/GlobalValue.h>
+#include <llvm/IR/GlobalVariable.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Operator.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/ErrorHandling.h>
+#include <llvm/Support/WithColor.h>
 #include <map>
 #include <memory>
 #include <set>
@@ -34,12 +41,27 @@ using namespace llvm;
 // To only warn once if a CB is calling an unknown function
 static std::set<const CallBase*> UnknownCalledParam;
 
+// For language-specific stuff
+static bool isFort = false;
+
 const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
     const Value* b = getPointerOperand(V);
     if (b == nullptr) {
         if (const GEPOperator* GEPOp = dyn_cast<GEPOperator>(V)) b = GEPOp->getPointerOperand();
     }
     return b;
+}
+
+StoreInst* ContractPassUtility::getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM) {
+    Instruction* cur = CB->getPrevNode();
+    while (cur) {
+        if (isa<CallBase>(cur) && !dyn_cast<CallBase>(cur)->getCalledOperand()->getName().starts_with("PPDCV")) break;
+        if (StoreInst* SI = dyn_cast<StoreInst>(cur)) {
+            if (SI->getPointerOperand() == CB->getArgOperand(idx)) return SI;
+        }
+        cur = cur->getPrevNode();
+    }
+    return nullptr;
 }
 
 std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
@@ -122,6 +144,10 @@ int resolveFunctionDifference(const Value** A, const Value** B) {
 
 namespace ContractPassUtility {
 
+void Initialize(Module& M) {
+    isFort = M.getFunction("_QQmain");
+}
+
 std::optional<uint> getLineNumber(const Instruction* I) {
     if (const DebugLoc& N = I->getDebugLoc()) {
         return N.getLine();
@@ -147,6 +173,67 @@ FileReference getFileReference(const Instruction* I) {
         .line = I->getDebugLoc() ? I->getDebugLoc()->getLine() : 0,
         .column = I->getDebugLoc() ? I->getDebugLoc()->getColumn() : 0
     };
+}
+
+bool isTrivialAlloc(Value const* V) {
+    // First possibility: Its a global alloc, trivially fulfilled
+    if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
+        if (isFort) {
+            SmallVector<DIGlobalVariableExpression*> dbg_arr;
+            GV->getDebugInfo(dbg_arr);
+            if (!dbg_arr.empty()) {
+                if (DICompositeType* T = dyn_cast<DICompositeType>(dbg_arr[0]->getVariable()->getType())) {
+                    if (T->getDataLocationExp()) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+    // Second possibility: Its a stack var, trivially fulfilled
+    const Value* tmp = V;
+    while (isa<GetElementPtrInst>(tmp)) {
+        tmp = getPointerOperand(tmp);
+    }
+
+    // Stack Variables
+    if (AllocaInst const* AI = dyn_cast<AllocaInst>(tmp)) {
+        if (isFort) {
+            // Fortran will do weird pointer / metadata stuff -> Need to check if stack thingy has external data location
+            Instruction const* dbgdeclare = AI;
+            while (dbgdeclare->getNextNode() && isa<AllocaInst>(dbgdeclare)) dbgdeclare = dbgdeclare->getNextNode();
+            for (DbgRecord const& DR : dbgdeclare->getDbgRecordRange()) {
+                if (DbgVariableRecord const* DVR = dyn_cast<DbgVariableRecord>(&DR)) {
+                    if (DVR->getAddress() != AI) continue;
+                    if (DICompositeType const* T = dyn_cast<DICompositeType>(DVR->getVariable()->getType())) {
+                        if (!T->getDataLocationExp()) {
+                            return true;
+                        }
+                    }
+                }
+            }
+        } else {
+            // C will just put the stack var in the function like a normal program -> already allocated
+            return true;
+        }
+    }
+
+    // Not trivially allocated
+    return false;
+}
+
+ConstantInt* fortCheckAndGetGlbInt(Value* V) {
+    if (V->getName().starts_with("_QQ")) {
+        if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
+            if (GV->hasInitializer()) {
+                if (StructType const* T = dyn_cast<StructType>(GV->getInitializer()->getType())) {
+                    if (T->getNumElements() == 1 && T->getElementType(0)->isIntegerTy()) return dyn_cast<ConstantInt>(GV->getInitializer()->getAggregateElement((unsigned int)0));
+                }
+            }
+        }
+    }
+    return nullptr;
 }
 
 bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
@@ -190,9 +277,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     }
 
     // Only use DSA for Fortran
-    const bool use_dsa = (isa<Instruction>(contrP) && dyn_cast<Instruction>(contrP)->getModule()->getFunction("_QQmain")) ||
-                         (isa<Instruction>(callP) && dyn_cast<Instruction>(callP)->getModule()->getFunction("_QQmain"));
-    if (!use_dsa) {
+    if (!isFort) {
         // Resolve function differences.
         // If one is a global, this does not matter, so check if they are instructions first
         if (isa<Instruction>(source) && isa<Instruction>(target)) {
@@ -213,8 +298,11 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         case ContractTree::ParamAccess::DEREF:
             // Contr has a pointer, call has value.
             // If interproc, diff should be -1 if already resolved
-            if (diff == 0)
-                target = getLoadStorePointerOperand(target);
+            if (diff == 0) {
+                Value const* V = getLoadStorePointerOperand(target);
+                if (!V && IS_DEBUG) WithColor(errs(), HighlightColor::String) << "Note: Static deref failed, falling back to orig.\n";
+                target = V ? V : target;
+            }
             else if (diff != -1) return false;
             break;
         case ContractTree::ParamAccess::ADDROF:
@@ -228,7 +316,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
 
     if (source == target) return true;
 
-    if (use_dsa) {
+    if (isFort) {
         std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
         if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
             DSNodeHandle sourceNode = steens->getNodeForValue(source);

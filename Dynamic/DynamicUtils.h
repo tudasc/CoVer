@@ -10,6 +10,12 @@
 #include <sstream>
 #include <vector>
 
+#ifdef NDEBUG
+#define ANALYSIS_PREAMBLE inline __attribute__((always_inline))
+#else
+#define ANALYSIS_PREAMBLE
+#endif
+
 using CodePtr = void const*;
 struct ConcreteParam {
     void const* value;
@@ -19,6 +25,7 @@ struct ConcreteParam {
 struct CallsiteInfo {
     CodePtr location;
     std::vector<ConcreteParam> params;
+    void const* retval = nullptr;
     bool operator==(CallsiteInfo const& other) const {
         return this->location == other.location && params == other.params;
     }
@@ -38,6 +45,9 @@ struct std::hash<CallsiteInfo> {
 namespace DynamicUtils {
     // Initialize Utils
     void Initialize(ContractDB_t const* DB);
+    
+    // Truncate bits from a raw byte value
+    uint64_t TruncateBits(uintptr_t const val, int const bit_width);
 
     // Check if two parameters match
     bool checkParamMatch(ParamAccess const& acc, ConcreteParam const& contrP, ConcreteParam const& callP);

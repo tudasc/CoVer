@@ -297,6 +297,172 @@ tag_typeuse = [("MPI_Send", 2), ("MPI_Isend", 2)]
 for func, tag_idx in tag_typeuse:
     add_contract(func, "TAGS", f"type_use({tag_idx})")
 
+# Parameter Errors
+paramerror_comm = [
+    ("MPI_Send", 5),
+    ("MPI_Isend", 5),
+    ("MPI_Recv", 5),
+    ("MPI_Irecv", 5),
+    ("MPI_Sendrecv", 10),
+    ("MPI_Allgather", 6),
+    ("MPI_Cart_get", 0),
+]
+for func, idx in paramerror_comm:
+    add_contract(func, "PRE", f"param!({idx}:^=MPI_COMM_WORLD,!=NULL,!=MPI_COMM_NULL) MSG \"Communicator is invalid\"")
+
+# MPI_PROC_NULL uses negative special value in OpenMPI, add exception for it
+paramerror_rank_send = [
+    ("MPI_Send", 3),
+    ("MPI_Get", 3),
+    ("MPI_Reduce", 5),
+]
+for func, idx in paramerror_rank_send:
+    add_contract(func, "PRE", f"param!({idx}:^=MPI_PROC_NULL,>=0) MSG \"Rank is invalid\"")
+
+# MPI_ANY_SOURCE uses negative special value in OpenMPI, add exception for it
+paramerror_rank_recv = [
+    ("MPI_Recv", 3),
+]
+for func, idx in paramerror_rank_recv:
+    add_contract(func, "PRE", f"param!({idx}:^=MPI_PROC_NULL,^=MPI_ANY_SOURCE,>=0) MSG \"Rank is invalid\"")
+
+# MPI_STATUSES_IGNORE == NULL == MPI_STATUS_IGNORE in OpenMPI. Add exception for MPI_STATUS_IGNORE
+paramerror_status = [
+    ("MPI_Wait", 1),
+]
+for func, idx in paramerror_status:
+    add_contract(func, "PRE", f"param!({idx}:^=MPI_STATUS_IGNORE,!=NULL,!=MPI_STATUSES_IGNORE) MSG \"Status is invalid\"")
+
+# Buffer should never be null
+paramerror_null = [
+    ("MPI_Initialized", 0),
+    ("MPI_Send", 0),
+    ("MPI_Isend", 0),
+    ("MPI_Recv", 0),
+    ("MPI_Irecv", 0),
+    ("MPI_Sendrecv", 0),
+    ("MPI_Win_create", 0),
+    ("MPI_Win_allocate", 4),
+    ("MPI_Get", 0),
+]
+for func, idx in paramerror_null:
+    add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_IN_PLACE,!=MPI_BOTTOM) MSG \"Parameter is null, MPI_IN_PLACE, or MPI_BOTTOM\"")
+
+# For sendrecv also dont allow same as send buf in recv buf
+add_contract("MPI_Sendrecv", "PRE", f"param!(5:!=NULL,!=MPI_IN_PLACE,!=MPI_BOTTOM,!=0 _arg) MSG \"Buffer is null or same as send buffer\"")
+
+# Comm buffer should be allocated
+paramerror_null = [
+    ("MPI_Send", 0),
+    ("MPI_Isend", 0),
+    ("MPI_Recv", 0),
+    ("MPI_Irecv", 0),
+    ("MPI_Sendrecv", 0),
+    ("MPI_Sendrecv", 5),
+    ("MPI_Get", 0),
+    ("MPI_Put", 0),
+]
+for func, idx in paramerror_null:
+    add_contract(func, "PRE", f"alloc!({idx}) MSG \"Buffer is not allocated\"")
+
+allocators = [
+    ("MPI_Win_allocate", 4),
+]
+for func, idx in allocators:
+    add_contract(func, "POST", f"alloc!(*{idx}[0 _arg])")
+
+
+# Datatype should not be null when doing communication
+paramerror_datatype = [
+    ("MPI_Get", 6),
+    ("MPI_Bcast", 2),
+]
+for func, idx in paramerror_datatype:
+    add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_DATATYPE_NULL) MSG \"Data type is invalid\"")
+
+# When doing P2P sends, the tag should never be MPI_ANY_TAG
+paramerror_tag_send = [
+    ("MPI_Send", 4),
+    ("MPI_Isend", 4),
+]
+for func, idx in paramerror_tag_send:
+    add_contract(func, "PRE", f"param!({idx}:!=MPI_ANY_TAG,>=0) MSG \"Tag is invalid\"")
+
+# MPI_OP_NULL should not be used for concrete operations
+paramerror_op = [
+    ("MPI_Reduce", 4),
+]
+for func, idx in paramerror_op:
+    add_contract(func, "PRE", f"param!({idx}:!=NULL,!=MPI_OP_NULL) MSG \"Operation is invalid\"")
+
+def get_param_values(lang: str) -> str:
+    param_values = {
+        "NULL": {
+            "c": "NULL",
+            "fort": "NULL()",
+        },
+        "MPI_BOTTOM": {
+            "c": "MPI_BOTTOM",
+            "fort": "MPI_BOTTOM",
+        },
+        "MPI_PROC_NULL": {
+            "c": "MPI_PROC_NULL",
+            "fort": "MPI_PROC_NULL",
+        },
+        "MPI_ANY_SOURCE": {
+            "c": "MPI_ANY_SOURCE",
+            "fort": "MPI_ANY_SOURCE",
+        },
+        "MPI_ANY_TAG": {
+            "c": "MPI_ANY_TAG",
+            "fort": "MPI_ANY_TAG",
+        },
+        "MPI_IN_PLACE": {
+            "c": "MPI_IN_PLACE",
+            "fort": "MPI_IN_PLACE",
+        },
+        "MPI_REQUEST_NULL": {
+            "c": "MPI_REQUEST_NULL",
+            "fort": "MPI_REQUEST_NULL",
+        },
+        "MPI_OP_NULL": {
+            "c": "MPI_OP_NULL",
+            "fort": "MPI_OP_NULL",
+        },
+        "MPI_COMM_NULL": {
+            "c": "MPI_COMM_NULL",
+            "fort": "MPI_COMM_NULL",
+        },
+        "MPI_COMM_WORLD": {
+            "c": "MPI_COMM_WORLD",
+            "fort": "MPI_COMM_WORLD",
+        },
+        "MPI_STATUS_IGNORE": {
+            "c": "MPI_STATUS_IGNORE",
+            "fort": "MPI_STATUS_IGNORE",
+        },
+        "MPI_STATUSES_IGNORE": {
+            "c": "MPI_STATUSES_IGNORE",
+            "fort": "MPI_STATUSES_IGNORE",
+        },
+        "MPI_DATATYPE_NULL": {
+            "c": "MPI_DATATYPE_NULL",
+            "fort": "MPI_DATATYPE_NULL",
+        }
+    }
+    output_pre = "Constant values needed for contracts\n"
+    output_templ = ""
+    output_str = ""
+    if lang == "c":
+        output_pre = "// " + output_pre
+        output_templ = "CONTRACT_VALUE_PAIR(@VAL_NAME@,@VAL_DATA@)"
+    if lang == "fort":
+        output_pre = "! " + output_pre
+        output_templ = "call Declare_Value(\"@VAL_NAME@\",@VAL_DATA@)"
+    for val_name, val_data in param_values.items():
+        output_str += output_templ.replace("@PRE@", output_pre).replace("@VAL_NAME@", val_name).replace("@VAL_DATA@", val_data[lang]) + "\n"
+    return output_pre + output_str
+
 # Output file
 boilerplate_header_c = f"""
 // Automatically generated by {os.path.basename(__file__)}
@@ -304,10 +470,35 @@ boilerplate_header_c = f"""
 // Identifier: {ver_identifier}
 
 #pragma once
+
 #include "Contracts.h"
 #include <mpi.h>
 
 #define MACRO_SAFETY(x) (x)
+
+{get_param_values("c")}
+
+#ifdef __cplusplus
+
+void* operator new[](size_t size) CONTRACT(POST {{alloc!(R[0 _arg])}});
+
+extern "C" {{
+#endif
+
+void __attribute__((weak)) CoVer_AllocStack(void* ptr, size_t size) CONTRACT( POST {{ alloc!(0[1 _arg]) }}) {{}};
+void __attribute__((weak)) CoVer_FreeStack(void* ptr) CONTRACT( POST {{ free!(0) }}) {{}};
+
+void __attribute__((weak)) CoVer_RegisterGlobal(void* ptr, int64_t size) CONTRACT( POST {{ alloc!(0[ 1 _arg ]) }}) {{}};
+
+
+void* calloc(size_t num, size_t size) __THROW CONTRACT( POST {{ alloc!(R[ 0 _arg * 1 _arg]) }});
+void* malloc(size_t size) __THROW CONTRACT( POST {{ alloc!(R[0 _arg]) }});
+
+void free(void*) __THROW CONTRACT( POST {{ free!(0) }});
+
+#ifdef __cplusplus
+}}
+#endif
 
 """
 
@@ -322,8 +513,34 @@ subroutine CONTRACT_DEFINITIONS_FORT_@RANDOM_UNIQUE@
     use contract_helper
 """
 
-header_output_fort = boilerplate_header_fort + "    use mpi\n    implicit none\n"
-header_output_fort_f08 = boilerplate_header_fort + "    use mpi_f08\n    implicit none\n"
+fortran_lang_intrinsics = """
+    ! Contracts for intrinsics - Mainly for allocation tracking
+    interface
+        ! Fortran language intrinsics
+        subroutine FortAlloc() bind(c, name="CoVer_FPointerAllocate")
+        end subroutine FortAlloc
+        subroutine FortFree() bind(c, name="CoVer_FPointerDeallocate")
+        end subroutine FortFree
+
+        ! CoVer intrinsics
+        subroutine CoVer_AllocStack(ptr,size) bind(c, name="CoVer_AllocStack")
+            integer, pointer :: ptr
+            integer(kind=8) :: size
+        end subroutine CoVer_AllocStack
+        subroutine CoVer_FreeStack() bind(c, name="CoVer_FreeStack")
+        end subroutine CoVer_FreeStack
+        subroutine CoVer_RegisterGlobal() bind(c, name="CoVer_RegisterGlobal")
+        end subroutine CoVer_RegisterGlobal
+    end interface
+    call Declare_Contract(FortAlloc, \"POST { alloc!(*0[1 _arg]) }\")
+    call Declare_Contract(FortFree, \"POST { free!(0) }\")
+    call Declare_Contract(CoVer_AllocStack, \"POST { alloc!(0[1 _arg]) }\")
+    call Declare_Contract(CoVer_FreeStack, \"POST { free!(0) }\")
+    call Declare_Contract(CoVer_RegisterGlobal, \"POST { alloc!(0) }\")
+"""
+
+header_output_fort = boilerplate_header_fort + f"    use mpi\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values('fort')}\n\n"
+header_output_fort_f08 = boilerplate_header_fort + f"    use mpi_f08\n    implicit none\n\n{fortran_lang_intrinsics}\n\n{get_param_values('fort')}\n\n"
 header_output_fort_f08ts = header_output_fort_f08
 
 exclude_fortran = [
@@ -391,7 +608,7 @@ for func, contrs in function_contracts.items():
     header_output_c += ");\n\n"
     if func in exclude_fortran or "c2f" in func or "f2c" in func or "f082c" in func or "c2f08" in func or func.endswith("_c") or func.endswith("_fromint") or func.endswith("_toint"): continue # Only defined for C
     # Now: Fortran
-    contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "").replace("*", "").replace("&", "").replace("read!(", "read!(*").replace("write!(", "write!(*")
+    contract_str_fort = contract_str.replace('"', '""').replace("\n", "").replace("    ", "").replace(":*", ":").replace(":&", ":")
     if func not in exclude_fortran_nof08:
         header_output_fort += "    call Declare_Contract(" + func + ", \"" + contract_str_fort + "\")\n"
     # Fortran f08(ts)

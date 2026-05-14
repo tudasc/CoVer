@@ -1,6 +1,6 @@
 # Please add "source /path/to/bash-autocomplete.sh" to your .bashrc to use this.
 
-_@EXECUTABLE_WRAPPER_NAME@_filedir()
+_compile_wrapper_filedir()
 {
   # _filedir function provided by recent versions of bash-completion package is
   # better than "compgen -f" because the former honors spaces in pathnames while
@@ -8,7 +8,7 @@ _@EXECUTABLE_WRAPPER_NAME@_filedir()
   _filedir 2> /dev/null || COMPREPLY=( $( compgen -f ) )
 }
 
-_@EXECUTABLE_WRAPPER_NAME@()
+_compile_wrapper()
 {
   local cur prev words cword arg flags w1 w2
   # If latest bash-completion is not supported just initialize COMPREPLY and
@@ -40,19 +40,13 @@ _@EXECUTABLE_WRAPPER_NAME@()
   eval local path=${COMP_WORDS[0]}
   # Use $'\t' so that bash expands the \t for older versions of sed.
   flags=$( "$path" --autocomplete="$arg" 2>/dev/null | sed -e $'s/\t.*//' )
-  # If @EXECUTABLE_WRAPPER_NAME@ is old that it does not support --autocomplete,
-  # fall back to the filename completion.
-  if [[ "$?" != 0 ]]; then
-    _@EXECUTABLE_WRAPPER_NAME@_filedir
-    return
-  fi
 
   # When @EXECUTABLE_WRAPPER_NAME@ does not emit any possible autocompletion, or user pushed tab after " ",
   # just autocomplete files.
   if [[ "$flags" == "$(echo -e '\n')" ]]; then
     # If -foo=<tab> and there was no possible values, autocomplete files.
     [[ "$cur" == '=' || "$cur" == -*= ]] && cur=""
-    _@EXECUTABLE_WRAPPER_NAME@_filedir
+    _compile_wrapper_filedir
   elif [[ "$cur" == '=' ]]; then
     COMPREPLY=( $( compgen -W "$flags" -- "") )
   else
@@ -62,4 +56,4 @@ _@EXECUTABLE_WRAPPER_NAME@()
     COMPREPLY=( $( compgen -W "$flags" -- "$cur" ) )
   fi
 }
-complete -F _@EXECUTABLE_WRAPPER_NAME@ @EXECUTABLE_WRAPPER_NAME@
+complete -F _compile_wrapper @EXECUTABLE_WRAPPER_NAME@
