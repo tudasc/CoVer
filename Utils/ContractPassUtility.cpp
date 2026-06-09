@@ -4,6 +4,7 @@
 #include "../Passes/BasicTypes.hpp"
 #include <climits>
 #include <iterator>
+#include <llvm/ADT/PostOrderIterator.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Analysis/AliasAnalysis.h>
 #include <llvm/Analysis/MemoryDependenceAnalysis.h>
@@ -197,6 +198,28 @@ int resolveFunctionDifference(const Value** A, const Value** B) {
     return INT_MAX;
 }
 
+void sortBlocks(llvm::Function &F) {
+  if (F.isDeclaration() || F.size() <= 1)
+    return;
+
+  llvm::ReversePostOrderTraversal<llvm::Function *> RPOT(&F);
+  llvm::BasicBlock *Prev = nullptr;
+  for (llvm::BasicBlock *BB : RPOT) {
+    if (Prev)
+      BB->moveAfter(Prev);
+    Prev = BB;
+  }
+}
+
+void determinizeModule() {
+    curM->getFunctionList().sort([](const llvm::Function &A, const llvm::Function &B) {
+        return A.getName() < B.getName();
+    });
+    for (Function& F : *curM) {
+        sortBlocks(F);
+    }
+}
+
 namespace ContractPassUtility {
 
 std::map<int, AliasGroup> const getAliasAnnots() { return aliasInfo; }
@@ -220,6 +243,9 @@ void Initialize(Module& M, ModuleAnalysisManager& MAM) {
 
     isFort = M.getFunction("_QQmain");
     curM = &M;
+
+    // Function list and basic blocks must be sorted for clean diff on interactive analysis
+    determinizeModule();
 
     Function* AnnotAlias = M.getFunction("CoVer_AnnotAlias");
     for (User* U : AnnotAlias->users()) {
@@ -517,18 +543,15 @@ void addToAliasGroup(int idx, Value* V) {
     }
 }
 void removeFromAliasGroup(int group, int idx) {
-    errs() << group << " " << idx << "\n";
     Value* V = *std::next(aliasInfo[idx].members.begin(), idx);
     aliasInfo[idx].members.erase(V);
-    if (Instruction* I = dyn_cast<Instruction>(V)) {
-        for (Instruction* cur = I->getNextNode(); cur && isa<CallBase>(cur); cur = cur->getNextNode()) {
-            CallBase* CB = dyn_cast<CallBase>(cur);
-            if (CB->getCalledOperand()->getName().starts_with("CoVer_AnnotAlias")) {
-                if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() == idx) {
-                    CB->eraseFromParent();
-                    break;
-                }
-            }
+    for (User* U : curM->getFunction("CoVer_AnnotAlias")->users()) {
+        if (CallBase* CB = dyn_cast<CallBase>(U)) {
+            if (CB->getCalledFunction()->getName() != "CoVer_AnnotAlias") continue;
+            if (CB->getArgOperand(0) != V) continue;
+            if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() != idx) continue;
+            CB->eraseFromParent();
+            break;
         }
     }
     if (aliasInfo[idx].members.empty()) aliasInfo.erase(idx);
