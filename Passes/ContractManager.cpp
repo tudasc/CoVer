@@ -55,12 +55,8 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     curDatabase.allowMultiReports = ClMultiReports;
     curDatabase.isInteractive = ClIsInteractive;
 
-    // Function list must be sorted for clean diff on interactive analysis
-    M.getFunctionList().sort([](const llvm::Function &A, const llvm::Function &B) {
-        return A.getName() < B.getName();
-    });
-
     errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
+    ContractPassUtility::Initialize(M, AM);
 
     extractFromAnnotations(M);
     extractFromFunction(M);
@@ -83,7 +79,6 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     std::string timestr = std::format("CoVer: Parsed contracts after {}s\n", std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count());
     errs() << timestr;
 
-    ContractPassUtility::Initialize(M, AM);
     if (curDatabase.isInteractive) {
         TUIManager::StartMenu(curDatabase);
         if (M.getName() != "CoVer_Reanalyse.ll") {
