@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/screen/color.hpp>
+#include <string>
 #include <system_error>
 #include <vector>
 #include "ContractPassUtility.hpp"
@@ -111,6 +114,17 @@ void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::strin
 template<typename T>
 bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
     std::vector<std::pair<std::string, CmdResult>> input_history;
+    if (std::filesystem::exists("CoVer_HistoryCache")) {
+        std::string line;
+        std::ifstream historyfile("CoVer_HistoryCache");
+        std::getline(historyfile, line);
+        while (std::getline(historyfile, line)) {
+            if (line == "|| DIFF HISTORY END ||") break;
+            CmdResultCode code = (CmdResultCode)std::atoi(line.substr(0, line.find_first_of("|")).c_str());
+            input_history.push_back({line.substr(line.find_first_of("|") + 1), {code, ""}});
+        }
+        std::filesystem::remove("CoVer_HistoryCache");
+    }
     std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::map<JumpTraceEntry<T>*,bool> expand_select;
     std::string last_res = "";
@@ -143,7 +157,15 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
         last_res = res.res;
 
         if (res.code == CmdResultCode::SUCCESS_EXIT) return false;
-        if (res.code == CmdResultCode::SUCCESS_REANALYSE) return true;
+        if (res.code == CmdResultCode::SUCCESS_REANALYSE) {
+            std::ofstream difffile("CoVer_HistoryCache");
+            difffile << "|| DIFF HISTORY BEGIN ||\n";
+            for (std::pair<std::string, CmdResult> x : ctx.history) {
+                difffile << (int)x.second.code << "|" << x.first << "\n";
+            }
+            difffile << "|| DIFF HISTORY END ||\n---\n";
+            return true;   
+        }
     }
 }
 
