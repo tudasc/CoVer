@@ -408,11 +408,13 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         return false;
     }
 
-    // Annotated infos
-    for (std::pair<int, AliasGroup> AG : aliasInfo) {
-        if ((AG.second.members.contains(source) || AG.second.members.contains(betterGetPointerOperand(source)))
-         && (AG.second.members.contains(target) || AG.second.members.contains(betterGetPointerOperand(target)))) {
-            return AG.second.areAliasing;
+    // Annotated infos - Only makes sense if source != target. Otherwise will just return depending on type of first alias group!
+    if (source != target) {
+        for (std::pair<int, AliasGroup> AG : aliasInfo) {
+            if ((AG.second.members.contains(source) || AG.second.members.contains(betterGetPointerOperand(source)))
+            && (AG.second.members.contains(target) || AG.second.members.contains(betterGetPointerOperand(target)))) {
+                return AG.second.areAliasing;
+            }
         }
     }
 
