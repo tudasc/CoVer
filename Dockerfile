@@ -36,12 +36,13 @@ ENV PATH="/usr/lib/llvm-22/bin:$PATH"
 
 ENV CC=clang
 ENV CXX=clang++
+ENV FC=flang
 ENV OMPI_CC=$CC
 ENV OMPI_CXX=$CXX
 
 # Compile OpenMPI (Cant use prebuilt as its module files are gfortran specific)
 RUN git clone --recursive https://github.com/open-mpi/ompi/
-RUN cd ompi && ./autogen.pl && ./configure CC=clang CXX=clang++ FC=flang --prefix=/usr --with-pmix=internal
+RUN cd ompi && ./autogen.pl && ./configure --prefix=/usr --with-pmix=internal
 RUN cd ompi && make -j8 install
 
 ENV OMPI_ALLOW_RUN_AS_ROOT=1
