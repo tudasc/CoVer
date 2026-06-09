@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <ftxui/component/component_base.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
@@ -190,7 +191,14 @@ CmdResult CmdAliasGet(std::vector<std::string>&, CmdContext<T>&) {
 template<typename T>
 CmdResult CmdDiff(std::vector<std::string>& args, CmdContext<T>& ctx) {
     Module* M = ctx.trace_by_blocks.begin()->first_entry->loc->getModule();
-    int rc = std::system(std::format("diff -c -I '^; ModuleID' CoVer_InteractStart.ll CoVer_Reanalyse.ll > {}", args[0]).c_str());
+    std::ofstream difffile(args[0]);
+    difffile << "|| DIFF HISTORY BEGIN ||\n";
+    for (std::pair<std::string, CmdResult> x : ctx.history) {
+        difffile << x.first << "\n";
+    }
+    difffile << "|| DIFF HISTORY END ||\n---\n";
+    difffile.flush();
+    int rc = std::system(std::format("diff -c -I '^; ModuleID' -I '.*; preds =.*' CoVer_InteractStart.ll CoVer_Reanalyse.ll >> {}", args[0]).c_str());
     if (!WIFEXITED(rc) || (WEXITSTATUS(rc) && WEXITSTATUS(rc) != 1)) return {CmdResultCode::INVALID_INPUT, std::format("Error, diff returned exit code {}", WEXITSTATUS(rc))};
     return {CmdResultCode::SUCCESS_CONTINUE, "Wrote patch file to " + args[0]};
 }
