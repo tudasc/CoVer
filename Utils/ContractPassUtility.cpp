@@ -545,18 +545,18 @@ void addToAliasGroup(int idx, Value* V) {
     }
 }
 void removeFromAliasGroup(int group, int idx) {
-    Value* V = *std::next(aliasInfo[idx].members.begin(), idx);
-    aliasInfo[idx].members.erase(V);
+    Value* V = *std::next(aliasInfo[group].members.begin(), idx);
+    aliasInfo[group].members.erase(V);
     for (User* U : curM->getFunction("CoVer_AnnotAlias")->users()) {
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
-            if (CB->getCalledFunction()->getName() != "CoVer_AnnotAlias") continue;
+            if (CB->getCalledOperand()->getName() != "CoVer_AnnotAlias") continue;
             if (CB->getArgOperand(0) != V) continue;
             if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() != idx) continue;
             CB->eraseFromParent();
             break;
         }
     }
-    if (aliasInfo[idx].members.empty()) aliasInfo.erase(idx);
+    if (aliasInfo[group].members.empty()) aliasInfo.erase(group);
 }
 
 void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
