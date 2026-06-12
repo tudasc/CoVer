@@ -318,6 +318,7 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
                 Function* func = cur->getFunction();
                 for (User* U : func->users()) {
                     if (CallBase* CB = dyn_cast<CallBase>(U)) {
+                        if (CB->getCalledOperand() != func) continue;
                         // Add callsite next to todoList
                         todoList.push( {CB->getNextNode(), postAccess[cur], stack} );
                     }
