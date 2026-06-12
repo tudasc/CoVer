@@ -350,7 +350,7 @@ bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
     }
     int choice = 0;
     do {
-        choice = RenderMenu(violations, "Reported Errors");
+        choice = RenderMenu(violations, violations.empty() ? "No reported errors!" : "Reported Errors");
         if (choice != 0) {
             bool debug = ShowViolationDetails(formulas[choice-1].first);
             if (debug) {
