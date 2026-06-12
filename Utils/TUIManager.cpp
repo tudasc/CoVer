@@ -151,21 +151,18 @@ std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title,
 }
 
 void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB) {
-    int choice; // Used for RenderMenu
-    choice = RenderMenu({"Start Analysis", "Read Contracts Only"}, "Start Menu");
-
-    if (choice == 1) { // For now, only read contracts
-        std::vector<std::string> contr_funcs;
-        contr_funcs.push_back("Continue Analysis");
-        for (llvm::ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
-            contr_funcs.push_back(contract.F->getName().str());
-        }
-        while (choice != 0) {
-            choice = RenderMenu(contr_funcs, "Contract Listing (Read " + std::to_string(DB.Contracts.size()) + " Contracts)");
-            // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
-            if (choice != 0) ShowContractDetails(DB.Contracts[choice-1]);
-        }
+    std::vector<std::string> contr_funcs;
+    contr_funcs.push_back("Start Analysis");
+    for (llvm::ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
+        contr_funcs.push_back("Read Contract: " + contract.F->getName().str());
     }
+
+    int choice;
+    do {
+        choice = RenderMenu(contr_funcs, "Start Menu (" + std::to_string(DB.Contracts.size()) + " contracts to be analysed)");
+        // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
+        if (choice != 0) ShowContractDetails(DB.Contracts[choice-1]);
+    } while (choice != 0);
 }
 
 bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, std::string title) {
