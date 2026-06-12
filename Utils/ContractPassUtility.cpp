@@ -217,6 +217,22 @@ void determinizeModule() {
     });
     for (Function& F : *curM) {
         sortBlocks(F);
+        // Position in the function is index for use list
+        DenseMap<BasicBlock const*, int> Order;
+        int Idx = 0;
+        for (BasicBlock const& BB : F) Order[&BB] = Idx++;
+
+        auto predKey = [&](const Use &U) -> unsigned {
+            // A block value's users are terminators; map each back to its parent (the pred).
+            if (Instruction* I = dyn_cast<Instruction>(U.getUser())) return Order.lookup(I->getParent());
+            return UINT_MAX; // blockaddress / non-terminator users sink to the end
+        };
+
+        for (BasicBlock &BB : F) {
+            BB.sortUseList([&](const Use &L, const Use &R) {
+                return predKey(L) < predKey(R);
+            });
+        }
     }
 }
 
