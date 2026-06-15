@@ -234,6 +234,30 @@ void determinizeModule() {
             });
         }
     }
+
+    NamedMDNode *CUs = curM->getNamedMetadata("llvm.dbg.cu");
+    SmallVector<MDNode *, 8> Nodes(CUs->operands());
+
+    llvm::sort(Nodes, [](MDNode *A, MDNode *B) {
+        DICompileUnit* CA = cast<DICompileUnit>(A);
+        DICompileUnit* CB = cast<DICompileUnit>(B);
+        return CA->getFile()->getFilename() < CB->getFile()->getFilename();
+    });
+
+
+    CUs->clearOperands();
+    for (MDNode *N : Nodes)
+        CUs->addOperand(N);
+
+    for (DICompileUnit *CU : curM->debug_compile_units()) {
+        SmallVector<Metadata *, 16> GVs(CU->getGlobalVariables()->operands());
+        llvm::sort(GVs, [](Metadata *A, Metadata *B) {
+            auto *GA = cast<DIGlobalVariableExpression>(A)->getVariable();
+            auto *GB = cast<DIGlobalVariableExpression>(B)->getVariable();
+            return GA->getName() < GB->getName();
+        });
+        CU->replaceGlobalVariables(MDTuple::get(curM->getContext(), GVs));
+    }
 }
 
 namespace ContractPassUtility {

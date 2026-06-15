@@ -91,7 +91,6 @@ add_llvm_pass_plugin(CoVerPlugin
   Utils/ContractPassUtility.cpp
   Utils/TUIManager.cpp
   Utils/TUITrace.cpp
-  Include/ContractPassUtility.hpp
 )
 
 target_include_directories(CoVerPlugin
