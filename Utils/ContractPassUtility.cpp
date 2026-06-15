@@ -3,6 +3,7 @@
 #include "ErrorMessage.h"
 #include "../Passes/BasicTypes.hpp"
 #include <climits>
+#include <format>
 #include <iterator>
 #include <llvm/ADT/PostOrderIterator.h>
 #include <llvm/ADT/StringRef.h>
@@ -14,6 +15,7 @@
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
+#include <llvm/IR/ModuleSlotTracker.h>
 #include <llvm/IR/DebugProgramInstruction.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/GlobalValue.h>
@@ -22,6 +24,7 @@
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/Metadata.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Operator.h>
 #include <llvm/IR/PassManager.h>
@@ -29,6 +32,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <llvm/Support/WithColor.h>
+#include <llvm/Support/raw_ostream.h>
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <map>
 #include <memory>
@@ -260,6 +264,8 @@ void determinizeModule() {
     }
 }
 
+bool outputIR = false;
+
 namespace ContractPassUtility {
 
 std::map<int, AliasGroup> const getAliasAnnots() { return aliasInfo; }
@@ -278,11 +284,13 @@ std::set<Function*> const getFPAnnots(CallBase* CB) {
     return fp_targets;
 }
 
-void Initialize(Module& M, ModuleAnalysisManager& MAM) {
+void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
     Basic_Types = MAM.getResult<BasicTypesAnalysis>(M);
 
     isFort = M.getFunction("_QQmain");
     curM = &M;
+
+    outputIR = _outputIR;
 
     // Function list and basic blocks must be sorted for clean diff on interactive analysis
     determinizeModule();
@@ -314,14 +322,27 @@ std::string getFile(const Instruction* I, bool longform = true) {
 }
 
 std::string getInstrLocStr(const Function* I, bool longform) {
-    if (const DISubprogram* debugLoc = I->getSubprogram())
-        return ((longform ? debugLoc->getDirectory() + "/" : "") + debugLoc->getFilename()).str() + ":" + std::to_string(debugLoc->getLine());
+    if (const DISubprogram* debugLoc = I->getSubprogram()) {
+        if (!outputIR) return ((longform ? debugLoc->getDirectory() + "/" : "") + debugLoc->getFilename()).str() + ":" + std::to_string(debugLoc->getLine());
+        else return I->getName().str();
+    }
     return "UNKNOWN";
 }
 
 std::string getInstrLocStr(const Instruction* I, bool longform) {
-    if (const DebugLoc &debugLoc = I->getDebugLoc())
-        return getFile(I, longform) + ":" + std::to_string(debugLoc.getLine()) + (longform ? ":" + std::to_string(debugLoc->getColumn()) : "");
+    if (const DebugLoc &debugLoc = I->getDebugLoc()) {
+        if (!outputIR) return getFile(I, longform) + ":" + std::to_string(debugLoc.getLine()) + (longform ? ":" + std::to_string(debugLoc->getColumn()) : "");
+        else {
+            static llvm::DenseMap<const Instruction*, std::string> cache;
+            auto [it, inserted] = cache.try_emplace(I);
+            if (inserted) {
+                llvm::ModuleSlotTracker MST(I->getModule());
+                MST.incorporateFunction(*I->getFunction());
+                llvm::raw_string_ostream(it->second) << *I;
+            }
+            return std::format("IR {} in {}", it->second, I->getFunction()->getName().str());
+        }
+    }
     return "UNKNOWN";
 }
 
@@ -582,6 +603,16 @@ void addToAliasGroup(int idx, Value* V) {
         CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlias"), {I, Basic_Types.getBool(aliasInfo[idx].areAliasing), Basic_Types.getInt(idx)});
         CI->insertAfter(I);
         CI->setDebugLoc(I->getDebugLoc());
+    }
+}
+void setAliasGroupType(int idx, bool isAlias) {
+    aliasInfo[idx].areAliasing = isAlias;
+    for (User* U : curM->getFunction("CoVer_AnnotAlias")->users()) {
+        if (CallBase* CB = dyn_cast<CallBase>(U)) {
+            if (CB->getCalledOperand()->getName() != "CoVer_AnnotAlias") continue;
+            if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() != idx) continue;
+            CB->setArgOperand(1, Basic_Types.getBool(isAlias));
+        }
     }
 }
 void removeFromAliasGroup(int group, int idx) {

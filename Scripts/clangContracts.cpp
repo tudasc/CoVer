@@ -69,6 +69,16 @@ static cl::opt<std::string> InstrumentContracts("instrument-contracts",
     cl::value_desc("(full|funconly|filtered)"),
     cl::cat(WrapperCategory));
 
+static cl::opt<bool> IROutput("ir-output",
+    cl::desc("Print IR output instead of human-readable"),
+    cl::init(false),
+    cl::cat(WrapperCategory));
+
+static cl::opt<std::string> KeepIR("keep-ir",
+    cl::desc("Set to path to keep the linked and analysed IR file"),
+    cl::init(""),
+    cl::cat(WrapperCategory));
+
 static cl::list<std::string> CompilerParams(cl::Sink,
     cl::desc("<compiler params>"));
 
@@ -141,6 +151,8 @@ std::pair<std::string,std::string> parseWrapperParams(std::pair<std::string,std:
 
     if (AllowMultiReports) opt_flags += " --cover-allow-multireports=1";
     if (InteractiveStatic) opt_flags += " --cover-interactive-analysis=1";
+    if (IROutput) opt_flags += " --cover-ir-output=1";
+    if (!KeepIR.empty()) opt_flags += " --cover-keep-ir=" + KeepIR;
 
     if (InstrumentContracts.getNumOccurrences() && InstrumentContracts.empty()) InstrumentContracts = "full";
     if (!InstrumentContracts.empty()) opt_flags += " -cover-instrument-type=\"" + InstrumentContracts + "\"";

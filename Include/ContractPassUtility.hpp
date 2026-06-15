@@ -35,7 +35,7 @@ using namespace llvm;
 
 namespace ContractPassUtility {
     // Called automatically by ContractManager
-    void Initialize(Module& M, ModuleAnalysisManager& MAM);
+    void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR);
 
     template<typename T>
     using TransferFunction = std::function<T(T,const Instruction*,void*)>;
@@ -145,9 +145,10 @@ namespace ContractPassUtility {
     void createAliasGroup(bool shouldAlias, Value* V1, Value* V2);
 
     /*
-    * Add or remove from an existing alias group
+    * Modify an existing alias group
     */
     void addToAliasGroup(int idx, Value* V);
+    void setAliasGroupType(int idx, bool isAlias); 
     void removeFromAliasGroup(int group, int idx);
 
     /*

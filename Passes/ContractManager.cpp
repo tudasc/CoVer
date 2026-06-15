@@ -18,9 +18,11 @@
 #include <llvm/Support/Casting.h>
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/WithColor.h>
+#include <llvm/Support/raw_ostream.h>
 #include <memory>
 
 #include <string>
+#include <system_error>
 #include <vector>
 #include "../LangCode/ContractDataExtractor.hpp"
 #include "ContractTree.hpp"
@@ -37,6 +39,14 @@ static cl::opt<bool> ClMultiReports(
 static cl::opt<bool> ClIsInteractive(
     "cover-interactive-analysis", cl::init(false),
     cl::desc("Run in interactive mode"),
+    cl::Hidden);
+static cl::opt<bool> ClIROutput(
+    "cover-ir-output", cl::init(false),
+    cl::desc("Print IR instead of human-readable output"),
+    cl::Hidden);
+static cl::opt<std::string> ClKeepIR(
+    "cover-keep-ir", cl::init(""),
+    cl::desc("Keep IR (after determinization)"),
     cl::Hidden);
 
 static std::optional<std::string> getFuncName(CallBase* FuncCall) {
@@ -56,7 +66,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     curDatabase.isInteractive = ClIsInteractive;
 
     errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
-    ContractPassUtility::Initialize(M, AM);
+    ContractPassUtility::Initialize(M, AM, ClIROutput);
 
     extractFromAnnotations(M);
     extractFromFunction(M);
@@ -87,6 +97,12 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
             llvm::raw_fd_stream orig_file("CoVer_InteractStart.ll", rc);
             M.print(orig_file, nullptr);
         }
+    }
+
+    if (!ClKeepIR.empty()) {
+        std::error_code ec;
+        raw_fd_ostream outputir(ClKeepIR, ec);
+        M.print(outputir, nullptr);
     }
 
     return curDatabase;
