@@ -139,7 +139,7 @@ std::pair<std::string,std::string> parseWrapperParams(std::pair<std::string,std:
     std::string& rem_args_link = rem_args.first; // First result, only for linking
     std::string& rem_args_compile = rem_args.second; // Second result, only for compiling
 
-    if (AllowMultiReports) opt_flags += " -cover-allow-multireports=1";
+    if (AllowMultiReports) opt_flags += " --cover-allow-multireports=1";
     if (InteractiveStatic) opt_flags += " --cover-interactive-analysis=1";
 
     if (InstrumentContracts.getNumOccurrences() && InstrumentContracts.empty()) InstrumentContracts = "full";
