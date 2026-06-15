@@ -93,7 +93,7 @@ std::regex const llvm_version_regex("version ([0-9]+)\\.[0-9]+\\.[0-9]+");
 
 std::regex const source_file_ending("@COMPILE_SRC_FILE_ENDINGS@");
 std::string source_file_paths;
-std::regex const obj_file_ending(".*(\\.o)");
+std::regex const obj_file_ending(".*(\\.o|\\.ll)");
 std::string bitcode_files;
 std::vector<std::string> source_file_names;
 std::vector<std::string> link_time_sources; // For predef fort contracts
