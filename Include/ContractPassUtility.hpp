@@ -54,13 +54,13 @@ namespace ContractPassUtility {
         bool operator<(const JumpTraceEntry<T> other) const { return loc < other.loc; };
     };
     template<typename T>
-    struct TraceDB : std::shared_ptr<std::map<Instruction*, JumpTraceEntry<T>>> {
-        TraceDB<T>() : std::shared_ptr<std::map<Instruction*, JumpTraceEntry<T>>>(std::make_shared<std::map<Instruction*, JumpTraceEntry<T>>>()) {}
+    struct TraceDB : std::shared_ptr<DenseMap<Instruction*, JumpTraceEntry<T>>> {
+        TraceDB<T>() : std::shared_ptr<DenseMap<Instruction*, JumpTraceEntry<T>>>(std::make_shared<DenseMap<Instruction*, JumpTraceEntry<T>>>()) {}
         JumpTraceEntry<T>* operator[](Instruction* I) const { return &(**this)[I]; }
     };
     template<typename T>
     struct WorklistResult : GenericWLRes {
-        std::map<Instruction*, T> AnalysisInfo;
+        DenseMap<Instruction*, T> AnalysisInfo;
         TraceDB<T> JumpTraces;
         std::function<std::string(T)> AnalysisInfoToStr = nullptr;
     };
@@ -178,14 +178,14 @@ void updateJumpTrace(ContractPassUtility::TraceDB<T> trace, Instruction* cur, In
 }
 
 template <typename T>
-std::pair<T, bool> getMergeResult(std::map<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> trace, T prevInfo, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, Instruction* cur, void* data) {
+std::pair<T, bool> getMergeResult(DenseMap<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> trace, T prevInfo, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, Instruction* cur, void* data) {
     bool resume = true;
     T info;
-    if (!AI.contains(cur)) {
+    auto it = AI.find(cur);
+    if (it == AI.end()) {
         info = prevInfo;
     } else {
-        // Encountered already. Call merge function
-        std::tie(info, resume) = merge(prevInfo, AI[cur], cur, data);
+        std::tie(info, resume) = merge(prevInfo, it->second, cur, data);
     }
     AI[cur] = info;
     if (trace->contains(cur)) trace[cur]->analysisInfo = info;
@@ -201,7 +201,7 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
     // Jumptrace
     TraceDB<T> jumptraces;
     // Analysis Info mapping
-    std::map<Instruction*, T> postAccess;
+    DenseMap<Instruction*, T> postAccess;
     // Worklist
     std::queue<WorklistEntry<T>> todoList;
 
@@ -215,7 +215,7 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
     }
 
     // Map of OpenMP functions to index with function pointer
-    std::map<StringRef,int> OMPNames = {{"__kmpc_omp_task_alloc", 5}, {"__kmpc_fork_call", 2}};
+    static const std::map<StringRef,int> OMPNames = {{"__kmpc_omp_task_alloc", 5}, {"__kmpc_fork_call", 2}};
 
     // Start of worklist algorithm
     while (!todoList.empty()) {
@@ -278,7 +278,7 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
                         next = &CB->getCalledFunction()->getEntryBlock().front();
                         next_trace_entry = TraceKind::FUNCENTRY;
                     } else {
-                        if (Function* ompFunc = dyn_cast<Function>(CB->getArgOperand(OMPNames[CB->getCalledFunction()->getName()]))) {
+                        if (Function* ompFunc = dyn_cast<Function>(CB->getArgOperand(OMPNames.at(CB->getCalledFunction()->getName())))) {
                             if (!ompFunc->isDeclaration())
                                 next = &ompFunc->getEntryBlock().front();
                         }
