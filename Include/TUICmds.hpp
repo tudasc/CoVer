@@ -156,6 +156,16 @@ CmdResult CmdAliasAdd(std::vector<std::string>& args, CmdContext<T>& ctx) {
 }
 
 template<typename T>
+CmdResult CmdAliasType(std::vector<std::string>& args, CmdContext<T>& ctx) {
+    std::string last_res;
+    std::optional<int> group = ParseAliasGroup(args[0], last_res);
+    if (!group) return {CmdResultCode::INVALID_INPUT, last_res};
+    bool isAlias = args[1].starts_with("y");
+    ContractPassUtility::setAliasGroupType(*group, isAlias);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Alias group {} {}", *group, isAlias ? "should alias" : "should not alias")};
+}
+
+template<typename T>
 CmdResult CmdAliasRm(std::vector<std::string>& args, CmdContext<T>& ctx) {
     std::string last_res;
     auto group = ParseAliasGroup(args[0], last_res);
@@ -288,6 +298,7 @@ std::vector<CmdInfo<T>> TraceCommands = {
         {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdFpTarget<T>},
         {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAliasCreate<T>},
         {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAliasAdd<T>},
+        {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAliasType<T>},
         {"alias-rm",      "[group num] [value num]",                                  "Remove a value from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
         {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet<T>},
         {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
