@@ -119,7 +119,7 @@ namespace ContractPassUtility {
     /*
     * Get currently selected targets for FP annotation. Returns empty if CB is not an indirect call
     */
-    std::set<Function*> const getFPAnnots(CallBase* CB);
+    std::set<Function*> const getFPAnnots(CallBase const* CB);
 
     /*
     * Add FP target to indirect call. indirect MUST be an indirect call!
