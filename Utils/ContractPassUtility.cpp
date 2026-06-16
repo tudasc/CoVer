@@ -254,6 +254,7 @@ void determinizeModule() {
         CUs->addOperand(N);
 
     for (DICompileUnit *CU : curM->debug_compile_units()) {
+        if (!CU->getGlobalVariables()) continue;
         SmallVector<Metadata *, 16> GVs(CU->getGlobalVariables()->operands());
         llvm::sort(GVs, [](Metadata *A, Metadata *B) {
             auto *GA = cast<DIGlobalVariableExpression>(A)->getVariable();
