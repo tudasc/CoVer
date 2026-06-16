@@ -417,22 +417,31 @@ ConstantInt* fortCheckAndGetGlbInt(Value* V) {
 }
 
 bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
-    if (!isTag) {
-        if (CB->getCalledOperand()->getName().empty()) {
-            if (!UnknownCalledParam.contains(CB)) {
-                errs() << "Could not get name for function at " << getInstrLocStr(CB) << "!\nAnalysis performance is impaired!\n";
-                UnknownCalledParam.insert(CB);
-            }
-            return false;
+    std::set<Function*> fns;
+    if (CB->isIndirectCall()) fns = getFPAnnots(CB);
+    else fns = {dyn_cast<Function>(CB->getCalledOperand())};
+    if (fns.empty()) {
+        if (!UnknownCalledParam.contains(CB)) {
+            errs() << "Could not identify function at " << getInstrLocStr(CB) << "!\nAnalysis performance is impaired!\n";
+            UnknownCalledParam.insert(CB);
         }
-        return CB->getCalledOperand()->getName() == Target ||  // C-style match
-               CB->getCalledOperand()->getName() == Target.lower() + "_"; // Fortran-style match
-    } else {
-        Function* F = (Function*)CB->getCalledOperand(); // Dirty cast ok, no member access. Needed because of fortran non-matching param
-        if (!Tags.contains(F)) return false;
-        for (const ContractTree::TagUnit tag : Tags[F]) {
-            if (tag.tag == Target) {
+        return false;
+    }
+    if (!isTag) {
+        for (Function* F : fns) {
+            if (CB->getCalledOperand()->getName() == Target ||  // C-style match
+                CB->getCalledOperand()->getName() == Target.lower() + "_") { // Fortran-style match
                 return true;
+            }
+        }
+        return false;
+    } else {
+        for (Function* F : fns) {
+            if (!Tags.contains(F)) continue;
+            for (const ContractTree::TagUnit tag : Tags[F]) {
+                if (tag.tag == Target) {
+                    return true;
+                }
             }
         }
         return false;
@@ -558,10 +567,15 @@ bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const
     if (!P.callPisTagVar) {
         candidateParams.push_back(Target->getArgOperand(P.callP));
     } else {
-        for (ContractTree::TagUnit TagU : Tags[(Function*)Target->getCalledOperand()]) {
-            if (TagU.tag != TargetStr) continue;
-            if (!TagU.param.has_value()) continue;
-            candidateParams.push_back(Target->getArgOperand(*TagU.param));
+        std::set<Function*> fns;
+        if (Target->isIndirectCall()) fns = getFPAnnots(Target);
+        else fns = {dyn_cast<Function>(Target->getCalledOperand())};
+        for (Function* F : fns) {
+            for (ContractTree::TagUnit TagU : Tags[F]) {
+                if (TagU.tag != TargetStr) continue;
+                if (!TagU.param.has_value()) continue;
+                candidateParams.push_back(Target->getArgOperand(*TagU.param));
+            }
         }
         if (candidateParams.empty())
             throw "Could not find candidate parameter with matching tag! Invalid contract definition";
