@@ -269,12 +269,12 @@ bool outputIR = false;
 namespace ContractPassUtility {
 
 std::map<int, AliasGroup> const getAliasAnnots() { return aliasInfo; }
-std::set<Function*> const getFPAnnots(CallBase* CB) {
+std::set<Function*> const getFPAnnots(CallBase const* CB) {
     if (!CB->isIndirectCall()) return {};
 
     std::set<Function*> fp_targets;
     if (CB->getPrevNode() && isa<CallBase>(CB->getPrevNode())) {
-        CallBase* annotCall = dyn_cast<CallBase>(CB->getPrevNode());
+        CallBase const* annotCall = dyn_cast<CallBase>(CB->getPrevNode());
         if (annotCall->getCalledOperand()->getName() == "CoVer_AnnotFP") {
             for (int i = 2; i < annotCall->arg_size(); i++) {
                 fp_targets.insert(CB->getModule()->getFunction(annotCall->getArgOperand(i)->getName()));
