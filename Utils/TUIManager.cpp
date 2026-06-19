@@ -13,6 +13,7 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <functional>
+#include <llvm/ADT/StringRef.h>
 #include <map>
 #include <memory>
 #include <set>
@@ -94,17 +95,37 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
 }
 std::vector<std::string> RenderMultiMenu(std::vector<std::string> choices, std::string title, std::set<std::string> already_selected) {
     std::map<std::string, bool> sel_choices;
+    std::map<std::string, bool> visible;
     std::vector<ftxui::Component> elems;
-    for (std::string choice : choices) {
+    for (std::string const& choice : choices) {
         sel_choices[choice] = already_selected.contains(choice);
-        elems.push_back(ftxui::Checkbox(choice, &sel_choices[choice]));
+        visible[choice] = true;
+        elems.push_back(ftxui::Maybe(ftxui::Checkbox(choice, &sel_choices[choice]), &visible[choice]));
     }
-    auto list = ftxui::Container::Vertical(elems);
+    ftxui::Component list = ftxui::Container::Vertical(elems);
+
+    std::string search_str;
+    ftxui::InputOption search_options = {
+        .content = &search_str,
+        .placeholder = "Type to search...",
+        .multiline = false,
+        .on_change = [&]() {
+            for (std::string const& choice : choices) {
+                std::string input_lower = ((StringRef)search_str).lower();
+                std::string choice_lower = ((StringRef)choice).lower();
+                visible[choice] = input_lower.empty() || (choice_lower.find(input_lower) != std::string::npos);
+            }
+        }
+    };
+    ftxui::Component search_input = ftxui::Input(search_options);
+
     ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(
         list, [&] {
            return ftxui::vbox({
             getHeader(title),
-            list->Render() | ftxui::vscroll_indicator | ftxui::yframe | ftxui::size(ftxui::HEIGHT, ftxui::LESS_THAN, screen.dimy() - 6),
+            list->Render() | ftxui::vscroll_indicator | ftxui::yframe | ftxui::size(ftxui::HEIGHT, ftxui::EQUAL, screen.dimy() - 8),
+            ftxui::separator(),
+            search_input->Render(),
             ftxui::separator(),
             ftxui::text("Space to select, enter to confirm"),
             ftxui::separator()
@@ -112,6 +133,8 @@ std::vector<std::string> RenderMultiMenu(std::vector<std::string> choices, std::
         }
     ), [&](ftxui::Event const& e) {
         if (e == ftxui::Event::Return) {screen.Exit(); return true;}
+        if (e == ftxui::Event::Character(' ')) { return list->OnEvent(e); }
+        if (e.is_character() || e == ftxui::Event::Backspace || e == ftxui::Event::ArrowLeft || e == ftxui::Event::ArrowRight) { return search_input->OnEvent(e); }
         return false;
     });
     screen.Loop(render);

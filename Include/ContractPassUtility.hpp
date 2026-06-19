@@ -55,7 +55,7 @@ namespace ContractPassUtility {
     };
     template<typename T>
     struct TraceDB : std::shared_ptr<DenseMap<Instruction*, JumpTraceEntry<T>>> {
-        TraceDB<T>() : std::shared_ptr<DenseMap<Instruction*, JumpTraceEntry<T>>>(std::make_shared<DenseMap<Instruction*, JumpTraceEntry<T>>>()) {}
+        TraceDB<T>() : std::shared_ptr<DenseMap<Instruction*, JumpTraceEntry<T>>>(std::make_shared<DenseMap<Instruction*, JumpTraceEntry<T>>>(999)) {}
         JumpTraceEntry<T>* operator[](Instruction* I) const { return &(**this)[I]; }
     };
     template<typename T>
