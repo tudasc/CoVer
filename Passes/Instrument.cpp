@@ -42,6 +42,10 @@ static cl::opt<std::string> ClInstrumentType(
 
 PreservedAnalyses InstrumentPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
+
+    std::chrono::time_point<std::chrono::system_clock> instr_start = std::chrono::system_clock::now();
+    errs() << "CoVer: Starting Instrumentation\n";
+
     DB = &AM.getResult<ContractManagerAnalysis>(M);
 
     Function* mainF = M.getFunction("main");
@@ -138,6 +142,10 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     instrumentFunctions(M);
     if (ClInstrumentType != "funconly")
         instrumentRW(M);
+
+    std::stringstream s;
+    s << "CoVer: Instrumentation took " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - instr_start).count() << "s\n\n";
+    errs() << s.str();
 
     return PreservedAnalyses::none();
 }

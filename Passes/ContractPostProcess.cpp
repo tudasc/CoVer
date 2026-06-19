@@ -148,7 +148,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     }
 
     std::stringstream s;
-    s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
+    s << "CoVer: Static analysis finished after " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
     errs() << s.str();
 
     // Write json to file and database
