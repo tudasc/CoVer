@@ -36,7 +36,7 @@ namespace ContractPassUtility {
     * Need Start param to make sure that the initialization of parameters does not count as operation
     */
     template <typename T>
-    std::map<const Instruction*, T> GenericWorklist(const Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init);
+    DenseMap<const Instruction*, T> GenericWorklist(const Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init);
 
     /*
     * Get line number, or get a string representation of the location
@@ -74,9 +74,9 @@ struct WorklistEntry {
  * Need Start param to make sure that the initialization of parameters does not count as operation
  */
 template <typename T>
-std::map<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
+DenseMap<const Instruction*, T> ContractPassUtility::GenericWorklist(const Instruction* Start, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
     // Analysis Info mapping
-    std::map<const Instruction*, T> postAccess;
+    DenseMap<const Instruction*, T> postAccess;
 
     // Worklist
     std::vector<WorklistEntry<T>> todoList = { {Start, init, {}} };
