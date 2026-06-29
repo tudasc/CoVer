@@ -34,6 +34,7 @@ std::vector<std::string> source_file_names;
 std::string opt_flags = "";
 
 bool instrument = false;
+bool static_analysis = true;
 
 std::string exec(std::string const& cmd) {
     std::array<char, 128> buffer;
@@ -99,6 +100,8 @@ std::pair<std::string,std::string> parseParams(std::vector<std::string> const& a
             exit(0);
         } else if (arg == "--dry-run") {
             cur_execkind = ExecKind::DRY;
+        } else if (arg == "--skip-static-analysis") {
+            static_analysis = false;
         } else if (arg == "--verbose") {
             cur_execkind = ExecKind::VERBOSE;
         } else if (arg == "--wrap-target") {
@@ -225,10 +228,12 @@ int main(int argc, const char** argv) {
     execSafe("llvm-link" + bitcode_files + llvmlink_obj_files + " -o " + tmpfile);
 
     // Call LLVM passes
-    std::string passlist = "contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
+    std::string passlist;
+    if (static_analysis) passlist = "contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractPostProcess";
     if (instrument) {
         // Need instrumentation, so add instr pass...
-        passlist += ",instrumentContracts";
+        if (static_analysis) passlist += ",instrumentContracts";
+        else passlist = "instrumentContracts";
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
