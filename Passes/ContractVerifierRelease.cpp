@@ -28,6 +28,7 @@ using namespace ContractTree;
 
 PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
+    std::chrono::time_point<std::chrono::system_clock> pass_start = std::chrono::system_clock::now();
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
     printMultiReports = DB.allowMultiReports;
@@ -57,6 +58,10 @@ PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
             }
         }
     }
+
+    std::stringstream s;
+    s << "CoVer: Release took " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - pass_start).count() << "s\n";
+    errs() << s.str();
 
     return PreservedAnalyses::all();
 }

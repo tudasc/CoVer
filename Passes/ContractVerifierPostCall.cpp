@@ -27,6 +27,7 @@ using namespace ContractTree;
 
 PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
+    std::chrono::time_point<std::chrono::system_clock> pass_start = std::chrono::system_clock::now();
     ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
     Tags = DB.Tags;
     for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
@@ -51,6 +52,10 @@ PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
             *Expr->Status = result == CallStatus::CALLED ? Fulfillment::FULFILLED : Fulfillment::BROKEN;
         }
     }
+
+    std::stringstream s;
+    s << "CoVer: PostCall took " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - pass_start).count() << "s\n";
+    errs() << s.str();
 
     return PreservedAnalyses::all();
 }
