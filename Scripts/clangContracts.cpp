@@ -79,6 +79,11 @@ static cl::opt<std::string> KeepIR("keep-ir",
     cl::init(""),
     cl::cat(WrapperCategory));
 
+static cl::opt<bool> NoBinary("no-binary",
+    cl::desc("Do not create a binary post analysis"),
+    cl::init(false),
+    cl::cat(WrapperCategory));
+
 static cl::list<std::string> CompilerParams(cl::Sink,
     cl::desc("<compiler params>"));
 
@@ -333,7 +338,9 @@ int main(int argc, const char** argv) {
     close(fd);
 
     // Finalize executable
-    execSafe("llc -filetype=obj --relocation-model=pic " + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
-    execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o @COVER_INTRINSICS_LIB_PATH@ " + dest_arg);
+    if(!NoBinary) {
+        execSafe("llc -filetype=obj --relocation-model=pic " + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
+        execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o @COVER_INTRINSICS_LIB_PATH@ " + dest_arg);
+    }
     return 0;
 }
