@@ -24,7 +24,6 @@
 #include <stack>
 #include <string>
 #include <optional>
-#include <sys/types.h>
 #include <tuple>
 #include <vector>
 
@@ -42,7 +41,7 @@ namespace ContractPassUtility {
     template<typename T>
     using MergeFunction = std::function<std::pair<T,bool>(T,T,const Instruction*,void*)>;
 
-    enum struct TraceKind { LINEAR, BRANCH, FUNCENTRY, FUNCEXIT };
+    enum struct TraceKind { LINEAR, BRANCH, SWITCH, FUNCENTRY, FUNCEXIT };
     template<typename T>
     struct JumpTraceEntry {
         JumpTraceEntry<T>() {}
@@ -54,9 +53,13 @@ namespace ContractPassUtility {
         bool operator<(const JumpTraceEntry<T> other) const { return loc < other.loc; };
     };
     template<typename T>
-    struct TraceDB : std::shared_ptr<DenseMap<Instruction*, JumpTraceEntry<T>>> {
-        TraceDB<T>() : std::shared_ptr<DenseMap<Instruction*, JumpTraceEntry<T>>>(std::make_shared<DenseMap<Instruction*, JumpTraceEntry<T>>>(999)) {}
-        JumpTraceEntry<T>* operator[](Instruction* I) const { return &(**this)[I]; }
+    struct TraceDB : std::shared_ptr<DenseMap<Instruction*, std::unique_ptr<JumpTraceEntry<T>>>> {
+        TraceDB<T>() : std::shared_ptr<DenseMap<Instruction*, std::unique_ptr<JumpTraceEntry<T>>>>(std::make_shared<DenseMap<Instruction*, std::unique_ptr<JumpTraceEntry<T>>>>()) {}
+        JumpTraceEntry<T>* operator[](Instruction* I) const {
+            std::unique_ptr<JumpTraceEntry<T>>& entry = (**this)[I];
+            if (!entry) entry = std::make_unique<JumpTraceEntry<T>>();
+            return entry.get();
+        }
     };
     template<typename T>
     struct WorklistResult : GenericWLRes {
@@ -76,7 +79,7 @@ namespace ContractPassUtility {
     * Get line number, or get a string representation of the location
     * Format: <module>:<line> or UNKNOWN depending on output of getLineNumber
     */
-    std::optional<uint> getLineNumber(const Instruction* I);
+    std::optional<unsigned> getLineNumber(const Instruction* I);
     std::string getInstrLocStr(const Instruction* I, bool longform = true);
     std::string getInstrLocStr(const Function* F, bool longform = true);
     FileReference getFileReference(const Instruction* I);
@@ -84,7 +87,7 @@ namespace ContractPassUtility {
     /*
     * Check if call applies to target (which may be a tag or function name)
     */
-    bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags);
+    bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags);
 
     /*
     * Check if contract and call parameter fit
@@ -94,7 +97,7 @@ namespace ContractPassUtility {
     /*
     * Check if two calls match by contract definition
     */
-    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags, ModuleAnalysisManager* MAM);
+    bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags, ModuleAnalysisManager* MAM);
 
     /*
     * Get Pointer operand of a load, store, GEPinst *or GEPOp*. Last one would not work on normal getPointerOperand!
@@ -119,7 +122,7 @@ namespace ContractPassUtility {
     /*
     * Get currently selected targets for FP annotation. Returns empty if CB is not an indirect call
     */
-    std::set<Function*> const getFPAnnots(CallBase const* CB);
+    std::set<Function*> getFPAnnots(CallBase const* CB);
 
     /*
     * Add FP target to indirect call. indirect MUST be an indirect call!
@@ -154,7 +157,7 @@ namespace ContractPassUtility {
     /*
     * Get alias info
     */
-    std::map<int, AliasGroup> const getAliasAnnots();
+    std::map<int, AliasGroup> const& getAliasAnnots();
 };
 
 extern std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
@@ -167,19 +170,20 @@ struct WorklistEntry {
 };
 
 template<typename T>
-void updateJumpTrace(ContractPassUtility::TraceDB<T> trace, Instruction* cur, Instruction* prev, ContractPassUtility::TraceKind kind, T analysisInfo) {
+void updateJumpTrace(ContractPassUtility::TraceDB<T> const& trace, Instruction* cur, Instruction* prev, ContractPassUtility::TraceKind kind, T analysisInfo) {
     if (trace->contains(cur)) {
         if (std::find(trace[cur]->predecessors.begin(), trace[cur]->predecessors.end(), trace[prev]) == trace[cur]->predecessors.end())
             trace[cur]->predecessors.push_back(trace[prev]);
         trace[cur]->analysisInfo = analysisInfo;
     } else {
-        if (trace->contains(prev)) trace->insert({cur, ContractPassUtility::JumpTraceEntry<T>(analysisInfo, cur, kind, {trace[prev]})});
-        else trace->insert({cur, ContractPassUtility::JumpTraceEntry<T>(analysisInfo, cur, kind, {})});
+        std::vector<ContractPassUtility::JumpTraceEntry<T>*> preds;
+        if (trace->contains(prev)) preds.push_back(trace[prev]);
+        *trace[cur] = ContractPassUtility::JumpTraceEntry<T>(analysisInfo, cur, kind, preds);
     }
 }
 
 template <typename T>
-std::pair<T, bool> getMergeResult(DenseMap<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> trace, T prevInfo, std::function<std::pair<T,bool>(T,T,const Instruction*,void*)> merge, Instruction* cur, void* data) {
+std::pair<T, bool> getMergeResult(DenseMap<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> const& trace, T prevInfo, ContractPassUtility::MergeFunction<T> const& merge, Instruction* cur, void* data) {
     bool resume = true;
     T info;
     auto it = AI.find(cur);
@@ -259,10 +263,12 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
                 break;
             }
             if (SwitchInst* SI = dyn_cast<SwitchInst>(cur)) {
-                for (int i = 0; i < SI->getNumSuccessors(); i++) {
+                for (unsigned i = 0; i < SI->getNumSuccessors(); i++) {
                     BasicBlock* alt = SI->getSuccessor(i);
+                    updateJumpTrace(jumptraces, &alt->front(), cur, TraceKind::SWITCH, postAccess[cur]);
                     todoList.push( {&alt->front(), postAccess[cur], stack} );
                 }
+                break;
             }
             if (isa<UnreachableInst>(cur)) {
                 break;

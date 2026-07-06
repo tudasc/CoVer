@@ -22,6 +22,7 @@ std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
     switch (kind) {
         case ContractPassUtility::TraceKind::LINEAR: return "LINEAR";
         case ContractPassUtility::TraceKind::BRANCH: return "BRANCH";
+        case ContractPassUtility::TraceKind::SWITCH: return "SWITCH";
         case ContractPassUtility::TraceKind::FUNCENTRY: return "FUNCENTRY";
         case ContractPassUtility::TraceKind::FUNCEXIT: return "FUNCEXIT";
     }

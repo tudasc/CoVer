@@ -269,8 +269,8 @@ bool outputIR = false;
 
 namespace ContractPassUtility {
 
-std::map<int, AliasGroup> const getAliasAnnots() { return aliasInfo; }
-std::set<Function*> const getFPAnnots(CallBase const* CB) {
+std::map<int, AliasGroup> const& getAliasAnnots() { return aliasInfo; }
+std::set<Function*> getFPAnnots(CallBase const* CB) {
     if (!CB->isIndirectCall()) return {};
 
     std::set<Function*> fp_targets;
@@ -416,7 +416,7 @@ ConstantInt* fortCheckAndGetGlbInt(Value* V) {
     return nullptr;
 }
 
-bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags) {
+bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags) {
     std::set<Function*> fns;
     if (CB->isIndirectCall()) fns = getFPAnnots(CB);
     else fns = {dyn_cast<Function>(CB->getCalledOperand())};
@@ -438,7 +438,7 @@ bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, 
     } else {
         for (Function* F : fns) {
             if (!Tags.contains(F)) continue;
-            for (const ContractTree::TagUnit tag : Tags[F]) {
+            for (const ContractTree::TagUnit tag : Tags.at(F)) {
                 if (tag.tag == Target) {
                     return true;
                 }
@@ -560,7 +560,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     return false;
 }
 
-bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> Tags, ModuleAnalysisManager* MAM) {
+bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags, ModuleAnalysisManager* MAM) {
     std::vector<const Value*> candidateParams;
     const Value* sourceParam = Source->getArgOperand(P.contrP);
 
@@ -571,7 +571,9 @@ bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const
         if (Target->isIndirectCall()) fns = getFPAnnots(Target);
         else fns = {dyn_cast<Function>(Target->getCalledOperand())};
         for (Function* F : fns) {
-            for (ContractTree::TagUnit TagU : Tags[F]) {
+            auto tagsIt = Tags.find(F);
+            if (tagsIt == Tags.end()) continue;
+            for (ContractTree::TagUnit TagU : tagsIt->second) {
                 if (TagU.tag != TargetStr) continue;
                 if (!TagU.param.has_value()) continue;
                 candidateParams.push_back(Target->getArgOperand(*TagU.param));
