@@ -11,6 +11,7 @@
 #include "ContractVerifierRelease.hpp"
 #include "ContractVerifierParam.hpp"
 #include "ContractPostProcess.hpp"
+#include "AnalysisCleanup.hpp"
 #include "Intrinsics.hpp"
 #include "Instrument.hpp"
 
@@ -48,6 +49,10 @@ namespace {
         }
         if (Name == "instrumentContracts") {
             MPM.addPass(InstrumentPass());
+            return true;
+        }
+        if (Name == "analysisCleanup") {
+            MPM.addPass(AnalysisCleanupPass());
             return true;
         }
         return false;
