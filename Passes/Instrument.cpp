@@ -548,8 +548,21 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
     if (already_instrumented.contains(F)) return;
     std::vector<CallBase*> callsites;
     for (User* U : F->users()) {
-        if (CallBase* CB = dyn_cast<CallBase>(U); CB && CB->getCalledOperand() == F) {
-            callsites.push_back(CB);
+        if (CallBase* CB = dyn_cast<CallBase>(U)) {
+            if (CB->getCalledOperand() == F) callsites.push_back(CB);
+            else if (CB->getCalledOperand()->getName() == "CoVer_AnnotFP") {
+                // There is an annotated indirect call to this function. Need to instrument it as well
+                Instruction* cur = CB->getNextNode();
+                for (int i = 0; i < 5 && cur; i++) {
+                    if (CallBase* indirect = dyn_cast<CallBase>(cur)) {
+                        if (ContractPassUtility::getFPAnnots(indirect).contains(F)) {
+                            callsites.push_back(indirect);
+                            break;
+                        }
+                    }
+                    cur = cur->getNextNode();
+                }
+            }
         }
     }
     for (CallBase* callsite : callsites) {
