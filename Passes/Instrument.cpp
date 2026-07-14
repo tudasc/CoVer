@@ -525,7 +525,7 @@ void InstrumentPass::instrumentRW(Module &M) {
                         continue;
                     }
 
-                    insertCBIfNeeded(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V}, &I);
+                    insertCBIfNeeded(isa<LoadInst>(I) ? callbackRCallee : callbackWCallee, {V}, &I, Basic_Types.Void_Type);
                 }
             }
         }
@@ -624,12 +624,12 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
             }
             params.push_back(actual_param);
         }
-        insertCBIfNeeded(callbackFuncCallee, params, callsite);
+        insertCBIfNeeded(callbackFuncCallee, params, callsite, F->getReturnType());
     }
     already_instrumented.insert(F);
 }
 
-void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I) {
+void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I, Type* OrigRT) {
     if (!isRelevant(I) && (isa<LoadInst>(I) || isa<StoreInst>(I)) && ClInstrumentType.starts_with("filtered")) return;
     params.insert(params.begin(), Basic_Types.getBool(isRelevant(I)));
     CallBase* callbackCB;
@@ -640,7 +640,6 @@ void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> pa
     }
     callbackCB->setDebugLoc(I->getDebugLoc());
     if (CallBase* CB = dyn_cast<CallBase>(I)) {
-        Type* OrigRT = ((Function*)CB->getCalledOperand())->getReturnType();
         if (!OrigRT->isPointerTy() && !OrigRT->isVoidTy()) {
             callbackCB->insertBefore(I->getIterator());
             if (OrigRT->isIntegerTy()) {

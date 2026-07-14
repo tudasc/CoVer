@@ -45,7 +45,7 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         void instrumentRW(Module &M);
         void instrumentFunctions(Module &M);
         void insertFunctionInstrCallback(Function* CB);
-        void insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I);
+        void insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I, Type* OrigRT);
         bool isRelevant(Instruction const* I) const;
         std::set<Function*> already_instrumented;
         std::vector<Function*> mentioned_funcs; // Filled by callops (non-tag) in createOperation
