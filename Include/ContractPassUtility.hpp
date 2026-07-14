@@ -299,6 +299,7 @@ ContractPassUtility::WorklistResult<T> ContractPassUtility::GenericWorklist(Inst
                     std::set<Function*> annots = getFPAnnots(CB);
                     bool foundnext = false;
                     for (Function* F : annots) {
+                        if (F->isDeclaration()) continue;
                         std::stack<CallBase*> new_stack = stack;
                         new_stack.push(CB);
                         AnnotFuncReverse[F].insert(CB);
