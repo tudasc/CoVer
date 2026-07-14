@@ -580,49 +580,47 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
                 // Store actual parameter, making sure to cast if necessary
                 anyValToPtr(&actual_param, callsite);
             } else {
-                if (Function const* F = dyn_cast<Function>(callsite->getCalledOperand())) {
-                    DISubprogram const* Dbg = F->getSubprogram();
-                    int size_call = 0;
-                    int size_act = 0;
-                    // Vararg intrinsics have to be handled specially due to missing debug info on vararg
-                    if (F->getName() == "CoVer_FPointerAllocate") {
-                            // Prefix - 0, 1 ptr and size, 2 num_dims
-                            switch (cur_argno) {
-                                case 0:
-                                case 1: size_act = size_call = 64; break;
-                                case 2: size_act = size_call = 32;
-                            }
-                            if (!size_act) {
-                                // End - _FortranAPointerAllocate params
-                                if (cur_argno == callsite->arg_size() - 4) size_act = size_call = 32;
-                                if (cur_argno == callsite->arg_size() - 3) size_act = size_call = 64;
-                                if (cur_argno == callsite->arg_size() - 2) size_act = size_call = 64;
-                                if (cur_argno == callsite->arg_size() - 1) size_act = size_call = 32;
-                            }
-                            if (!size_act) {
-                                // Middle - Descriptors for dims
-                                int tmp = cur_argno - 3;
-                                if (tmp % 3 == 0) size_act = size_call = 32;
-                                else size_act = size_call = 64;
-                            }
+                DISubprogram const* Dbg = F->getSubprogram();
+                int size_call = 0;
+                int size_act = 0;
+                // Vararg intrinsics have to be handled specially due to missing debug info on vararg
+                if (F->getName() == "CoVer_FPointerAllocate") {
+                        // Prefix - 0, 1 ptr and size, 2 num_dims
+                        switch (cur_argno) {
+                            case 0:
+                            case 1: size_act = size_call = 64; break;
+                            case 2: size_act = size_call = 32;
+                        }
+                        if (!size_act) {
+                            // End - _FortranAPointerAllocate params
+                            if (cur_argno == callsite->arg_size() - 4) size_act = size_call = 32;
+                            if (cur_argno == callsite->arg_size() - 3) size_act = size_call = 64;
+                            if (cur_argno == callsite->arg_size() - 2) size_act = size_call = 64;
+                            if (cur_argno == callsite->arg_size() - 1) size_act = size_call = 32;
+                        }
+                        if (!size_act) {
+                            // Middle - Descriptors for dims
+                            int tmp = cur_argno - 3;
+                            if (tmp % 3 == 0) size_act = size_call = 32;
+                            else size_act = size_call = 64;
+                        }
+                } else {
+                    if (cur_argno >= callsite->arg_size() - stringnum) {
+                        size_act = size_call = callsite->getParent()->getDataLayout().getTypeAllocSize(actual_param->getType());
                     } else {
-                        if (cur_argno >= callsite->arg_size() - stringnum) {
-                            size_act = size_call = callsite->getParent()->getDataLayout().getTypeAllocSize(actual_param->getType());
-                        } else {
-                            if (checkIsStrParam(callsite, cur_argno)) stringnum++;
-                            // All parameters are sent as pointers. Need to check exact size using dbg info
-                            DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
-                            size_act = param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits();
-                            size_call = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
-                            // On Fortran, deref if param is an allocate/ptr buffer.
-                            // Indicate with magic bit
-                            if (param_type->getTag() == dwarf::DW_TAG_array_type) {
-                                size_call = size_call | 1 << 8;
-                            }
+                        if (checkIsStrParam(callsite, cur_argno)) stringnum++;
+                        // All parameters are sent as pointers. Need to check exact size using dbg info
+                        DIType const* param_type = Dbg->getType()->getTypeArray()[cur_argno + 1]; // Offset by one, first is ret val
+                        size_act = param_type->getSizeInBits() == 0 || isa<GlobalValue>(actual_param) ? 64 : param_type->getSizeInBits();
+                        size_call = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
+                        // On Fortran, deref if param is an allocate/ptr buffer.
+                        // Indicate with magic bit
+                        if (param_type->getTag() == dwarf::DW_TAG_array_type) {
+                            size_call = size_call | 1 << 8;
                         }
                     }
-                    params.push_back(Basic_Types.getInt((size_call << 8) | (size_act & 0xFF)));
                 }
+                params.push_back(Basic_Types.getInt((size_call << 8) | (size_act & 0xFF)));
             }
             params.push_back(actual_param);
         }
