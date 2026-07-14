@@ -74,7 +74,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     // Propagate allocations
     if (StoreInst const* SI = dyn_cast<StoreInst>(I)) {
         if (cur.hasAllocInfo(SI->getValueOperand())) {
-            cur.addCopy(SI->getPointerOperand(), SI->getValueOperand(), I->getModule()->getFunction("_QQmain") ? ParamAccess::NORMAL : ParamAccess::ADDROF);
+            cur.addCopy(SI->getPointerOperand(), SI->getValueOperand(), ParamAccess::NORMAL);
         }
     }
 
@@ -89,9 +89,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
         }
     }
     if (LoadInst const* LI = dyn_cast<LoadInst>(I)) {
-        if (ContractPassUtility::isTrivialAlloc(LI->getPointerOperand())) {
-            cur.addAllocatedValue(LI);
-        } else if (cur.hasAllocInfo(LI->getPointerOperand())) {
+        if (cur.hasAllocInfo(LI->getPointerOperand())) {
             cur.addCopy(LI, LI->getPointerOperand(), cur.getAllocInfo(LI->getPointerOperand()).acc);
         }
     }
@@ -129,8 +127,9 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
         }
         if (FreeFuncs.contains(CB->getCalledFunction()) && CB->getCalledOperand()->getName() != "CoVer_FreeStack") {
             for (const FreeOperation* freeOp : FreeFuncs[CB->getCalledFunction()]) {
-                #warning TODO perform free, remove stuff from candidate tree
-                cur.freeValue(CB->getArgOperand(freeOp->contrP));
+                Value* freeval = CB->getArgOperand(freeOp->contrP);
+                if (cur.hasAllocInfo(freeval)) cur.freeValue(freeval);
+                else cur.freeValue(ContractPassUtility::betterGetPointerOperand(freeval));
             }
             // Dont return here! Maybe it also is contr sup
         }
