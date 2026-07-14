@@ -55,6 +55,8 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
                             candidate_set[C].parents.erase(V);
                             if (candidate_set[C].parents.empty()) to_erase.insert(C);
                         }
+                        std::set<Value const*> parents = candidate_set[V].parents;
+                        for (Value const* p : parents) freeValue(p);
                         candidate_set.erase(V);
                         to_erase.erase(V);
                     }
