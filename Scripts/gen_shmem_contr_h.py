@@ -97,6 +97,7 @@ for func in function_decls.keys():
 
 # Local data races
 tag_buf = [("shmem_int_put_nbi", 1, "W", "R"),
+           ("shmem_double_put_nbi", 1, "W", "R"),
            ("shmem_int_put_signal_nbi", 1, "W", "R"),
            ("shmem_int_get_nbi", 0, "RW", "W"),
            ("shmem_putmem_nbi", 1, "W", "R"),
