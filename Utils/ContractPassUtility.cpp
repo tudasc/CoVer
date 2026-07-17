@@ -80,6 +80,25 @@ Function const* getParentFunction(Value const* V) {
     return nullptr;
 }
 
+bool sameOriginCheck(Value const* source, Value const* target) {
+    while (true) {
+        // If either is null, paramerror or if one does not have a pointer operand, then they can not match
+        if (!source || !target) return false;
+        // If equal, success
+        if (source == target) return true;
+        // If one is a GEP, resolve "for free"
+        if (isa<GEPOperator>(source))
+            source = ContractPassUtility::betterGetPointerOperand(source);
+        if (isa<GEPOperator>(target))
+            target = ContractPassUtility::betterGetPointerOperand(target);
+        // Check again, may be equal if synchronized already (i.e. stack array)
+        if (source == target) return true;
+        // Get their ptr operands if they exist and check again
+        source = ContractPassUtility::betterGetPointerOperand(source);
+        target = ContractPassUtility::betterGetPointerOperand(target);
+    }
+}
+
 // Map from function to indirect calls to it, as gotten by annotations
 std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
 
@@ -540,22 +559,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         }
     } else {
         // Now, need to check if they are equal / aliases
-        while (true) {
-            // If either is null, paramerror or if one does not have a pointer operand, then they can not match
-            if (!source || !target) return false;
-            // If equal, success
-            if (source == target) return true;
-            // If one is a GEP, resolve "for free"
-            if (isa<GetElementPtrInst>(source))
-                source = getPointerOperand(source);
-            if (isa<GetElementPtrInst>(target))
-                target = getPointerOperand(target);
-            // Check again, may be equal if synchronized already (i.e. stack array)
-            if (source == target) return true;
-            // Get their ptr operands if they exist and check again
-            source = getPointerOperand(source);
-            target = getPointerOperand(target);
-        }
+        return sameOriginCheck(source, target);
     }
     return false;
 }
