@@ -15,6 +15,7 @@
 #include <llvm/IR/Argument.h>
 #include <llvm/IR/DebugInfoMetadata.h>
 #include <llvm/IR/DebugLoc.h>
+#include <llvm/IR/InstIterator.h>
 #include <llvm/IR/ModuleSlotTracker.h>
 #include <llvm/IR/DebugProgramInstruction.h>
 #include <llvm/IR/DerivedTypes.h>
@@ -97,6 +98,33 @@ bool sameOriginCheck(Value const* source, Value const* target) {
         source = ContractPassUtility::betterGetPointerOperand(source);
         target = ContractPassUtility::betterGetPointerOperand(target);
     }
+}
+
+int getAliasGroup(Value const* V) {
+    if (Instruction const* I = dyn_cast<Instruction>(V)) {
+        Instruction const* cur = I->getNextNode();
+        for (int i = 0; i < 5; i++) {
+            if (CallBase const* CB = dyn_cast<CallBase>(cur)) {
+                if (CB->getCalledOperand()->getName() == "CoVer_AnnotAlias") {
+                    if (sameOriginCheck(CB->getArgOperand(0), V)) return dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue();
+                    break;
+                }
+            }
+            if (!cur->getNextNode()) break;
+            cur = cur->getNextNode();
+        }
+    } else {
+        Function* F = curM->getFunction("main");
+        for (Instruction& I : instructions(F)) {
+            if (isa<AllocaInst>(&I)) continue;
+            if (CallBase* CB = dyn_cast<CallBase>(&I)) {
+                if (CB->getCalledOperand()->getName() == "CoVer_AnnotAlias") {
+                    if (CB->getArgOperand(0) == V) return dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue();
+                }
+            } else break;
+        }
+    }
+    return -1;
 }
 
 // Map from function to indirect calls to it, as gotten by annotations
@@ -293,13 +321,17 @@ std::set<Function*> getFPAnnots(CallBase const* CB) {
     if (!CB->isIndirectCall()) return {};
 
     std::set<Function*> fp_targets;
-    if (CB->getPrevNode() && isa<CallBase>(CB->getPrevNode())) {
-        CallBase const* annotCall = dyn_cast<CallBase>(CB->getPrevNode());
-        if (annotCall->getCalledOperand()->getName() == "CoVer_AnnotFP") {
-            for (int i = 2; i < annotCall->arg_size(); i++) {
-                fp_targets.insert(CB->getModule()->getFunction(annotCall->getArgOperand(i)->getName()));
+    Instruction const* cur = CB->getPrevNode();
+    for (int i = 0; i < 5 && cur; i++) {
+        if (CallBase const* annotCall = dyn_cast<CallBase>(cur)) {
+            if (annotCall->getCalledOperand()->getName() == "CoVer_AnnotFP" && sameOriginCheck(annotCall->getArgOperand(0), CB->getCalledOperand())) {
+                for (int i = 2; i < annotCall->arg_size(); i++) {
+                    fp_targets.insert(CB->getModule()->getFunction(annotCall->getArgOperand(i)->getName()));
+                }
+                break;
             }
         }
+        cur = cur->getPrevNode();
     }
     return fp_targets;
 }
@@ -498,16 +530,6 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
         return false;
     }
 
-    // Annotated infos - Only makes sense if source != target. Otherwise will just return depending on type of first alias group!
-    if (source != target) {
-        for (std::pair<int, AliasGroup> AG : aliasInfo) {
-            if ((AG.second.members.contains(source) || AG.second.members.contains(betterGetPointerOperand(source)))
-            && (AG.second.members.contains(target) || AG.second.members.contains(betterGetPointerOperand(target)))) {
-                return AG.second.areAliasing;
-            }
-        }
-    }
-
     // Only use DSA for Fortran
     if (!isFort) {
         // Resolve function differences.
@@ -545,6 +567,22 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     }
 
     if (source == target) return true;
+
+    // Check for alias annotations
+    // First, check if both are in alias group
+    if (source && target) {
+        for (std::pair<int, AliasGroup> AG : aliasInfo) {
+            if ((AG.second.members.contains(source) || AG.second.members.contains(betterGetPointerOperand(source)))
+            && (AG.second.members.contains(target) || AG.second.members.contains(betterGetPointerOperand(target)))) {
+                return AG.second.areAliasing;
+            }
+        }
+        // User annotations are a bit later - Check those now
+        int aliasTgt = getAliasGroup(target), aliasSrc = getAliasGroup(source);
+        if (aliasSrc != -1 && aliasSrc == aliasTgt) {
+            return getAliasAnnots().at(aliasSrc).areAliasing;
+        }
+    }
 
     if (isFort) {
         std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
@@ -606,6 +644,7 @@ Value* getValueByName(std::string name, Function* F) {
                 }
             }
         }
+        return nullptr;
     }
     return F->getParent()->getNamedValue(name.substr(1));
 }
@@ -620,10 +659,12 @@ void createAliasGroup(bool shouldAlias, Value* V1, Value* V2) {
 void addToAliasGroup(int idx, Value* V) {
     if (aliasInfo[idx].members.contains(V)) return; // Need to do early return to not double-instrument
     aliasInfo[idx].members.insert(V);
+    CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlias"), {V, Basic_Types.getBool(aliasInfo[idx].areAliasing), Basic_Types.getInt(idx)});
     if (Instruction* I = dyn_cast<Instruction>(V)) {
-        CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlias"), {I, Basic_Types.getBool(aliasInfo[idx].areAliasing), Basic_Types.getInt(idx)});
         CI->insertAfter(I);
         CI->setDebugLoc(I->getDebugLoc());
+    } else {
+        CI->insertBefore(curM->getFunction("main")->getEntryBlock().getFirstInsertionPt());
     }
 }
 void setAliasGroupType(int idx, bool isAlias) {
