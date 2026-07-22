@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     env:
       LLVM_VER: "22"
+      CC: clang
+      CXX: clang++
+      FC: flang
     steps:
       - uses: actions/checkout@v6
         with:
@@ -38,7 +41,7 @@ jobs:
           cd ompi
           mkdir -p ~/ompi_inst
           ./autogen.pl
-          ./configure CC=clang CXX=clang++ FC=flang --prefix=$HOME/ompi_inst --with-pmix=internal
+          ./configure --prefix=$HOME/ompi_inst --with-pmix=internal
           make -j8
           make install
       - name: Add OpenMPI to PATH
@@ -56,7 +59,7 @@ jobs:
           ccache -M 1G
           mkdir build
           cd build
-          cmake .. -DENABLE_TESTS=ON -DCMAKE_PREFIX_PATH=/usr/lib/llvm-${{ env.LLVM_VER }}/ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DMPI_HOME=$HOME/ompi_inst
+          cmake .. -G "Ninja" -DENABLE_TESTS=ON -DCMAKE_PREFIX_PATH=/usr/lib/llvm-${{ env.LLVM_VER }}/ -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DMPI_HOME=$HOME/ompi_inst
       - name: Build
         run: |
           export CCACHE_DIR=$GITHUB_WORKSPACE/.ccache
