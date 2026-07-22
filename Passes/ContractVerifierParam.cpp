@@ -3,38 +3,15 @@
 #include "ContractTree.hpp"
 
 #include <format>
-#include <llvm/ADT/APInt.h>
-#include <llvm/ADT/SmallString.h>
-#include <llvm/ADT/StringRef.h>
-#include <llvm/Analysis/MemoryDependenceAnalysis.h>
-#include <llvm/Analysis/MemoryLocation.h>
-#include <llvm/Analysis/TargetLibraryInfo.h>
-#include <llvm/Demangle/Demangle.h>
-#include <llvm/IR/Analysis.h>
-#include <llvm/IR/Constant.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/GlobalVariable.h>
-#include <llvm/IR/Type.h>
-#include <llvm/Support/ErrorHandling.h>
-#include <llvm/Support/raw_ostream.h>
-#include <llvm/Analysis/InlineCost.h>
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/DebugInfoMetadata.h>
-#include <llvm/IR/InstrTypes.h>
-#include <llvm/IR/Instruction.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/IntrinsicInst.h>
-#include <llvm/IR/PassManager.h>
-#include <llvm/IR/Metadata.h>
-#include <llvm/Support/Casting.h>
 #include <vector>
 #include <memory>
 #include <string>
 
+#include <llvm/Support/ErrorHandling.h>
+
 import BasicTypes;
 import ContractPassUtility;
+import LLVMModule;
 
 using namespace llvm;
 using namespace ContractTree;

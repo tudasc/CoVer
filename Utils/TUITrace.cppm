@@ -1,26 +1,34 @@
-#pragma once
+module;
 
-#include <cstdlib>
+#include <string>
+#include <vector>
+#include <functional>
+#include <format>
 #include <filesystem>
 #include <fstream>
-#include <ftxui/component/screen_interactive.hpp>
-#include <ftxui/screen/color.hpp>
-#include <string>
-#include <system_error>
-#include <vector>
-#include "TUIManager.hpp"
+#include "ErrorMessage.h"
 #include "TUITraceTypes.hpp"
 #include "TUICmds.hpp"
 
+export module TUITrace;
 import ContractPassUtility;
+import TUIManager;
 
 namespace TUITrace {
 
-template<typename T>
-using JumpTraceEntry = ContractPassUtility::JumpTraceEntry<T>;
+using ContractPassUtility::JumpTraceEntry;
+using ContractPassUtility::TraceDB;
+using ContractPassUtility::TraceKind;
 
-template<typename T>
-using TraceDB = ContractPassUtility::TraceDB<T>;
+std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
+    switch (kind) {
+        case ContractPassUtility::TraceKind::LINEAR: return "LINEAR";
+        case ContractPassUtility::TraceKind::BRANCH: return "BRANCH";
+        case ContractPassUtility::TraceKind::SWITCH: return "SWITCH";
+        case ContractPassUtility::TraceKind::FUNCENTRY: return "FUNCENTRY";
+        case ContractPassUtility::TraceKind::FUNCEXIT: return "FUNCEXIT";
+    }
+}
 
 template<typename T>
 std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::function<std::string(T)> infoToStr) {
@@ -91,13 +99,13 @@ std::vector<std::string> getBlockLines(TraceBlock<T> block, bool transToSource, 
     for (JumpTraceEntry<T>* cur_trace = block.first_entry; cur_trace != block.last_entry; cur_trace = cur_trace->predecessors[0]) {
         std::string newline = getSourceLine(cur_trace, transToSource, infoToStr);
         if (newline.empty() || newline == last) continue;
-        lines.push_back(std::format("{:>{}} | {}", infoToStr(cur_trace->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, newline));
+        lines.push_back(std::format("{:>{}} | {}", infoToStr(cur_trace->analysisInfo), TUIManager::UI_ANALYSISINFO_PAD_SIZE, newline));
         last = newline;
     }
     // Print last
     std::string newline = getSourceLine(block.last_entry, transToSource, infoToStr);
     if (!newline.empty() && newline != last)
-        lines.push_back(std::format("{:>{}} | {}", infoToStr(block.last_entry->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, newline));
+        lines.push_back(std::format("{:>{}} | {}", infoToStr(block.last_entry->analysisInfo), TUIManager::UI_ANALYSISINFO_PAD_SIZE, newline));
     return lines;
 }
 
@@ -112,7 +120,7 @@ void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::strin
     TUIManager::ShowLines(elems, title);
 }
 
-template<typename T>
+export template<typename T>
 bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
     std::vector<std::pair<std::string, CmdResult>> input_history;
     if (std::filesystem::exists("CoVer_HistoryCache")) {
@@ -133,7 +141,7 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
         std::vector<TraceBlock<T>> trace_by_blocks = GetTraceList(traceDB, trace, infoToStr, sibling_select);
         std::vector<ftxui::Element> full_trace;
         for (int i = 0; i < trace_by_blocks.size(); i++) {
-            std::string trace_block_str = std::format("{:>3}: {:^{}} - {}", i, infoToStr(trace_by_blocks[i].first_entry->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, trace_by_blocks[i].trace_list);
+            std::string trace_block_str = std::format("{:>3}: {:^{}} - {}", i, infoToStr(trace_by_blocks[i].first_entry->analysisInfo), TUIManager::UI_ANALYSISINFO_PAD_SIZE, trace_by_blocks[i].trace_list);
             full_trace.push_back(ftxui::text(trace_block_str));
             if (expand_select.contains(trace_by_blocks[i].last_entry) && expand_select[trace_by_blocks[i].last_entry]) {
                 std::vector<std::string> block_lines = getBlockLines(trace_by_blocks[i], false, infoToStr);
@@ -170,4 +178,44 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
     }
 }
 
-} // namespace TUITrace
+export bool verifyInputArgs(std::string_view const& usage, std::string_view const& input, std::vector<std::string>& args, int const& num_inputs) {
+    std::istringstream iss(std::string(input), std::ios_base::in);
+    // Throw away first input, which is the command itself
+    iss.ignore(std::numeric_limits<std::streamsize>::max(), ' ');
+    while (iss && args.size() <= num_inputs) {
+        std::string x;
+        iss >> x;
+        if (!iss) break;
+        args.push_back(x);
+    }
+    if (args.size() != num_inputs)  return false;
+    return true;
+}
+
+template<typename T>
+CmdResult ExecuteTUICommand(std::string input_command, CmdContext<T> ctx) {
+    CmdResult result;
+    std::vector<std::string> args;
+
+    // Get command and verify input sizing
+    auto used_cmd = std::find_if(TraceCommands<T>.begin(), TraceCommands<T>.end(), [&](CmdInfo<T> const& cmd){
+        return input_command == cmd.name || input_command.starts_with(std::format("{} ", cmd.name));
+    });
+    if (used_cmd == TraceCommands<T>.end()) {
+        result = {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
+        goto tui_return_result;
+    }
+    if (!verifyInputArgs(used_cmd->name, input_command, args, used_cmd->num_params)) {
+        result = {CmdResultCode::INVALID_SYNTAX, std::format("Invalid syntax. Usage: {} {}", used_cmd->name, used_cmd->usage)};
+        goto tui_return_result;
+    }
+
+    // Run command
+    result = used_cmd->handler(args, ctx);
+
+tui_return_result:
+    ctx.history.push_back({input_command, result});
+    return result;
+}
+
+}

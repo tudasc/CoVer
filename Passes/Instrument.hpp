@@ -1,11 +1,5 @@
 #pragma once
 
-#include "llvm/IR/PassManager.h"
-#include <llvm/IR/Constant.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/GlobalVariable.h>
-#include <llvm/IR/InstrTypes.h>
-#include <llvm/IR/Instruction.h>
 #include <memory>
 #include <set>
 #include <unordered_set>
@@ -14,6 +8,7 @@
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
 
+import LLVMModule;
 import BasicTypes;
 
 namespace llvm {

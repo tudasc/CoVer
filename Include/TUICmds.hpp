@@ -9,19 +9,18 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <iterator>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/LLVMContext.h>
-#include <llvm/IR/Metadata.h>
-#include <llvm/Support/Casting.h>
 #include <optional>
 #include <set>
 #include <string>
 #include <utility>
 #include <vector>
-#include "TUIManager.hpp"
 #include "TUITraceTypes.hpp"
 
+import LLVMModule;
 import ContractPassUtility;
+import TUIManager;
+
+using namespace llvm;
 
 namespace TUITrace {
 
@@ -292,49 +291,23 @@ CmdResult CmdHelp(std::vector<std::string>&, CmdContext<T>&) {
 
 template<typename T>
 std::vector<CmdInfo<T>> TraceCommands = {
-        {"collapse",      "[block num]",                                              "Hide IR for block, making it unavailable for annotation", 1, CmdCollapse<T>},
-        {"expand",        "[block num]",                                              "Show IR for block, and make available for annotation", 1, CmdExpand<T>},
-        {"child",         "[block num] [child num]",                                  "Show different predecessor blocks", 2, CmdChild<T>},
-        {"view",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdView<T>},
-        {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdFpTarget<T>},
-        {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAliasCreate<T>},
-        {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAliasAdd<T>},
-        {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAliasType<T>},
-        {"alias-rm",      "[group num] [value num]",                                  "Remove a value from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
-        {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet<T>},
-        {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
-        {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdDiff<T>},
-        {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdPatch<T>},
-        {"history",       "",                                                         "Print the current commands applied", 0, CmdHistory<T>},
-        {"exit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
-        {"quit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
-        {"help",          "",                                                         "Show this help text", 0, CmdHelp<T>},
+    {"collapse",      "[block num]",                                              "Hide IR for block, making it unavailable for annotation", 1, CmdCollapse<T>},
+    {"expand",        "[block num]",                                              "Show IR for block, and make available for annotation", 1, CmdExpand<T>},
+    {"child",         "[block num] [child num]",                                  "Show different predecessor blocks", 2, CmdChild<T>},
+    {"view",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdView<T>},
+    {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdFpTarget<T>},
+    {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAliasCreate<T>},
+    {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAliasAdd<T>},
+    {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAliasType<T>},
+    {"alias-rm",      "[group num] [value num]",                                  "Remove a value from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
+    {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet<T>},
+    {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
+    {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdDiff<T>},
+    {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdPatch<T>},
+    {"history",       "",                                                         "Print the current commands applied", 0, CmdHistory<T>},
+    {"exit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
+    {"quit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
+    {"help",          "",                                                         "Show this help text", 0, CmdHelp<T>},
 };
-
-template<typename T>
-CmdResult ExecuteTUICommand(std::string input_command, CmdContext<T> ctx) {
-    CmdResult result;
-    std::vector<std::string> args;
-
-    // Get command and verify input sizing
-    auto used_cmd = std::find_if(TraceCommands<T>.begin(), TraceCommands<T>.end(), [&](CmdInfo<T> const& cmd){
-        return input_command == cmd.name || input_command.starts_with(std::format("{} ", cmd.name));
-    });
-    if (used_cmd == TraceCommands<T>.end()) {
-        result = {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
-        goto tui_return_result;
-    }
-    if (!verifyInputArgs(used_cmd->name, input_command, args, used_cmd->num_params)) {
-        result = {CmdResultCode::INVALID_SYNTAX, std::format("Invalid syntax. Usage: {} {}", used_cmd->name, used_cmd->usage)};
-        goto tui_return_result;
-    }
-
-    // Run command
-    result = used_cmd->handler(args, ctx);
-
-tui_return_result:
-    ctx.history.push_back({input_command, result});
-    return result;
-}
 
 } // namespace TUITrace

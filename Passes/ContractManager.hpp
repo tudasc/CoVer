@@ -2,17 +2,15 @@
 
 #include <chrono>
 #include <json/value.h>
-#include <llvm/IR/PassManager.h>
-#include <llvm/IR/Function.h>
-#include <llvm/Support/CommandLine.h>
 #include <map>
 #include <memory>
 #include <set>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "ContractTree.hpp"
+
+import LLVMModule;
 
 using namespace ContractTree;
 

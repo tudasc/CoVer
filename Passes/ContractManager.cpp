@@ -1,24 +1,5 @@
 #include "ContractManager.hpp"
 
-#include "llvm/Analysis/DependenceAnalysis.h"
-#include "llvm/Analysis/MemorySSA.h"
-#include "llvm/IR/BasicBlock.h"
-#include "llvm/IR/GlobalVariable.h"
-#include "llvm/IR/Instruction.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Value.h"
-#include "llvm/Transforms/IPO/Attributor.h"
-
-#include <llvm/ADT/StringRef.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/InstrTypes.h>
-#include <llvm/IR/PassManager.h>
-#include <llvm/IR/Type.h>
-#include <llvm/Support/Casting.h>
-#include <llvm/Support/CommandLine.h>
-#include <llvm/Support/WithColor.h>
-#include <llvm/Support/raw_ostream.h>
 #include <memory>
 
 #include <string>
@@ -27,9 +8,9 @@
 #include "../LangCode/ContractDataExtractor.hpp"
 #include "ContractTree.hpp"
 
-#include "TUIManager.hpp"
-
+import LLVMModule;
 import ContractPassUtility;
+import TUIManager;
 
 using namespace llvm;
 
