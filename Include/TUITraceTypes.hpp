@@ -11,13 +11,9 @@ import ContractPassUtility;
 
 namespace TUITrace {
 
-template<typename T>
-using JumpTraceEntry = ContractPassUtility::JumpTraceEntry<T>;
-
-template<typename T>
-using TraceDB = ContractPassUtility::TraceDB<T>;
-
-using TraceKind = ContractPassUtility::TraceKind;
+using ContractPassUtility::JumpTraceEntry;
+using ContractPassUtility::TraceDB;
+using ContractPassUtility::TraceKind;
 
 template<typename T>
 struct TraceBlock {
@@ -56,8 +52,5 @@ struct CmdInfo {
     int num_params;
     std::function<CmdResult(std::vector<std::string>&, CmdContext<T>&)> handler;
 };
-
-bool verifyInputArgs(std::string_view const& usage, std::string_view const& input, std::vector<std::string>& args, int const& num_inputs);
-std::string traceKindToStr(TraceKind kind);
 
 } // namespace TUITrace

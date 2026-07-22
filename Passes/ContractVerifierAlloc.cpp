@@ -4,12 +4,8 @@
 #include "ContractManager.hpp"
 #include <format>
 #include <functional>
-#include <llvm/IR/GlobalVariable.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/InstrTypes.h>
-#include <llvm/Support/Casting.h>
 
+import LLVMModule;
 import ContractPassUtility;
 
 using namespace llvm;

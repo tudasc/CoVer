@@ -1,8 +1,8 @@
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/PassManager.h>
-#include <llvm/IR/DIBuilder.h>
-#include <llvm/Transforms/Utils/ValueMapper.h>
+#pragma once
 
+#include <string>
+
+import LLVMModule;
 import BasicTypes;
 
 namespace llvm {

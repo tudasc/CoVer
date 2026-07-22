@@ -1,31 +1,9 @@
 #include "Intrinsics.hpp"
 
-#include <llvm/ADT/SmallVector.h>
-#include <llvm/BinaryFormat/Dwarf.h>
-#include <llvm/IR/Analysis.h>
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/DIBuilder.h>
-#include <llvm/IR/DebugInfoMetadata.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/GlobalValue.h>
-#include <llvm/IR/GlobalVariable.h>
-#include <llvm/IR/InstIterator.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/Intrinsics.h>
-#include <llvm/IR/Metadata.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/Operator.h>
-#include <llvm/IR/ReplaceConstant.h>
-#include <llvm/IR/PassManager.h>
-#include <llvm/Support/Casting.h>
-#include <llvm/Transforms/Utils/BasicBlockUtils.h>
-#include <llvm/Transforms/Utils/ValueMapper.h>
-#include <llvm/Transforms/Utils/EscapeEnumerator.h>
 #include <ranges>
 #include <vector>
 
+import LLVMModule;
 import BasicTypes;
 
 using namespace llvm;

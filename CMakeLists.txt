@@ -89,14 +89,15 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractPostProcess.cpp
   Passes/Intrinsics.cpp
   Passes/Instrument.cpp
-  Utils/TUIManager.cpp
-  Utils/TUITrace.cpp
 )
 
 target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
   Passes/AnalysisCleanup.cppm
   Passes/BasicTypes.cppm
   Utils/ContractPassUtility.cppm
+  Utils/TUITrace.cppm
+  Utils/TUIManager.cppm
+  Utils/LLVMModule.cppm
 )
 
 target_include_directories(CoVerPlugin

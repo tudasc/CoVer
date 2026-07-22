@@ -5,36 +5,6 @@ module;
 #include <climits>
 #include <format>
 #include <iterator>
-#include <llvm/ADT/PostOrderIterator.h>
-#include <llvm/ADT/StringRef.h>
-#include <llvm/Analysis/AliasAnalysis.h>
-#include <llvm/Analysis/MemoryDependenceAnalysis.h>
-#include <llvm/Analysis/TargetLibraryInfo.h>
-#include <llvm/Demangle/Demangle.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/Argument.h>
-#include <llvm/IR/DebugInfoMetadata.h>
-#include <llvm/IR/DebugLoc.h>
-#include <llvm/IR/InstIterator.h>
-#include <llvm/IR/ModuleSlotTracker.h>
-#include <llvm/IR/DebugProgramInstruction.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/GlobalValue.h>
-#include <llvm/IR/GlobalVariable.h>
-#include <llvm/IR/InstrTypes.h>
-#include <llvm/IR/Instruction.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/Metadata.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/Operator.h>
-#include <llvm/IR/PassManager.h>
-#include <llvm/Support/Casting.h>
-#include <llvm/Support/CommandLine.h>
-#include <llvm/Support/ErrorHandling.h>
-#include <llvm/Support/WithColor.h>
-#include <llvm/Support/raw_ostream.h>
-#include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <map>
 #include <memory>
 #include <queue>
@@ -52,6 +22,7 @@ module;
 #include "dsa/DSGraph.h"
 
 export module ContractPassUtility;
+import LLVMModule;
 import BasicTypes;
 
 using namespace llvm;

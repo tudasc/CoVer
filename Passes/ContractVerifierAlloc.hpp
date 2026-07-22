@@ -2,13 +2,13 @@
 
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
-#include "llvm/IR/PassManager.h"
 #include <algorithm>
-#include <llvm/IR/InstrTypes.h>
 #include <map>
 #include <ranges>
 #include <set>
 #include <utility>
+
+import LLVMModule;
 
 using namespace ContractTree;
 

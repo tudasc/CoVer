@@ -1,13 +1,9 @@
 module;
 
-#include <llvm/BinaryFormat/Dwarf.h>
-#include <llvm/IR/Analysis.h>
-#include <llvm/IR/DIBuilder.h>
-#include <llvm/IR/Module.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/PassManager.h>
+#include <vector>
 
 export module AnalysisCleanup;
+import LLVMModule;
 
 using namespace llvm;
 

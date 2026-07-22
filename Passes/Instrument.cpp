@@ -7,32 +7,6 @@
 #include <fstream>
 #include <json/reader.h>
 #include <json/value.h>
-#include <llvm/ADT/APInt.h>
-#include <llvm/ADT/ArrayRef.h>
-#include <llvm/ADT/StringRef.h>
-#include <llvm/BinaryFormat/Dwarf.h>
-#include <llvm/IR/Attributes.h>
-#include <llvm/IR/BasicBlock.h>
-#include <llvm/IR/Constant.h>
-#include <llvm/IR/Constants.h>
-#include <llvm/IR/DebugInfoMetadata.h>
-#include <llvm/IR/DerivedTypes.h>
-#include <llvm/IR/Function.h>
-#include <llvm/IR/GlobalValue.h>
-#include <llvm/IR/GlobalVariable.h>
-#include <llvm/IR/InstrTypes.h>
-#include <llvm/IR/Instruction.h>
-#include <llvm/IR/Instructions.h>
-#include <llvm/IR/Module.h>
-#include <llvm/Demangle/Demangle.h>
-#include <llvm/IR/Operator.h>
-#include <llvm/Support/Casting.h>
-#include <llvm/Support/Compiler.h>
-#include <llvm/Support/ErrorHandling.h>
-#include <llvm/Support/raw_ostream.h>
-#include <llvm/Transforms/Utils/BasicBlockUtils.h>
-#include <llvm/Support/WithColor.h>
-#include <llvm/Transforms/Utils/Cloning.h>
 #include <map>
 #include <memory>
 #include <string>
@@ -40,6 +14,9 @@
 #include <utility>
 #include <vector>
 
+#include <llvm/Support/ErrorHandling.h>
+
+import LLVMModule;
 import ContractPassUtility;
 
 using namespace llvm;

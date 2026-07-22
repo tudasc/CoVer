@@ -1,13 +1,12 @@
 #pragma once
 
-#include "llvm/IR/PassManager.h"
-#include <llvm/Support/WithColor.h>
-#include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include <json/json.h>
 #include <optional>
+
+import LLVMModule;
 
 namespace llvm {
 

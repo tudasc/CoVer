@@ -1,4 +1,4 @@
-#include "TUIManager.hpp"
+module;
 
 #include <algorithm>
 #include <cstddef>
@@ -13,7 +13,6 @@
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <functional>
-#include <llvm/ADT/StringRef.h>
 #include <map>
 #include <memory>
 #include <set>
@@ -24,9 +23,18 @@
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
 
+export module TUIManager;
+import LLVMModule;
+
+using namespace llvm;
+
 namespace TUIManager {
 
-std::string getSpecificLine(std::string file, int line) {
+using Contract = llvm::ContractManagerAnalysis::Contract;
+
+export constexpr int UI_ANALYSISINFO_PAD_SIZE = 15;
+
+export std::string getSpecificLine(std::string file, int line) {
     std::ifstream filestream(file);
     std::string out;
     int cur_line = 0;
@@ -93,7 +101,8 @@ int RenderMenu(std::vector<std::string> choices, std::string title) {
     screen.Loop(render);
     return *menu_options.selected;
 }
-std::vector<std::string> RenderMultiMenu(std::vector<std::string> choices, std::string title, std::set<std::string> already_selected) {
+
+export std::vector<std::string> RenderMultiMenu(std::vector<std::string> choices, std::string title, std::set<std::string> already_selected) {
     std::map<std::string, bool> sel_choices;
     std::map<std::string, bool> visible;
     std::vector<ftxui::Component> elems;
@@ -145,7 +154,7 @@ std::vector<std::string> RenderMultiMenu(std::vector<std::string> choices, std::
     return act_choices;
 }
 
-std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res) {
+export std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title, std::string last_res) {
     std::string input_str;
     ftxui::InputOption input_options = {
         .content = &input_str,
@@ -171,21 +180,6 @@ std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string title,
     render->OnEvent(ftxui::Event()); // Trigger onEvent once to let cur_focus be computed
     screen.Loop(render);
     return *input_options.content;
-}
-
-void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB) {
-    std::vector<std::string> contr_funcs;
-    contr_funcs.push_back("Start Analysis");
-    for (llvm::ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
-        contr_funcs.push_back("Read Contract: " + contract.F->getName().str());
-    }
-
-    int choice;
-    do {
-        choice = RenderMenu(contr_funcs, "Start Menu (" + std::to_string(DB.Contracts.size()) + " contracts to be analysed)");
-        // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
-        if (choice != 0) ShowContractDetails(DB.Contracts[choice-1]);
-    } while (choice != 0);
 }
 
 bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, std::string title) {
@@ -223,7 +217,7 @@ bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, st
     }
 }
 
-bool ShowContractDetails(ContractManagerAnalysis::Contract C) {
+bool ShowContractDetails(Contract C) {
     std::vector<std::string> menu_entries = {"Back to Listing"};
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
     for (int i = 0; i < C.Data.Pre.size(); i++) {
@@ -260,26 +254,22 @@ bool ShowContractDetails(ContractManagerAnalysis::Contract C) {
     return ShowContractFormula(violated_formulas[*menu_options.selected-1], "Inspecting Contract Subformula for Function: " + C.F->getName().str());
 }
 
-void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line) {
-    std::ifstream filestream(file);
-    std::string out;
-
-    // Now, read lines of relevance
-    int cur_line = 1;
-    std::vector<ftxui::Element> lines;
-
-    while (filestream) {
-        std::getline(filestream, out);
-        ftxui::Element text_elem = ftxui::text(std::format("{:>4} | {}", cur_line, out));
-        if (cur_line == focus_line) text_elem |= ftxui::focus;
-        if (highlights.contains(cur_line)) text_elem |= ftxui::bgcolor(highlights[cur_line]);
-        lines.push_back(text_elem);
-        cur_line++;
+export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB) {
+    std::vector<std::string> contr_funcs;
+    contr_funcs.push_back("Start Analysis");
+    for (llvm::ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
+        contr_funcs.push_back("Read Contract: " + contract.F->getName().str());
     }
-    ShowLines(lines, "Source Preview", focus_line);
+
+    int choice;
+    do {
+        choice = RenderMenu(contr_funcs, "Start Menu (" + std::to_string(DB.Contracts.size()) + " contracts to be analysed)");
+        // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
+        if (choice != 0) ShowContractDetails(DB.Contracts[choice-1]);
+    } while (choice != 0);
 }
 
-void ShowLines(std::vector<ftxui::Element> lines, std::string title, int focus) {
+export void ShowLines(std::vector<ftxui::Element> lines, std::string title, int focus = 0) {
     int selected = 0;
     ftxui::MenuOption menu_options = {
         .entries = std::vector<std::string>{"Exit view"},
@@ -304,6 +294,25 @@ void ShowLines(std::vector<ftxui::Element> lines, std::string title, int focus) 
         }
     ), scrollableEventHdlr_inst);
     screen.Loop(render);
+}
+
+void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line) {
+    std::ifstream filestream(file);
+    std::string out;
+
+    // Now, read lines of relevance
+    int cur_line = 1;
+    std::vector<ftxui::Element> lines;
+
+    while (filestream) {
+        std::getline(filestream, out);
+        ftxui::Element text_elem = ftxui::text(std::format("{:>4} | {}", cur_line, out));
+        if (cur_line == focus_line) text_elem |= ftxui::focus;
+        if (highlights.contains(cur_line)) text_elem |= ftxui::bgcolor(highlights[cur_line]);
+        lines.push_back(text_elem);
+        cur_line++;
+    }
+    ShowLines(lines, "Source Preview", focus_line);
 }
 
 bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form) {
@@ -350,7 +359,7 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form) {
     return choice == 1; // Debug or no debug
 }
 
-bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
+export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
     std::vector<std::string> violations;
     std::vector<std::pair<std::shared_ptr<ContractFormula>, Contract>> formulas;
     violations.push_back("Exit Tool");

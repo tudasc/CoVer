@@ -1,8 +1,3 @@
-#include "llvm/Passes/PassBuilder.h"
-#include <llvm/Plugins/PassPlugin.h>
-#include <llvm/IR/PassManager.h>
-#include <llvm/Passes/OptimizationLevel.h>
-
 #include "ContractManager.hpp"
 #include "ContractVerifierAlloc.hpp"
 #include "ContractVerifierPreCall.hpp"
@@ -13,6 +8,9 @@
 #include "Intrinsics.hpp"
 #include "Instrument.hpp"
 
+#include <llvm/Plugins/PassPlugin.h>
+
+import LLVMModule;
 import AnalysisCleanup;
 
 using namespace llvm;

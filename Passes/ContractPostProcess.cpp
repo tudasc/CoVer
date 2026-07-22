@@ -1,17 +1,10 @@
 #include "ContractPostProcess.hpp"
 #include "ContractManager.hpp"
-#include "TUIManager.hpp"
 #include "ContractTree.hpp"
 #include <algorithm>
 #include "ErrorMessage.h"
 #include <json/value.h>
 #include <fstream>
-#include <llvm/Demangle/Demangle.h>
-#include <llvm/IR/Analysis.h>
-#include <llvm/Support/Error.h>
-#include <llvm/Support/ErrorHandling.h>
-#include <llvm/Support/WithColor.h>
-#include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include <optional>
 #include <sstream>
@@ -20,10 +13,15 @@
 #include <system_error>
 #include <vector>
 
+#include <llvm/Support/ErrorHandling.h>
+
+import LLVMModule;
 import ContractPassUtility;
+import TUIManager;
 
 using namespace llvm;
 using namespace ContractTree;
+using Contract = ContractManagerAnalysis::Contract;
 
 static cl::opt<std::string> ClPrintJsonReports(
     "cover-generate-json-report", cl::init(""),

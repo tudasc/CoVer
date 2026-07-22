@@ -3,14 +3,13 @@
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 #include "ErrorMessage.h"
-#include "llvm/IR/PassManager.h"
-#include <llvm/IR/InstrTypes.h>
 #include <map>
-#include "TUITrace.hpp"
 #include <set>
 #include <vector>
 
+import LLVMModule;
 import ContractPassUtility;
+import TUITrace;
 
 namespace llvm {
 
