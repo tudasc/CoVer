@@ -13,6 +13,9 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 else()
     set_property(TARGET CoVerDynamicAnalyzer PROPERTY UNITY_BUILD ON)
 endif()
+
+# Opt-out of modules in favor of unity build
+set_property(TARGET CoVerDynamicAnalyzer PROPERTY CXX_SCAN_FOR_MODULES OFF)
 target_include_directories(CoVerDynamicAnalyzer PUBLIC ../Include/)
 
 find_package(PkgConfig REQUIRED)

@@ -3,7 +3,6 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/Passes/OptimizationLevel.h>
 
-#include "BasicTypes.hpp"
 #include "ContractManager.hpp"
 #include "ContractVerifierAlloc.hpp"
 #include "ContractVerifierPreCall.hpp"
@@ -11,9 +10,10 @@
 #include "ContractVerifierRelease.hpp"
 #include "ContractVerifierParam.hpp"
 #include "ContractPostProcess.hpp"
-#include "AnalysisCleanup.hpp"
 #include "Intrinsics.hpp"
 #include "Instrument.hpp"
+
+import AnalysisCleanup;
 
 using namespace llvm;
 

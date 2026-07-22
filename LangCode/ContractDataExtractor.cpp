@@ -1,10 +1,11 @@
 #include <optional>
 
-#include "ContractDataVisitor.hpp"
 #include "ContractLangErrorListener.hpp"
 #include "ContractLexer.h"
 #include "ContractParser.h"
 #include "ContractTree.hpp"
+
+import ContractDataVisitor;
 
 using namespace ContractTree;
 

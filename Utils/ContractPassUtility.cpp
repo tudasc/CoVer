@@ -1,7 +1,6 @@
 #include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
-#include "../Passes/BasicTypes.hpp"
 #include <climits>
 #include <format>
 #include <iterator>
@@ -48,6 +47,8 @@
 #include "dsa/DSSupport.h"
 #include "dsa/Steensgaard.hh"
 #include "dsa/DSGraph.h"
+
+import BasicTypes;
 
 using namespace llvm;
 
