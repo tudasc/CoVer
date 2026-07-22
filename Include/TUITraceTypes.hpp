@@ -6,7 +6,8 @@
 #include <string>
 #include <utility>
 #include <vector>
-#include "ContractPassUtility.hpp"
+
+import ContractPassUtility;
 
 namespace TUITrace {
 

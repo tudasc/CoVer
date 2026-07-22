@@ -8,10 +8,11 @@
 #include <string>
 #include <system_error>
 #include <vector>
-#include "ContractPassUtility.hpp"
 #include "TUIManager.hpp"
 #include "TUITraceTypes.hpp"
 #include "TUICmds.hpp"
+
+import ContractPassUtility;
 
 namespace TUITrace {
 

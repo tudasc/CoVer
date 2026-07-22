@@ -1,7 +1,6 @@
 #include "ContractVerifierPostCall.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include "ContractPassUtility.hpp"
 #include "ErrorMessage.h"
 
 #include <algorithm>
@@ -20,6 +19,8 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/Metadata.h>
 #include <llvm/Support/Casting.h>
+
+import ContractPassUtility;
 
 using namespace llvm;
 using namespace ContractTree;

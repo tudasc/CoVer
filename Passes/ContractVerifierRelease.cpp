@@ -1,7 +1,6 @@
 #include "ContractVerifierRelease.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include "ContractPassUtility.hpp"
 #include "ErrorMessage.h"
 
 #include <algorithm>
@@ -22,6 +21,8 @@
 #include <sstream>
 #include <string>
 #include <vector>
+
+import ContractPassUtility;
 
 using namespace llvm;
 using namespace ContractTree;

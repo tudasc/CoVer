@@ -1,6 +1,5 @@
 #include "ContractPostProcess.hpp"
 #include "ContractManager.hpp"
-#include "ContractPassUtility.hpp"
 #include "TUIManager.hpp"
 #include "ContractTree.hpp"
 #include <algorithm>
@@ -20,6 +19,8 @@
 #include <string>
 #include <system_error>
 #include <vector>
+
+import ContractPassUtility;
 
 using namespace llvm;
 using namespace ContractTree;
@@ -81,8 +82,8 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     }
     if (!output) return s;
 
-    if (s == Fulfillment::FULFILLED && IS_DEBUG) WithColor(printMsg(), HighlightColor::String) << "## Contract Fulfilled! ##\n";
-    if (s == Fulfillment::FULFILLED && !IS_DEBUG) return s; // No debug output, don't spam fulfilled contracts
+    if (s == Fulfillment::FULFILLED && ContractPassUtility::isDebug()) WithColor(printMsg(), HighlightColor::String) << "## Contract Fulfilled! ##\n";
+    if (s == Fulfillment::FULFILLED && !ContractPassUtility::isDebug()) return s; // No debug output, don't spam fulfilled contracts
 
     if (s == Fulfillment::UNKNOWN) WithColor(printMsg(), HighlightColor::Warning) << "## Contract Status Unknown ##\n";
     if (s == Fulfillment::BROKEN) WithColor(printMsg(), HighlightColor::Error) << "## Contract violation detected! ##\n";
@@ -94,7 +95,7 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
         outputSubformulaErrs("Precondition", C, reasons);
         outputSubformulaErrs("Postcondition", C, reasons);
     }
-    if (IS_DEBUG) {
+    if (ContractPassUtility::isDebug()) {
         WithColor(printMsg(), HighlightColor::Remark) << "--> Debug Begin\n";
         for (std::string dbg: *C.DebugInfo) {
             WithColor(printMsg(), HighlightColor::Remark) << dbg << "\n";

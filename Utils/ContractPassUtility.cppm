@@ -1,4 +1,5 @@
-#include "ContractPassUtility.hpp"
+module;
+
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
 #include <climits>
@@ -36,10 +37,12 @@
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <map>
 #include <memory>
+#include <queue>
 #include <set>
 #include <string>
 #include <optional>
 #include <sys/types.h>
+#include <stack>
 #include <utility>
 #include <vector>
 
@@ -48,6 +51,7 @@
 #include "dsa/Steensgaard.hh"
 #include "dsa/DSGraph.h"
 
+export module ContractPassUtility;
 import BasicTypes;
 
 using namespace llvm;
@@ -64,22 +68,72 @@ static std::set<const CallBase*> UnknownCalledParam;
 // For language-specific stuff
 static bool isFort = false;
 
+// Map from function to indirect calls to it, as gotten by annotations
+std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
+
+// Whether to output IR or human-readable
+bool outputIR = false;
+
+template<typename T>
+struct WorklistEntry {
+    Instruction* start;
+    T initial;
+    std::stack<CallBase*> stack;
+};
+
+namespace ContractPassUtility {
+
+export template<typename T>
+using TransferFunction = std::function<T(T,const Instruction*,void*)>;
+export template<typename T>
+using MergeFunction = std::function<std::pair<T,bool>(T,T,const Instruction*,void*)>;
+
+export enum struct TraceKind { LINEAR, BRANCH, SWITCH, FUNCENTRY, FUNCEXIT };
+export template<typename T>
+struct JumpTraceEntry {
+    JumpTraceEntry<T>() {}
+    JumpTraceEntry<T>(T ai, Instruction* I, TraceKind k, std::vector<JumpTraceEntry<T>*> preds) : analysisInfo{ai}, loc{I}, kind{k}, predecessors{preds} {}
+    T analysisInfo;
+    Instruction* loc;
+    TraceKind kind;
+    std::vector<JumpTraceEntry<T>*> predecessors;
+    bool operator<(const JumpTraceEntry<T> other) const { return loc < other.loc; };
+};
+export template<typename T>
+struct TraceDB : std::shared_ptr<DenseMap<Instruction*, std::unique_ptr<JumpTraceEntry<T>>>> {
+    TraceDB<T>() : std::shared_ptr<DenseMap<Instruction*, std::unique_ptr<JumpTraceEntry<T>>>>(std::make_shared<DenseMap<Instruction*, std::unique_ptr<JumpTraceEntry<T>>>>()) {}
+    JumpTraceEntry<T>* operator[](Instruction* I) const {
+        std::unique_ptr<JumpTraceEntry<T>>& entry = (**this)[I];
+        if (!entry) entry = std::make_unique<JumpTraceEntry<T>>();
+        return entry.get();
+    }
+};
+export template<typename T>
+struct WorklistResult : GenericWLRes {
+    DenseMap<Instruction*, T> AnalysisInfo;
+    TraceDB<T> JumpTraces;
+    std::function<std::string(T)> AnalysisInfoToStr = nullptr;
+};
+
+export struct AliasGroup {
+    std::set<Value*, std::less<>> members;
+    bool areAliasing;
+};
+
 // Annotation infos
 std::map<int, ContractPassUtility::AliasGroup> aliasInfo;
 
-const Value* ContractPassUtility::betterGetPointerOperand(const Value* V) {
+#define DEBUG_ENV "COVER_LLVM_DEBUG"
+export bool isDebug() {
+    return getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1;
+}
+
+export const Value* betterGetPointerOperand(const Value* V) {
     const Value* b = getPointerOperand(V);
     if (b == nullptr) {
         if (const GEPOperator* GEPOp = dyn_cast<GEPOperator>(V)) b = GEPOp->getPointerOperand();
     }
     return b;
-}
-Function const* getParentFunction(Value const* V) {
-    if (Instruction const* I = dyn_cast<Instruction>(V))
-        return I->getFunction();
-    if (Argument const* Arg = dyn_cast<Argument>(V))
-        return Arg->getParent();
-    return nullptr;
 }
 
 bool sameOriginCheck(Value const* source, Value const* target) {
@@ -90,15 +144,221 @@ bool sameOriginCheck(Value const* source, Value const* target) {
         if (source == target) return true;
         // If one is a GEP, resolve "for free"
         if (isa<GEPOperator>(source))
-            source = ContractPassUtility::betterGetPointerOperand(source);
+            source = betterGetPointerOperand(source);
         if (isa<GEPOperator>(target))
-            target = ContractPassUtility::betterGetPointerOperand(target);
+            target = betterGetPointerOperand(target);
         // Check again, may be equal if synchronized already (i.e. stack array)
         if (source == target) return true;
         // Get their ptr operands if they exist and check again
-        source = ContractPassUtility::betterGetPointerOperand(source);
-        target = ContractPassUtility::betterGetPointerOperand(target);
+        source = betterGetPointerOperand(source);
+        target = betterGetPointerOperand(target);
     }
+}
+
+export std::map<int, AliasGroup> const& getAliasAnnots() { return aliasInfo; }
+export std::set<Function*> getFPAnnots(CallBase const* CB) {
+    if (!CB->isIndirectCall()) return {};
+
+    std::set<Function*> fp_targets;
+    Instruction const* cur = CB->getPrevNode();
+    for (int i = 0; i < 5 && cur; i++) {
+        if (CallBase const* annotCall = dyn_cast<CallBase>(cur)) {
+            if (annotCall->getCalledOperand()->getName() == "CoVer_AnnotFP" && sameOriginCheck(annotCall->getArgOperand(0), CB->getCalledOperand())) {
+                for (int i = 2; i < annotCall->arg_size(); i++) {
+                    fp_targets.insert(CB->getModule()->getFunction(annotCall->getArgOperand(i)->getName()));
+                }
+                break;
+            }
+        }
+        cur = cur->getPrevNode();
+    }
+    return fp_targets;
+}
+
+template<typename T>
+void updateJumpTrace(ContractPassUtility::TraceDB<T> const& trace, Instruction* cur, Instruction* prev, ContractPassUtility::TraceKind kind, T analysisInfo) {
+    if (trace->contains(cur)) {
+        if (std::find(trace[cur]->predecessors.begin(), trace[cur]->predecessors.end(), trace[prev]) == trace[cur]->predecessors.end())
+            trace[cur]->predecessors.push_back(trace[prev]);
+        trace[cur]->analysisInfo = analysisInfo;
+    } else {
+        std::vector<ContractPassUtility::JumpTraceEntry<T>*> preds;
+        if (trace->contains(prev)) preds.push_back(trace[prev]);
+        *trace[cur] = ContractPassUtility::JumpTraceEntry<T>(analysisInfo, cur, kind, preds);
+    }
+}
+
+template <typename T>
+std::pair<T, bool> getMergeResult(DenseMap<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> const& trace, T prevInfo, ContractPassUtility::MergeFunction<T> const& merge, Instruction* cur, void* data) {
+    bool resume = true;
+    T info;
+    auto it = AI.find(cur);
+    if (it == AI.end()) {
+        info = prevInfo;
+    } else {
+        std::tie(info, resume) = merge(prevInfo, it->second, cur, data);
+    }
+    AI[cur] = info;
+    if (trace->contains(cur)) trace[cur]->analysisInfo = info;
+    return {info, resume};
+}
+
+/*
+ * Apply worklist algorithm
+ * Need Start param to make sure that the initialization of parameters does not count as operation
+ */
+export template <typename T>
+ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool transferFirst, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
+    // Jumptrace
+    TraceDB<T> jumptraces;
+    // Analysis Info mapping
+    DenseMap<Instruction*, T> postAccess;
+    // Worklist
+    std::queue<WorklistEntry<T>> todoList;
+
+    if (!transferFirst) {
+        updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
+        todoList.push({Start->getNextNode(), init, {}});
+        updateJumpTrace(jumptraces, Start->getNextNode(), Start, TraceKind::LINEAR, init);
+    } else {
+        todoList.push({Start, init, {}});
+        updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
+    }
+
+    // Map of OpenMP functions to index with function pointer
+    static const std::map<StringRef,int> OMPNames = {{"__kmpc_omp_task_alloc", 5}, {"__kmpc_fork_call", 2}};
+
+    // Start of worklist algorithm
+    while (!todoList.empty()) {
+        Instruction* cur = todoList.front().start;
+        T prevInfo = todoList.front().initial;
+        std::stack<CallBase*> stack = todoList.front().stack;
+
+        while (cur != nullptr) {
+            // Add previous info depending on following conditions:
+            // 1. In any case, prevInfo MUST have the corresponding access
+            // 2. Either: It is a "may" analysis, "next" was until now unreachable, or it was reached before and already contains the access
+            // If those apply, add that access. Otherwise, remove it if present (=> "must" analysis, node reached with info, jumped here without)
+            std::pair<T, bool> mergeRes = getMergeResult(postAccess, jumptraces, prevInfo, merge, cur, data);
+            if (!mergeRes.second) {
+                // Already visited and analysis does not wish to pursue further.
+                // Remove from worklist, or pop stack
+                Instruction* tmpNext = nullptr;
+                while (!tmpNext && !stack.empty()) {
+                    tmpNext = stack.top()->getNextNode();
+                    stack.pop();
+                }
+                // Either tmpNext is set, or null because tail-call stack end or stack was empty
+                if (tmpNext) {
+                    cur = tmpNext;
+                } else break;
+            }
+
+            // Call transfer function
+            postAccess[cur] = transfer(postAccess[cur], cur, data);
+            prevInfo = postAccess[cur];
+
+            // Check for branching / terminating instructions
+            // Missing because not sure if needed / relevant / used / too little info / lazy:
+            // CleanupReturnInst, CatchReturnInst, CatchSwitchInst, CallBrInst, ResumeInst, InvokeInst, IndirectBrInst
+            if (BranchInst* BR = dyn_cast<BranchInst>(cur)) {
+                for (BasicBlock* alt : BR->successors()) {
+                    updateJumpTrace(jumptraces, &alt->front(), cur, TraceKind::BRANCH, postAccess[cur]);
+                    todoList.push( {&alt->front(), postAccess[cur], stack} );
+                }
+                break;
+            }
+            if (SwitchInst* SI = dyn_cast<SwitchInst>(cur)) {
+                for (unsigned i = 0; i < SI->getNumSuccessors(); i++) {
+                    BasicBlock* alt = SI->getSuccessor(i);
+                    updateJumpTrace(jumptraces, &alt->front(), cur, TraceKind::SWITCH, postAccess[cur]);
+                    todoList.push( {&alt->front(), postAccess[cur], stack} );
+                }
+                break;
+            }
+            if (isa<UnreachableInst>(cur)) {
+                break;
+            }
+
+            // Check if function call: If it is, jump to function body
+            // If not, continue with normal next instruction
+            Instruction* next = nullptr;
+            TraceKind next_trace_entry;
+            if (CallBase* CB = dyn_cast<CallBase>(cur)) {
+                if (CB->getCalledFunction() && (OMPNames.contains(CB->getCalledFunction()->getName()) || !CB->getCalledFunction()->isDeclaration())) {
+                    stack.push(CB);
+                    if (!OMPNames.contains(CB->getCalledFunction()->getName())) {
+                        next = &CB->getCalledFunction()->getEntryBlock().front();
+                        next_trace_entry = TraceKind::FUNCENTRY;
+                    } else {
+                        if (Function* ompFunc = dyn_cast<Function>(CB->getArgOperand(OMPNames.at(CB->getCalledFunction()->getName())))) {
+                            if (!ompFunc->isDeclaration())
+                                next = &ompFunc->getEntryBlock().front();
+                        }
+                        if (!next) {
+                            errs() << "NOTE: Could not resolve OpenMP outlined call! Verification accuracy is impaired\n";
+                            stack.pop();
+                        }
+                    }
+                } else {
+                    // Check for annotations
+                    std::set<Function*> annots = getFPAnnots(CB);
+                    bool foundnext = false;
+                    for (Function* F : annots) {
+                        if (F->isDeclaration()) continue;
+                        std::stack<CallBase*> new_stack = stack;
+                        new_stack.push(CB);
+                        AnnotFuncReverse[F].insert(CB);
+                        updateJumpTrace(jumptraces, &F->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, postAccess[cur]);
+                        todoList.push( {&F->getEntryBlock().front(), postAccess[cur], new_stack} );
+                        foundnext = true;
+                    }
+                    if (foundnext) goto next_iter;
+                }
+            }
+            if (!next && !isa<ReturnInst>(cur)) {
+                next = cur->getNextNode();
+                if (next) next_trace_entry = TraceKind::LINEAR;
+            }
+
+            // Check if returning from function
+            if (isa<ReturnInst>(cur) && !stack.empty()) {
+                // Forward to next from stack
+                next = stack.top()->getNextNode();
+                stack.pop();
+                next_trace_entry = TraceKind::FUNCEXIT;
+            } else if (isa<ReturnInst>(cur)) {
+                // Stack is empty. But if we started inside a function, context includes all callsites
+                Function* func = cur->getFunction();
+                for (User* U : func->users()) {
+                    if (CallBase* CB = dyn_cast<CallBase>(U)) {
+                        if (CB->getCalledOperand() != func) continue;
+                        // Add callsite next to todoList
+                        todoList.push( {CB->getNextNode(), postAccess[cur], stack} );
+                    }
+                }
+            }
+
+            // Update traces
+            if (next) {
+                updateJumpTrace(jumptraces, next, cur, next_trace_entry, postAccess[cur]);
+            }
+
+            // Know next instruction, continue loop or iter is null and we are done
+            cur = next;
+        }
+        next_iter:
+        todoList.pop();
+    }
+    return {{}, postAccess, jumptraces, nullptr};
+}
+
+Function const* getParentFunction(Value const* V) {
+    if (Instruction const* I = dyn_cast<Instruction>(V))
+        return I->getFunction();
+    if (Argument const* Arg = dyn_cast<Argument>(V))
+        return Arg->getParent();
+    return nullptr;
 }
 
 int getAliasGroup(Value const* V) {
@@ -126,21 +386,6 @@ int getAliasGroup(Value const* V) {
         }
     }
     return -1;
-}
-
-// Map from function to indirect calls to it, as gotten by annotations
-std::map<const Function*, std::set<CallBase*>> AnnotFuncReverse;
-
-StoreInst* ContractPassUtility::getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM) {
-    Instruction* cur = CB->getPrevNode();
-    while (cur) {
-        if (isa<CallBase>(cur) && !dyn_cast<CallBase>(cur)->getCalledOperand()->getName().starts_with("PPDCV")) break;
-        if (StoreInst* SI = dyn_cast<StoreInst>(cur)) {
-            if (SI->getPointerOperand() == CB->getArgOperand(idx)) return SI;
-        }
-        cur = cur->getPrevNode();
-    }
-    return nullptr;
 }
 
 std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int curSteps, std::map<const Value*,int> candidatesConsidered) {
@@ -313,31 +558,21 @@ void determinizeModule() {
     }
 }
 
-bool outputIR = false;
-
-namespace ContractPassUtility {
-
-std::map<int, AliasGroup> const& getAliasAnnots() { return aliasInfo; }
-std::set<Function*> getFPAnnots(CallBase const* CB) {
-    if (!CB->isIndirectCall()) return {};
-
-    std::set<Function*> fp_targets;
-    Instruction const* cur = CB->getPrevNode();
-    for (int i = 0; i < 5 && cur; i++) {
-        if (CallBase const* annotCall = dyn_cast<CallBase>(cur)) {
-            if (annotCall->getCalledOperand()->getName() == "CoVer_AnnotFP" && sameOriginCheck(annotCall->getArgOperand(0), CB->getCalledOperand())) {
-                for (int i = 2; i < annotCall->arg_size(); i++) {
-                    fp_targets.insert(CB->getModule()->getFunction(annotCall->getArgOperand(i)->getName()));
-                }
-                break;
-            }
+export StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM) {
+    Instruction* cur = CB->getPrevNode();
+    while (cur) {
+        if (isa<CallBase>(cur) && !dyn_cast<CallBase>(cur)->getCalledOperand()->getName().starts_with("PPDCV")) break;
+        if (StoreInst* SI = dyn_cast<StoreInst>(cur)) {
+            if (SI->getPointerOperand() == CB->getArgOperand(idx)) return SI;
         }
         cur = cur->getPrevNode();
     }
-    return fp_targets;
+    return nullptr;
 }
 
-void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
+
+
+export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
     Basic_Types = MAM.getResult<BasicTypesAnalysis>(M);
 
     isFort = M.getFunction("_QQmain");
@@ -362,19 +597,19 @@ void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
     }
 }
 
-std::optional<uint> getLineNumber(const Instruction* I) {
+export std::optional<uint> getLineNumber(const Instruction* I) {
     if (const DebugLoc& N = I->getDebugLoc()) {
         return N.getLine();
     }
     return std::nullopt;
 }
-std::string getFile(const Instruction* I, bool longform = true) {
+export std::string getFile(const Instruction* I, bool longform = true) {
     if (I->getDebugLoc())
         return (I->getDebugLoc()->getDirectory() != "" && longform ? I->getDebugLoc()->getDirectory() + "/" : "").str() + I->getDebugLoc()->getFilename().str();
     return "UNKNOWN";
 }
 
-std::string getInstrLocStr(const Function* I, bool longform) {
+export std::string getInstrLocStr(const Function* I, bool longform = true) {
     if (const DISubprogram* debugLoc = I->getSubprogram()) {
         if (!outputIR) return ((longform ? debugLoc->getDirectory() + "/" : "") + debugLoc->getFilename()).str() + ":" + std::to_string(debugLoc->getLine());
         else return I->getName().str();
@@ -382,7 +617,7 @@ std::string getInstrLocStr(const Function* I, bool longform) {
     return "UNKNOWN";
 }
 
-std::string getInstrLocStr(const Instruction* I, bool longform) {
+export std::string getInstrLocStr(const Instruction* I, bool longform = true) {
     if (const DebugLoc &debugLoc = I->getDebugLoc()) {
         if (!outputIR) return getFile(I, longform) + ":" + std::to_string(debugLoc.getLine()) + (longform ? ":" + std::to_string(debugLoc->getColumn()) : "");
         else {
@@ -399,7 +634,7 @@ std::string getInstrLocStr(const Instruction* I, bool longform) {
     return "UNKNOWN";
 }
 
-FileReference getFileReference(const Instruction* I) {
+export FileReference getFileReference(const Instruction* I) {
     return {
         .file = getFile(I),
         .line = I->getDebugLoc() ? I->getDebugLoc()->getLine() : 0,
@@ -407,7 +642,7 @@ FileReference getFileReference(const Instruction* I) {
     };
 }
 
-bool isTrivialAlloc(Value const* V) {
+export bool isTrivialAlloc(Value const* V) {
     // First possibility: Its a global alloc, trivially fulfilled
     if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
         if (isFort) {
@@ -455,7 +690,7 @@ bool isTrivialAlloc(Value const* V) {
     return false;
 }
 
-ConstantInt* fortCheckAndGetGlbInt(Value* V) {
+export ConstantInt* fortCheckAndGetGlbInt(Value* V) {
     if (V->getName().starts_with("_QQ")) {
         if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
             if (GV->hasInitializer()) {
@@ -468,7 +703,7 @@ ConstantInt* fortCheckAndGetGlbInt(Value* V) {
     return nullptr;
 }
 
-bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags) {
+export bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags) {
     std::set<Function*> fns;
     if (CB->isIndirectCall()) fns = getFPAnnots(CB);
     else fns = {dyn_cast<Function>(CB->getCalledOperand())};
@@ -506,21 +741,7 @@ Module* getModule(Value const* V) {
     return nullptr;
 }
 
-std::vector<std::string> getCoVerAnnotations(Instruction* I) {
-    std::vector<std::string> cover_annots;
-    if (MDNode* Existing = I->getMetadata(LLVMContext::MD_annotation)) {
-        MDTuple* Tuple = cast<MDTuple>(Existing);
-        for (MDOperand const& N : Tuple->operands()) {
-            if (isa<MDString>(N.get())) {
-                std::string annot = cast<MDString>(N.get())->getString().str();
-                if (annot.starts_with("CoVer_Annot")) cover_annots.push_back(annot);
-            }
-        }
-    }
-    return cover_annots;
-}
-
-bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM) {
+export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM) {
     const Value* source = contrP;
     const Value* target = callP;
     int diff = 0;
@@ -553,7 +774,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
             // If interproc, diff should be -1 if already resolved
             if (diff == 0) {
                 Value const* V = getLoadStorePointerOperand(target);
-                if (!V && IS_DEBUG) WithColor(errs(), HighlightColor::String) << "Note: Static deref failed, falling back to orig.\n";
+                if (!V && isDebug()) WithColor(errs(), HighlightColor::String) << "Note: Static deref failed, falling back to orig.\n";
                 target = V ? V : target;
             }
             else if (diff != -1) return false;
@@ -603,7 +824,7 @@ bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::Para
     return false;
 }
 
-bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags, ModuleAnalysisManager* MAM) {
+export bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags, ModuleAnalysisManager* MAM) {
     std::vector<const Value*> candidateParams;
     const Value* sourceParam = Source->getArgOperand(P.contrP);
 
@@ -632,7 +853,7 @@ bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const
     return false;
 }
 
-Value* getValueByName(std::string name, Function* F) {
+export Value* getValueByName(std::string name, Function* F) {
     if (name.empty()) return nullptr;
     if (name.starts_with("%")) {
         if (F && !F->isDeclaration()) {
@@ -650,14 +871,7 @@ Value* getValueByName(std::string name, Function* F) {
     return F->getParent()->getNamedValue(name.substr(1));
 }
 
-void createAliasGroup(bool shouldAlias, Value* V1, Value* V2) {
-    aliasInfo[aliasInfo.empty() ? 0 : aliasInfo.rbegin()->first + 1] = {{}, shouldAlias};
-    for (Value* V : {V1, V2}) {
-        addToAliasGroup(aliasInfo.rbegin()->first, V);
-    }
-}
-
-void addToAliasGroup(int idx, Value* V) {
+export void addToAliasGroup(int idx, Value* V) {
     if (aliasInfo[idx].members.contains(V)) return; // Need to do early return to not double-instrument
     aliasInfo[idx].members.insert(V);
     CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlias"), {V, Basic_Types.getBool(aliasInfo[idx].areAliasing), Basic_Types.getInt(idx)});
@@ -668,7 +882,13 @@ void addToAliasGroup(int idx, Value* V) {
         CI->insertBefore(curM->getFunction("main")->getEntryBlock().getFirstInsertionPt());
     }
 }
-void setAliasGroupType(int idx, bool isAlias) {
+export void createAliasGroup(bool shouldAlias, Value* V1, Value* V2) {
+    aliasInfo[aliasInfo.empty() ? 0 : aliasInfo.rbegin()->first + 1] = {{}, shouldAlias};
+    for (Value* V : {V1, V2}) {
+        addToAliasGroup(aliasInfo.rbegin()->first, V);
+    }
+}
+export void setAliasGroupType(int idx, bool isAlias) {
     aliasInfo[idx].areAliasing = isAlias;
     for (User* U : curM->getFunction("CoVer_AnnotAlias")->users()) {
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
@@ -678,7 +898,7 @@ void setAliasGroupType(int idx, bool isAlias) {
         }
     }
 }
-void removeFromAliasGroup(int group, int idx) {
+export void removeFromAliasGroup(int group, int idx) {
     Value* V = *std::next(aliasInfo[group].members.begin(), idx);
     aliasInfo[group].members.erase(V);
     for (User* U : curM->getFunction("CoVer_AnnotAlias")->users()) {
@@ -693,7 +913,7 @@ void removeFromAliasGroup(int group, int idx) {
     if (aliasInfo[group].members.empty()) aliasInfo.erase(group);
 }
 
-void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
+export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     assert(indirect->isIndirectCall());
 
     std::vector<Value*> args = {indirect->getCalledOperand(), Basic_Types.getInt(targets.size())};

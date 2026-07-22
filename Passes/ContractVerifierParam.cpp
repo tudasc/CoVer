@@ -1,7 +1,6 @@
 #include "ContractVerifierParam.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include "ContractPassUtility.hpp"
 
 #include <format>
 #include <llvm/ADT/APInt.h>
@@ -35,6 +34,7 @@
 #include <string>
 
 import BasicTypes;
+import ContractPassUtility;
 
 using namespace llvm;
 using namespace ContractTree;
