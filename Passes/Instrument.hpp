@@ -10,10 +10,11 @@
 #include <set>
 #include <unordered_set>
 #include <vector>
-#include "BasicTypes.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
+
+import BasicTypes;
 
 namespace llvm {
 

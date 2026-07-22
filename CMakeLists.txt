@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.28)
 
 project(CoVer LANGUAGES CXX C)
 set(CMAKE_CXX_STANDARD 20)
@@ -62,9 +62,11 @@ antlr4_generate(ContractPars ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractParser
 add_library(ContractLanguage
   ${ANTLR4_SRC_FILES_ContractLex}
   ${ANTLR4_SRC_FILES_ContractPars}
-  LangCode/ContractDataVisitor.cpp
   LangCode/ContractLangErrorListener.cpp
   LangCode/ContractDataExtractor.cpp
+)
+target_sources(ContractLanguage PRIVATE FILE_SET lang_cxx_modules TYPE CXX_MODULES FILES
+  LangCode/ContractDataVisitor.cppm
 )
 target_include_directories(ContractLanguage
   PUBLIC
@@ -78,7 +80,6 @@ target_compile_options (ContractLanguage PUBLIC -fexceptions)
 
 add_llvm_pass_plugin(CoVerPlugin
   Passes/Registrar.cpp
-  Passes/BasicTypes.cpp
   Passes/ContractManager.cpp
   Passes/ContractVerifierPreCall.cpp
   Passes/ContractVerifierPostCall.cpp
@@ -86,12 +87,16 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/ContractVerifierParam.cpp
   Passes/ContractVerifierAlloc.cpp
   Passes/ContractPostProcess.cpp
-  Passes/AnalysisCleanup.cpp
   Passes/Intrinsics.cpp
   Passes/Instrument.cpp
   Utils/ContractPassUtility.cpp
   Utils/TUIManager.cpp
   Utils/TUITrace.cpp
+)
+
+target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
+  Passes/AnalysisCleanup.cppm
+  Passes/BasicTypes.cppm
 )
 
 target_include_directories(CoVerPlugin

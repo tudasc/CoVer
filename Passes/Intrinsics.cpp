@@ -1,5 +1,4 @@
 #include "Intrinsics.hpp"
-#include "BasicTypes.hpp"
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/BinaryFormat/Dwarf.h>
@@ -26,6 +25,8 @@
 #include <llvm/Transforms/Utils/EscapeEnumerator.h>
 #include <ranges>
 #include <vector>
+
+import BasicTypes;
 
 using namespace llvm;
 

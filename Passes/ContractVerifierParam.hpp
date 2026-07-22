@@ -1,10 +1,11 @@
 #pragma once
 
-#include "BasicTypes.hpp"
 #include "ContractTree.hpp"
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
 #include <set>
+
+import BasicTypes;
 
 namespace llvm {
 

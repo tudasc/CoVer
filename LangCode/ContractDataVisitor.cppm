@@ -1,0 +1,156 @@
+module;
+
+#include "ContractParserBaseVisitor.h"
+#include "ContractLangErrorListener.hpp"
+#include "ContractParser.h"
+#include "ContractTree.hpp"
+#include "ErrorMessage.h"
+
+export module ContractDataVisitor;
+
+using namespace ContractTree;
+
+export class ContractDataVisitor : public ContractParserBaseVisitor {
+    public:
+        std::any visitContract(ContractParser::ContractContext *ctx) override {
+            std::vector<std::shared_ptr<ContractFormula>> preExprs;
+            if (ctx->precondition()) {
+                preExprs = std::any_cast<std::vector<std::shared_ptr<ContractFormula>>>(this->visit(ctx->precondition()->exprList()));
+            }
+
+            std::vector<std::shared_ptr<ContractFormula>> postExprs;
+            if (ctx->postcondition()) {
+                postExprs = std::any_cast<std::vector<std::shared_ptr<ContractFormula>>>(this->visit(ctx->postcondition()->exprList()));
+            }
+
+            std::vector<TagUnit> tags;
+            if (ctx->functags()) {
+                for (ContractParser::TagUnitContext* tagUnitCtx : ctx->functags()->tagUnit()) {
+                    TagUnit t;
+                    t.tag = tagUnitCtx->Variable()->getText();
+                    if (tagUnitCtx->NatNum()) t.param = std::stoi(tagUnitCtx->NatNum()->getText());
+                    tags.push_back(t);
+                }
+            }
+
+            Fulfillment f = Fulfillment::UNKNOWN;
+            if (ctx->ContractMarkerExpFail()) f = Fulfillment::BROKEN;
+            if (ctx->ContractMarkerExpSucc()) f = Fulfillment::FULFILLED;
+
+            return ContractData{preExprs, postExprs, tags, f};
+        }
+
+        std::any visitExprList(ContractParser::ExprListContext *ctx) override {
+            std::vector<std::shared_ptr<ContractFormula>> exprs;
+            for (ContractParser::ExprFormulaContext* exprctx : ctx->exprFormula()) {
+                exprs.push_back(std::any_cast<std::shared_ptr<ContractFormula>>(this->visit(exprctx)));
+            }
+            return exprs;
+        }
+
+        std::any visitExprFormula(ContractParser::ExprFormulaContext *ctx) override {
+            if (ctx->expression()) {
+                std::shared_ptr<ContractFormula> exp = std::make_shared<ContractExpression>(std::any_cast<ContractExpression>(this->visit(ctx->expression())));
+                if (ctx->msg)
+                    exp->Message = ErrorMessage{.text = ctx->msg->getText().substr(1, ctx->msg->getText().length()-2)};
+                return exp;
+            }
+            std::vector<std::shared_ptr<ContractFormula>> exprs;
+            for (ContractParser::ExprFormulaContext* exprctx : ctx->exprFormula()) {
+                std::shared_ptr<ContractFormula> expForm = std::any_cast<std::shared_ptr<ContractFormula>>(this->visit(exprctx));
+                exprs.push_back(expForm);
+            }
+            ContractFormula contrF = { exprs, ctx->getText(), !ctx->XORSep().empty() ? FormulaType::XOR : FormulaType::OR };
+            if (ctx->msg) contrF.Message = ErrorMessage{.text = ctx->msg->getText().substr(1, ctx->msg->getText().length()-2)};
+            return std::make_shared<ContractFormula>(contrF);
+        }
+
+        std::any visitExpression(ContractParser::ExpressionContext *ctx) override {
+            std::shared_ptr<const Operation> opPtr;
+            opPtr = std::any_cast<std::shared_ptr<const Operation>>(this->visitChildren(ctx));
+            return ContractExpression(ctx->getText(), opPtr);
+        };
+
+        std::any visitMathExpr(ContractParser::MathExprContext* ctx) override {
+            MathExpr expr;
+            expr.isArg = ctx->natExpr()->MarkArg();
+            expr.value = std::stoi(ctx->natExpr()->NatNum()->getText());
+            if (ctx->mathOp()) {
+                if (ctx->mathOp()->multExpr()) {
+                    expr.type = MathType::MULT;
+                    expr.other = std::any_cast<std::shared_ptr<MathExpr>>(visitMathExpr(ctx->mathOp()->multExpr()->mathExpr()));
+                }
+            } else {
+                expr.type = MathType::UNARY_VALUE;
+            }
+            return std::make_shared<MathExpr>(expr);
+        }
+
+        std::any visitRwOp(ContractParser::RwOpContext *ctx) override {
+            ParamAccess acc = ParamAccess::NORMAL;
+            if (ctx->Deref()) acc = ParamAccess::DEREF;
+            if (ctx->AddrOf()) acc = ParamAccess::ADDROF;
+            int idx = ctx->RetSym() ? 99 : std::stoi(ctx->arg_index->getText());
+            std::shared_ptr<const Operation> op;
+            if (ctx->OPRead())
+                op = std::make_shared<const ReadOperation>(idx, acc);
+            else if (ctx->OPWrite())
+                op = std::make_shared<const WriteOperation>(idx, acc);
+            else if (ctx->OPAlloc())
+                op = std::make_shared<const AllocOperation>(idx, acc, ctx->alloc_size ? std::any_cast<std::shared_ptr<MathExpr>>(visitMathExpr(ctx->alloc_size)) : std::make_shared<MathExpr>(0, false, MathType::UNARY_VALUE));
+            else if (ctx->OPFree())
+                op = std::make_shared<const FreeOperation>(idx, acc);
+            return op;
+        }
+
+        std::any visitParamOp(ContractParser::ParamOpContext *ctx) override {
+            ParamOperation pOP(std::stoi(ctx->NatNum()->getText()));
+            for (ContractParser::ParamReqContext* req : ctx->paramReq()) {
+                Comparator comp;
+                if (req->ParamForbidEq()) comp = Comparator::NEQ;
+                if (req->ParamGt()) comp = Comparator::GT;
+                if (req->ParamGtEq()) comp = Comparator::GTEQ;
+                if (req->ParamLt()) comp = Comparator::LT;
+                if (req->ParamLtEq()) comp = Comparator::LTEQ;
+                if (req->ParamEqExcept()) comp = Comparator::EXEQ;
+                if (req->ParamEq()) comp = Comparator::EQ;
+                pOP.reqs.push_back({comp, req->value->getText(), req->MarkArg() != nullptr});
+            }
+            return std::static_pointer_cast<const Operation>(std::make_shared<const ParamOperation>(pOP));
+        }
+
+        std::any visitCallOp(ContractParser::CallOpContext *ctx) override {
+            std::vector<CallParam> params;
+            for (ContractParser::VarMapContext* param : ctx->varMap()) {
+                bool isTagVar = param->TagParam() ? true : false;
+                if (ctx->OPCall() && isTagVar) {
+                    // This is an error! Call is not a tag call, but parameter access requested
+                    throw ContractLangSyntaxError(param->TagParam()->getSymbol()->getLine(), param->TagParam()->getSymbol()->getCharPositionInLine(), "Attempted to use tag param in normal call!");
+                }
+                ParamAccess acc = ParamAccess::NORMAL;
+                if (param->Deref())
+                    acc = ParamAccess::DEREF;
+                if (param->AddrOf())
+                    acc = ParamAccess::ADDROF;
+                params.push_back({std::stoi(param->callP ? param->callP->getText() : "-1"), isTagVar, std::stoi(param->contrP->getText()), acc});
+            }
+            std::shared_ptr<const Operation> op;
+            if (ctx->OPCall())
+                op = std::make_shared<const CallOperation>(CallOperation(ctx->Variable()->getText(), params));
+            else
+                op = std::make_shared<const CallTagOperation>(CallTagOperation(ctx->Variable()->getText(), params));
+            return op;
+        }
+
+        std::any visitReleaseOp(ContractParser::ReleaseOpContext *ctx) override {
+            std::shared_ptr<const Operation> opForbidden = std::any_cast<std::shared_ptr<const Operation>>(this->visit(ctx->forbidden));
+            std::shared_ptr<const Operation> opUntil = std::any_cast<std::shared_ptr<const Operation>>(this->visit(ctx->until));
+
+            std::shared_ptr<const Operation> op = std::make_shared<const ReleaseOperation>(opForbidden, opUntil);
+            return op;
+        }
+
+    private:
+        std::any aggregateResult(std::any res1, std::any res2) override { return !res1.has_value() ? res2 : res1; };
+
+};

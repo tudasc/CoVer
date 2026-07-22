@@ -1,5 +1,4 @@
 #include "ContractVerifierParam.hpp"
-#include "BasicTypes.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include "ContractPassUtility.hpp"
@@ -34,6 +33,8 @@
 #include <vector>
 #include <memory>
 #include <string>
+
+import BasicTypes;
 
 using namespace llvm;
 using namespace ContractTree;

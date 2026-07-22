@@ -1,8 +1,9 @@
-#include "BasicTypes.hpp"
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/IR/DIBuilder.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
+
+import BasicTypes;
 
 namespace llvm {
 
