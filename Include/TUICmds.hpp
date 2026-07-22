@@ -20,7 +20,8 @@
 #include <vector>
 #include "TUIManager.hpp"
 #include "TUITraceTypes.hpp"
-#include "ContractPassUtility.hpp"
+
+import ContractPassUtility;
 
 namespace TUITrace {
 

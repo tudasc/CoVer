@@ -1,6 +1,5 @@
 #include "Instrument.hpp"
 #include "ContractManager.hpp"
-#include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ErrorMessage.h"
 #include <cstdint>
@@ -40,6 +39,8 @@
 #include <tuple>
 #include <utility>
 #include <vector>
+
+import ContractPassUtility;
 
 using namespace llvm;
 using namespace ContractTree;

@@ -1,6 +1,5 @@
 #include "ContractVerifierAlloc.hpp"
 
-#include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 #include <format>
@@ -10,6 +9,8 @@
 #include <llvm/IR/Module.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/Support/Casting.h>
+
+import ContractPassUtility;
 
 using namespace llvm;
 using namespace ContractTree;

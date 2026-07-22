@@ -2,11 +2,12 @@
 
 #include "llvm/IR/PassManager.h"
 #include <llvm/IR/InstrTypes.h>
-#include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 #include "ErrorMessage.h"
 #include "TUITrace.hpp"
+
+import ContractPassUtility;
 
 namespace llvm {
 

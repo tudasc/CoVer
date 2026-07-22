@@ -27,8 +27,9 @@
 #include "../LangCode/ContractDataExtractor.hpp"
 #include "ContractTree.hpp"
 
-#include "ContractPassUtility.hpp"
 #include "TUIManager.hpp"
+
+import ContractPassUtility;
 
 using namespace llvm;
 
@@ -231,7 +232,7 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
 void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
     std::optional<ContractData> Data = getContractData(contract);
     if (!Data) return;
-    if (IS_DEBUG) errs() << "Found contract for function " << F->getName() << " with content: " << contract << "\n";
+    if (ContractPassUtility::isDebug()) errs() << "Found contract for function " << F->getName() << " with content: " << contract << "\n";
 
     // Finally have contract data
     Contract newCtr{F, contract, *Data};
@@ -259,7 +260,7 @@ void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
 }
 
 void ContractManagerAnalysis::addValueDefinition(std::string name, Value* val) {
-    if (IS_DEBUG) {
+    if (ContractPassUtility::isDebug()) {
         WithColor(errs(), HighlightColor::Remark) << "[ContractManager] IR Value \"" << *val  << "\" stored for contract value \"" << name << "\"\n";
     }
     curDatabase.ContractVariableData[name].insert(val);

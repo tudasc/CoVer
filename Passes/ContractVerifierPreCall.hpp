@@ -1,6 +1,5 @@
 #pragma once
 
-#include "ContractPassUtility.hpp"
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 #include "ErrorMessage.h"
@@ -10,6 +9,8 @@
 #include "TUITrace.hpp"
 #include <set>
 #include <vector>
+
+import ContractPassUtility;
 
 namespace llvm {
 
