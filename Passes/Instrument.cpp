@@ -1,7 +1,6 @@
 #include "Instrument.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include "ErrorMessage.h"
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -17,6 +16,8 @@
 #include <llvm/Support/ErrorHandling.h>
 
 import LLVMModule;
+import ErrorMessage;
+import BasicTypes;
 import ContractPassUtility;
 
 using namespace llvm;

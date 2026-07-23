@@ -1,16 +1,17 @@
 module;
 
+#include "ContractLexer.h"
 #include "ContractParserBaseVisitor.h"
 #include "ContractLangErrorListener.hpp"
 #include "ContractParser.h"
 #include "ContractTree.hpp"
-#include "ErrorMessage.h"
 
-export module ContractDataVisitor;
+export module ContractDataExtractor;
+import ErrorMessage;
 
 using namespace ContractTree;
 
-export class ContractDataVisitor : public ContractParserBaseVisitor {
+class ContractDataVisitor : public ContractParserBaseVisitor {
     public:
         std::any visitContract(ContractParser::ContractContext *ctx) override {
             std::vector<std::shared_ptr<ContractFormula>> preExprs;
@@ -154,3 +155,30 @@ export class ContractDataVisitor : public ContractParserBaseVisitor {
         std::any aggregateResult(std::any res1, std::any res2) override { return !res1.has_value() ? res2 : res1; };
 
 };
+
+export std::optional<ContractData> getContractData(std::string contract) {
+    ContractDataVisitor dataVisitor;
+    ContractLangErrorListener listener;
+    antlr4::ANTLRInputStream input(contract);
+    ContractLexer lexer(&input);
+    lexer.removeErrorListeners();
+    lexer.addErrorListener(&listener);
+    antlr4::CommonTokenStream tokens(&lexer);
+    try {
+        tokens.fill();
+    } catch (ContractLangSyntaxError& e) {
+        std::cerr << "Detected non-contract annotation (Lexing Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << contract << "\n";
+        return std::nullopt;
+    }
+
+    // Apply Parser.
+    ContractParser parser(&tokens);
+    parser.removeErrorListeners();
+    parser.addErrorListener(&listener);
+    try {
+        return std::any_cast<ContractData>(dataVisitor.visit(parser.contract()));
+    } catch (ContractLangSyntaxError& e) {
+        std::cerr << "Detected non-contract annotation (Parser Error at " << e.linePos() << ":" << e.charPos() << "), ignoring: " << contract << "\n";
+        return std::nullopt;
+    }
+}

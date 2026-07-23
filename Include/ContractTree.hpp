@@ -6,12 +6,13 @@
  * If you are defining a new verifier, you will need to include this file and the ContractManager.
  */
 
-#include "ErrorMessage.h"
 #include <functional>
 #include <string>
 #include <memory>
 #include <optional>
 #include <vector>
+
+import ErrorMessage;
 
 namespace ContractPassUtility {
     using DebugHdlr = std::function<bool()>;

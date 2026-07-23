@@ -5,10 +5,10 @@
 #include <string>
 #include <system_error>
 #include <vector>
-#include "../LangCode/ContractDataExtractor.hpp"
 #include "ContractTree.hpp"
 
 import LLVMModule;
+import ContractDataExtractor;
 import ContractPassUtility;
 import TUIManager;
 

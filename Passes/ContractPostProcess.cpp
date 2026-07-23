@@ -2,7 +2,6 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include <algorithm>
-#include "ErrorMessage.h"
 #include <json/value.h>
 #include <fstream>
 #include <memory>

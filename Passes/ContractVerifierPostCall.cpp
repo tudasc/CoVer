@@ -1,7 +1,6 @@
 #include "ContractVerifierPostCall.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include "ErrorMessage.h"
 
 #include <algorithm>
 #include <memory>

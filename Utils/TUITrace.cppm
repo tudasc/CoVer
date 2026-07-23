@@ -6,11 +6,12 @@ module;
 #include <format>
 #include <filesystem>
 #include <fstream>
-#include "ErrorMessage.h"
 #include "TUITraceTypes.hpp"
 #include "TUICmds.hpp"
 
 export module TUITrace;
+import LLVMModule;
+import ErrorMessage;
 import ContractPassUtility;
 import TUIManager;
 

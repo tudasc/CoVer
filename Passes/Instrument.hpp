@@ -6,7 +6,6 @@
 #include <vector>
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include "ErrorMessage.h"
 
 import LLVMModule;
 import BasicTypes;

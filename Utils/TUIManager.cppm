@@ -21,7 +21,6 @@ module;
 
 #include "../Passes/ContractManager.hpp"
 #include "ContractTree.hpp"
-#include "ErrorMessage.h"
 
 export module TUIManager;
 import LLVMModule;
