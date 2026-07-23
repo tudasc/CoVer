@@ -2,7 +2,6 @@
 
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
-#include "ErrorMessage.h"
 #include <map>
 #include <set>
 

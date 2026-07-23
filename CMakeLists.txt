@@ -63,11 +63,12 @@ add_library(ContractLanguage
   ${ANTLR4_SRC_FILES_ContractLex}
   ${ANTLR4_SRC_FILES_ContractPars}
   LangCode/ContractLangErrorListener.cpp
-  LangCode/ContractDataExtractor.cpp
 )
-target_sources(ContractLanguage PRIVATE FILE_SET lang_cxx_modules TYPE CXX_MODULES FILES
-  LangCode/ContractDataVisitor.cppm
+target_sources(ContractLanguage PUBLIC FILE_SET lang_cxx_modules TYPE CXX_MODULES FILES
+  Utils/ErrorMessage.cppm
+  LangCode/ContractDataExtractor.cppm
 )
+
 target_include_directories(ContractLanguage
   PUBLIC
     Include/

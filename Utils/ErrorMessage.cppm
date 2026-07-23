@@ -1,10 +1,12 @@
-#pragma once
+module;
 
 #include <functional>
 #include <vector>
 #include <string>
 
-struct FileReference {
+export module ErrorMessage;
+
+export struct FileReference {
     std::string file;
     unsigned int line;
     unsigned int column;
@@ -20,7 +22,7 @@ struct std::hash<FileReference> {
     }
 };
 
-struct ErrorMessage {
+export struct ErrorMessage {
     std::string type;
     std::string error_id;
     std::string text;

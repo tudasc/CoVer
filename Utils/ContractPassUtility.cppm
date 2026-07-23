@@ -1,7 +1,6 @@
 module;
 
 #include "ContractTree.hpp"
-#include "ErrorMessage.h"
 #include <climits>
 #include <format>
 #include <iterator>
