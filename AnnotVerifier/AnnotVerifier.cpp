@@ -1,5 +1,4 @@
 #include "AnnotVerifier.h"
-#include "Contracts.h"
 #include <cstdarg>
 #include <cstdint>
 #include <dlfcn.h>
