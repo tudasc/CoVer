@@ -331,14 +331,14 @@ Function const* getParentFunction(Value const* V) {
     return nullptr;
 }
 
-int getAliasGroup(Value const* V) {
+std::set<int> getAliasGroups(Value const* V) {
+    std::set<int> res;
     if (Instruction const* I = dyn_cast<Instruction>(V)) {
         Instruction const* cur = I->getNextNode();
         for (int i = 0; i < 5; i++) {
             if (CallBase const* CB = dyn_cast<CallBase>(cur)) {
                 if (CB->getCalledOperand()->getName() == "CoVer_AnnotAlias") {
-                    if (sameOriginCheck(CB->getArgOperand(0), V)) return dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue();
-                    break;
+                    if (sameOriginCheck(CB->getArgOperand(0), V)) res.insert(dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue());
                 }
             }
             if (!cur->getNextNode()) break;
@@ -350,12 +350,12 @@ int getAliasGroup(Value const* V) {
             if (isa<AllocaInst>(&I)) continue;
             if (CallBase* CB = dyn_cast<CallBase>(&I)) {
                 if (CB->getCalledOperand()->getName() == "CoVer_AnnotAlias") {
-                    if (CB->getArgOperand(0) == V) return dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue();
+                    if (CB->getArgOperand(0) == V) res.insert(dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue());
                 }
             } else break;
         }
     }
-    return -1;
+    return res;
 }
 
 std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int curSteps, std::map<const Value*,int> candidatesConsidered) {
@@ -770,10 +770,10 @@ export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTre
             }
         }
         // User annotations are a bit later - Check those now
-        int aliasTgt = getAliasGroup(target), aliasSrc = getAliasGroup(source);
-        if (aliasSrc != -1 && aliasSrc == aliasTgt) {
-            return getAliasAnnots().at(aliasSrc).areAliasing;
-        }
+        std::set<int> aliasTgt = getAliasGroups(target), aliasSrc = getAliasGroups(source);
+        std::vector<int> shared;
+        std::set_intersection(aliasSrc.begin(), aliasSrc.end(), aliasTgt.begin(), aliasTgt.end(), std::back_inserter(shared));
+        if (!shared.empty()) return getAliasAnnots().at(shared.front()).areAliasing;
     }
 
     if (isFort) {
