@@ -86,6 +86,7 @@ static cl::opt<bool> NoBinary("no-binary",
 
 static cl::list<std::string> PatchFiles("ir-patches",
     cl::desc("Apply IR patches, such as annotation patches."),
+    cl::CommaSeparated,
     cl::cat(WrapperCategory));
 
 static cl::list<std::string> CompilerParams(cl::Sink,
@@ -321,9 +322,9 @@ int main(int argc, const char** argv) {
     int fd = mkstemp(tmpfile.data());
     execSafe("llvm-link" + bitcode_files + " -o " + tmpfile);
 
-    // Apply patches
+    // Apply patches if needed
     if (!PatchFiles.empty()) {
-        execSafe("opt -S " + tmpfile + " -o " + tmpfile + "_ir.ll");
+        execSafe("opt -S " + tmpfile + " --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes=\"instrumentIntrinsics\" -o " + tmpfile + "_ir.ll");
         tmpfile += "_ir.ll";
         for (std::string patch : PatchFiles) {
             execSafe("patch " + tmpfile + " < " + patch);
@@ -341,7 +342,7 @@ int main(int argc, const char** argv) {
         // Need instrumentation, so add instr pass...
         passlist += ",instrumentContracts";
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
-        rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -Wl,--whole-archive @COVER_ANNOT_VERIFIER_PATH@ -Wl,-no-whole-archive -lstdc++";
+        rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
     passlist += ",analysisCleanup";
     std::string target_file = tmpfile;
@@ -354,7 +355,7 @@ int main(int argc, const char** argv) {
     // Finalize executable
     if(!NoBinary) {
         execSafe("llc -filetype=obj --relocation-model=pic " + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
-        execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o @COVER_INTRINSICS_LIB_PATH@ " + dest_arg);
+        execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o @COVER_INTRINSICS_LIB_PATH@ @COVER_ANNOT_VERIFIER_PATH@ " + dest_arg);
     }
     return 0;
 }
