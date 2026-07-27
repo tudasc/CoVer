@@ -1,4 +1,4 @@
-// RUN: %clangContracts %run_common
+// RUN: %CoVerCC %run_common
 
 #include <stdio.h>
 #include <stdlib.h>

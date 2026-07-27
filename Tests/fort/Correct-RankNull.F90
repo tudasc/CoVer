@@ -1,6 +1,6 @@
 ! Copied from MPI-BugBench: Correct-Rank-001
 
-! RUN: %flangContracts %run_common
+! RUN: %CoVerFC %run_common
 
 program main
     use mpi_f08

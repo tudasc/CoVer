@@ -237,7 +237,7 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   set(COMPILE_SRC_FILE_ENDINGS "${FILE_ENDINGS}")
   set(EXECUTABLE_WRAPPER_NAME "${WRAPPER_NAME}")
   set(OPT_PASSLIST_PREFIX "${PASSLIST_PREFIX}")
-  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CoVerWrapper.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
   add_executable(${WRAPPER_NAME} "${WRAPPER_NAME}.cpp")
   target_link_libraries(${WRAPPER_NAME} LLVM)
   install(TARGETS ${WRAPPER_NAME})
@@ -252,10 +252,10 @@ if (MPI_C_FOUND)
   endif(EXISTS "${MPI_C_HEADER_DIR}/shmem.h")
 endif (MPI_C_FOUND)
 
-create_compile_wrapper("clangContracts" "mpicc" ".*\\\\.c$" "${C_HEADER_FILES}" "" "")
-create_compile_wrapper("clangContracts++" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "${C_HEADER_FILES}" "" "")
-create_compile_wrapper("flangContracts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08ts.f90" "function(sroa),")
-create_compile_wrapper("flangContracts-no-ts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08.f90" "function(sroa),")
+create_compile_wrapper("CoVerCC" "mpicc" ".*\\\\.c$" "${C_HEADER_FILES}" "" "")
+create_compile_wrapper("CoVerCXX" "mpicxx" ".*(\\\\.cpp|\\\\.cc|\\\\.cxx)$" "${C_HEADER_FILES}" "" "")
+create_compile_wrapper("CoVerFC" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08ts.f90" "function(sroa),")
+create_compile_wrapper("CoVerFC-no-ts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08.f90" "function(sroa),")
 
 ##
 ## Testing

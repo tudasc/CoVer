@@ -1,4 +1,4 @@
-! RUN: %flangContracts %run_common
+! RUN: %CoVerFC %run_common
 
 program PreCallMissingInit
     use mpi_f08

@@ -3,7 +3,7 @@
 ## Compiling with Contract Support
 
 When compiling, the annotations must be parsed by the tool to enable error output.
-This can be done using the supplied `clangContracts` and `clangContracts++` wrapper scripts for C and C++ respectively.
+This can be done using the supplied `CoVerCC/CXX/FC` wrapper scripts.
 
 By default, these do **NOT** include the predefined contract definitions!
 They only ensure that the code passes through the plugin during compilation.

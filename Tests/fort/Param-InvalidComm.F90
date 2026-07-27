@@ -1,4 +1,4 @@
-! RUN: %flangContracts %run_common
+! RUN: %CoVerFC %run_common
 
 program main
     use mpi_f08

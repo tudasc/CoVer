@@ -1,6 +1,6 @@
 // Copied from MPI-BugBench: InvalidParam-Buffer-mpi_sendrecv-001
 
-// RUN: %clangContracts %run_common
+// RUN: %CoVerCC %run_common
 
 #include <mpi.h>
 #include <stddef.h>

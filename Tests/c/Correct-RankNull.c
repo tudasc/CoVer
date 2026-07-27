@@ -1,6 +1,6 @@
 // Copied from MPI-BugBench: Correct-Rank-001
 
-// RUN: %clangContracts %run_common
+// RUN: %CoVerCC %run_common
 
 #include <mpi.h>
 #include <stddef.h>
