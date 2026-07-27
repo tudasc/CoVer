@@ -84,6 +84,10 @@ static cl::opt<bool> NoBinary("no-binary",
     cl::init(false),
     cl::cat(WrapperCategory));
 
+static cl::list<std::string> PatchFiles("ir-patches",
+    cl::desc("Apply IR patches, such as annotation patches."),
+    cl::cat(WrapperCategory));
+
 static cl::list<std::string> CompilerParams(cl::Sink,
     cl::desc("<compiler params>"));
 
@@ -316,6 +320,15 @@ int main(int argc, const char** argv) {
     std::string tmpfile = std::filesystem::temp_directory_path().string() + "/contrPlugin_XXXXXX";
     int fd = mkstemp(tmpfile.data());
     execSafe("llvm-link" + bitcode_files + " -o " + tmpfile);
+
+    // Apply patches
+    if (!PatchFiles.empty()) {
+        execSafe("opt -S " + tmpfile + " -o " + tmpfile + "_ir.ll");
+        tmpfile += "_ir.ll";
+        for (std::string patch : PatchFiles) {
+            execSafe("patch " + tmpfile + " < " + patch);
+        }
+    }
 
     // Call LLVM passes
     std::string passlist = "@OPT_PASSLIST_PREFIX@instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
