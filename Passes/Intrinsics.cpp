@@ -1,4 +1,5 @@
 #include "Intrinsics.hpp"
+#include "ContractManager.hpp"
 
 #include <ranges>
 #include <vector>
@@ -27,6 +28,9 @@ PreservedAnalyses IntrinsicsPass::run(Module &M, ModuleAnalysisManager &AM) {
     // Create Intrinsics
     createCallees(M);
     instrumentIntrinsics(M);
+
+    // Make sure contract mananger has run
+    (void)AM.getResult<ContractManagerAnalysis>(M);
 
     return PreservedAnalyses::all();
 }
