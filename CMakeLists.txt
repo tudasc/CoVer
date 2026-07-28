@@ -16,35 +16,9 @@ else()
   message("Detected LLVM/Clang version ${LLVM_VERSION_MAJOR}")
 endif()
 
-find_package(antlr4-generator QUIET)
-find_package(antlr4-runtime QUIET)
-
-if (NOT antlr4-generator_FOUND)
-  set(ANTLR4_BAKED_VERSION 4.13.2)
-  set(ANTLR4_JAR_LOCATION "${CMAKE_CURRENT_SOURCE_DIR}/Externals/antlr-${ANTLR4_BAKED_VERSION}-complete.jar" CACHE STRING "Location of antlr4 jar file")
-  set(ANTLR_BUILD_CPP_TESTS OFF)
-  set(ANTLR_BUILD_SHARED OFF)
-  include(FetchContent)
-  set(ANTLR4_INSTALL ON)
-  FetchContent_Declare(
-    antlr4
-    GIT_REPOSITORY https://github.com/antlr/antlr4
-    GIT_TAG        "${ANTLR4_BAKED_VERSION}"
-    SOURCE_SUBDIR runtime/Cpp
-    QUIET
-  )
-  FetchContent_MakeAvailable(antlr4)
-  target_compile_options(antlr4_static PUBLIC -fPIC)
-  set(antlr4-generator_DIR "${antlr4_BINARY_DIR}")
-  find_package(antlr4-generator REQUIRED)
-  set(ANTLR4_INCLUDE_DIR "${antlr4_SOURCE_DIR}/runtime/Cpp/runtime/src")
-  set(ANTLR4_LIBRARY antlr4_static CACHE STRING "ANTLR4 target to use")
-else()
-  set(ANTLR4_JAR_LOCATION "/usr/share/java/antlr-complete.jar" CACHE STRING "Location of antlr4 jar file")
-  set(ANTLR4_LIBRARY antlr4-runtime CACHE STRING "ANTLR4 target to use")
-endif(NOT antlr4-generator_FOUND)
-
+add_subdirectory(Externals/CoVerLang)
 add_subdirectory(Externals/FTXUI)
+add_subdirectory(Externals/llvm-dsa)
 
 ##
 ## Configure static analysis project
@@ -55,29 +29,6 @@ include(AddLLVM)
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIR})
-
-antlr4_generate(ContractLex ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractLexer.g4 LEXER)
-antlr4_generate(ContractPars ${CMAKE_CURRENT_SOURCE_DIR}/Grammars/ContractParser.g4 PARSER "" "VisitorArg" "" "${ANTLR4_TOKEN_FILES_ContractLex}" "${ANTLR4_TOKEN_DIRECTORY_ContractLex}")
-
-add_library(ContractLanguage
-  ${ANTLR4_SRC_FILES_ContractLex}
-  ${ANTLR4_SRC_FILES_ContractPars}
-  LangCode/ContractLangErrorListener.cpp
-)
-target_sources(ContractLanguage PUBLIC FILE_SET lang_cxx_modules TYPE CXX_MODULES FILES
-  Utils/ErrorMessage.cppm
-  LangCode/ContractDataExtractor.cppm
-)
-
-target_include_directories(ContractLanguage
-  PUBLIC
-    Include/
-    ${ANTLR4_INCLUDE_DIR_ContractLex}
-    ${ANTLR4_INCLUDE_DIR_ContractPars}
-    ${ANTLR4_INCLUDE_DIR}
-)
-set_property(TARGET ContractLanguage PROPERTY POSITION_INDEPENDENT_CODE ON)
-target_compile_options (ContractLanguage PUBLIC -fexceptions)
 
 add_llvm_pass_plugin(CoVerPlugin
   Passes/Registrar.cpp
@@ -99,6 +50,7 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Utils/TUITrace.cppm
   Utils/TUIManager.cppm
   Utils/LLVMModule.cppm
+  Utils/ErrorMessage.cppm
 )
 
 target_include_directories(CoVerPlugin
@@ -107,14 +59,13 @@ target_include_directories(CoVerPlugin
     Externals/llvm-dsa/include
 )
 
-add_subdirectory(Externals/llvm-dsa)
+target_compile_options (CoVerPlugin PUBLIC -fexceptions)
 
 ##
 ## Runtime Dependencies
 ##
 
-target_link_libraries(ContractLanguage PRIVATE "${ANTLR4_LIBRARY}")
-target_link_libraries(CoVerPlugin PRIVATE ContractLanguage ftxui::screen ftxui::dom ftxui::component)
+target_link_libraries(CoVerPlugin PRIVATE CoVerLang ftxui::screen ftxui::dom ftxui::component)
 
 # Attempt finding system version of JsonCpp
 find_package(PkgConfig)
@@ -136,10 +87,8 @@ if((NOT JSONCPP_FOUND) OR BUNDLED_JSONCPP)
     target_link_libraries(CoVerPlugin PRIVATE jsoncpp_static)
 endif((NOT JSONCPP_FOUND) OR BUNDLED_JSONCPP)
 
-install(TARGETS CoVerPlugin ContractLanguage LIBRARY DESTINATION lib)
 install(
   FILES
-    Include/ContractTree.hpp
     Include/Contracts.h
     Include/DynamicAnalysis.h
     Include/Contracts.F90

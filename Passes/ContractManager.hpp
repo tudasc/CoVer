@@ -11,6 +11,7 @@
 #include "ContractTree.hpp"
 
 import LLVMModule;
+import ErrorMessage;
 
 using namespace ContractTree;
 
@@ -19,6 +20,8 @@ namespace llvm {
 class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis> {
     public:
         static inline llvm::AnalysisKey Key;
+
+        using FormulaReports = std::map<const ContractFormula*, std::vector<ErrorMessage>>;
 
         struct Contract {
             Function* F;
@@ -36,6 +39,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
 
         //Result Type
         struct Result {
+            FormulaReports reports;
             std::vector<Contract> Contracts; // For postprocessing only
             std::vector<LinearizedContract> LinearizedContracts; // For verification passes
             std::map<Function*, std::vector<TagUnit>> Tags;

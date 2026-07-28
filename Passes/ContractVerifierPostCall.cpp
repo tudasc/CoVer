@@ -15,10 +15,9 @@ using namespace ContractTree;
 
 PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
-    ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
-    Tags = DB.Tags;
+    DB = &AM.getResult<ContractManagerAnalysis>(M);
     MAM = &AM;
-    for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
+    for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
         for (std::shared_ptr<ContractExpression> const& Expr : C.Post) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a postcondition
@@ -115,7 +114,7 @@ std::pair<ContractVerifierPostCallPass::CallStatus,bool> ContractVerifierPostCal
 }
 
 ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error) {
-    IterTypePostCall data = { {}, {}, cOP->Function, nullptr, cOP->Params, isTag, Tags };
+    IterTypePostCall data = { {}, {}, cOP->Function, nullptr, cOP->Params, isTag, DB->Tags };
 
     ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPostCallPass::transferPostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPostCallPass::mergePostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
@@ -128,7 +127,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
-                        appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, *Expr.ErrorInfo, x.first);
+                        appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, DB->reports[&Expr], x.first);
                         ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierPostCallPass::handleDebug, WLRes, C);
                         WLRes.handleDebug = handleDebug_inst;
                         Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<CallStatus>>(WLRes);

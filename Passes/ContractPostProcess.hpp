@@ -7,6 +7,7 @@
 #include <optional>
 
 import LLVMModule;
+import ErrorMessage;
 
 namespace llvm {
 
@@ -15,10 +16,11 @@ class ContractPostProcessingPass : public PassInfoMixin<ContractPostProcessingPa
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
     private:
+        ContractManagerAnalysis::ContractDatabase* DB;
         int xsucc, xfail, FP, FN, UN;
         void checkExpErr(ContractManagerAnalysis::Contract C);
         Fulfillment checkExpressions(ContractManagerAnalysis::Contract const& C, bool output);
-        std::pair<Fulfillment,std::optional<ErrorMessage>> resolveFormula(std::shared_ptr<ContractFormula> contrF);
+        std::pair<Fulfillment,std::optional<std::string>> resolveFormula(std::shared_ptr<ContractFormula> contrF);
         void outputSubformulaErrs(std::string type, const ContractManagerAnalysis::Contract C, std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons);
         raw_ostream& printMsg();
 

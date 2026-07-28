@@ -7,3 +7,6 @@
 [submodule "Externals/FTXUI"]
 	path = Externals/FTXUI
 	url = https://github.com/ArthurSonzogni/FTXUI
+[submodule "Externals/CoVerLang"]
+	path = Externals/CoVerLang
+	url = git@github.com:tudasc/CoVerLang
