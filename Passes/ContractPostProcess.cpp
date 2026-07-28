@@ -17,6 +17,7 @@
 import LLVMModule;
 import ContractPassUtility;
 import TUIManager;
+import ErrorMessage;
 
 using namespace llvm;
 using namespace ContractTree;
@@ -44,7 +45,7 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const Co
             if (reasons.contains(form))
                 printMsg() << "    --> Message: " << reasons[form].text << "\n";
             printMsg() << "    --> Error Info:\n";
-            for (ErrorMessage errinfo : *form->ErrorInfo) {
+            for (ErrorMessage errinfo : DB->reports[form.get()]) {
                 printMsg() << "        " << errinfo.text << "\n";
                 Json::Value j;
                 j["type"] = reasons[form].text;
@@ -68,13 +69,13 @@ Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis
     Fulfillment s = Fulfillment::FULFILLED;
     std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons;
     for (std::shared_ptr<ContractFormula> const& Expr : C.Data.Pre) {
-        std::pair<Fulfillment,std::optional<ErrorMessage>> result = resolveFormula(Expr);
-        if (result.second) reasons[Expr] = *result.second;
+        std::pair<Fulfillment,std::optional<std::string>> result = resolveFormula(Expr);
+        if (result.second) reasons[Expr] = {.text = *result.second};
         s = std::max(s, result.first);
     }
     for (std::shared_ptr<ContractFormula> const& Expr : C.Data.Post) {
-        std::pair<Fulfillment,std::optional<ErrorMessage>> result = resolveFormula(Expr);
-        if (result.second) reasons[Expr] = *result.second;
+        std::pair<Fulfillment,std::optional<std::string>> result = resolveFormula(Expr);
+        if (result.second) reasons[Expr] = {.text = *result.second};
         s = std::max(s, result.first);
     }
     if (!output) return s;
@@ -131,13 +132,13 @@ void ContractPostProcessingPass::checkExpErr(ContractManagerAnalysis::Contract C
 
 PreservedAnalyses ContractPostProcessingPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
-    ContractManagerAnalysis::ContractDatabase& DB = AM.getResult<ContractManagerAnalysis>(M);
-    isInteractive = DB.isInteractive;
+    DB = &AM.getResult<ContractManagerAnalysis>(M);
+    isInteractive = DB->isInteractive;
 
     json_messages["messages"] = {};
 
     bool haveCorrContr = false;
-    for (ContractManagerAnalysis::Contract C : DB.Contracts) {
+    for (ContractManagerAnalysis::Contract C : DB->Contracts) {
         if (C.Data.xres != Fulfillment::UNKNOWN) {
             haveCorrContr = true;
             checkExpErr(C);
@@ -154,18 +155,18 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
         printMsg() << "Checking verification contract results:\n";
     }
 
-    for (ContractManagerAnalysis::Contract C : DB.Contracts) {
+    for (ContractManagerAnalysis::Contract C : DB->Contracts) {
         if (C.Data.xres == Fulfillment::UNKNOWN) {
             checkExpressions(C, true);
         }
     }
 
     std::stringstream s;
-    s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB.start_time).count() << "s\n\n";
+    s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB->start_time).count() << "s\n\n";
     printMsg() << s.str();
 
     if (isInteractive) {
-        bool reanalyse = TUIManager::ResultsScreen(ViolatedContracts);
+        bool reanalyse = TUIManager::ResultsScreen(ViolatedContracts, DB->reports);
         if (!reanalyse) {
             std::filesystem::remove("CoVer_InteractStart.ll");
             std::filesystem::remove("CoVer_Reanalyse.ll");
@@ -176,7 +177,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     }
 
     // Write json to file and database
-    DB.processedReports = json_messages;
+    DB->processedReports = json_messages;
     if (!ClPrintJsonReports.empty()) {
         std::ofstream file(ClPrintJsonReports);
         file << json_writer.write(json_messages);
@@ -186,14 +187,14 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF) {
+std::pair<Fulfillment,std::optional<std::string>> ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF) {
     if (contrF->Children.empty()) {
         return {*contrF->Status, *contrF->Status == Fulfillment::FULFILLED ? std::nullopt : contrF->Message};
     }
     std::vector<Fulfillment> fs;
-    std::optional<ErrorMessage> outMsg = contrF->Message;
+    std::optional<std::string> outMsg = contrF->Message;
     for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
-        std::pair<Fulfillment,std::optional<ErrorMessage>> children = resolveFormula(Form);
+        std::pair<Fulfillment,std::optional<std::string>> children = resolveFormula(Form);
         fs.push_back(children.first);
     }
     switch (contrF->type) {
@@ -203,11 +204,11 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
             else *contrF->Status = *std::min_element(fs.begin(), fs.end());
             if (*contrF->Status != Fulfillment::FULFILLED) {
                 // Add error info from unfulfilled children
-                contrF->ErrorInfo->push_back({ .text = (contrF->type == FormulaType::OR ? "No children" : "At least one child not") + (" satisfied for subformula: " + contrF->ExprStr)});
+                DB->reports[contrF.get()].push_back({ .text = (contrF->type == FormulaType::OR ? "No children" : "At least one child not") + (" satisfied for subformula: " + contrF->ExprStr)});
                 for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
                     if (*Form->Status == Fulfillment::FULFILLED) continue;
-                    contrF->ErrorInfo->push_back({.text = "Error Info for child: " + Form->ExprStr});
-                    contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
+                    DB->reports[contrF.get()].push_back({.text = "Error Info for child: " + Form->ExprStr});
+                    DB->reports[contrF.get()].insert(DB->reports[contrF.get()].end(), DB->reports[Form.get()].begin(), DB->reports[Form.get()].end());
                 }
             }
             return {*contrF->Status, outMsg};
@@ -221,24 +222,24 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
                 }
                 if (prevFulfil && *Form->Status == Fulfillment::FULFILLED) {
                     // At least two children fulfilled -> error
-                    contrF->ErrorInfo->push_back({.text = "More than one child satisfied for subformula: " + contrF->ExprStr});
-                    if (!prevFulfil->ErrorInfo->empty()) {
-                        contrF->ErrorInfo->push_back({.text = "Messages from Child 1: " + prevFulfil->ExprStr});
-                        contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), prevFulfil->ErrorInfo->begin(), prevFulfil->ErrorInfo->end());
+                    DB->reports[contrF.get()].push_back({.text = "More than one child satisfied for subformula: " + contrF->ExprStr});
+                    if (!DB->reports[prevFulfil.get()].empty()) {
+                        DB->reports[contrF.get()].push_back({.text = "Messages from Child 1: " + prevFulfil->ExprStr});
+                        DB->reports[contrF.get()].insert(DB->reports[contrF.get()].end(), DB->reports[prevFulfil.get()].begin(), DB->reports[prevFulfil.get()].end());
                     }
-                    if (!Form->ErrorInfo->empty()) {
-                        contrF->ErrorInfo->push_back({.text = "Messages from Child 2: " + Form->ExprStr});
-                        contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
+                    if (!DB->reports[Form.get()].empty()) {
+                        DB->reports[contrF.get()].push_back({.text = "Messages from Child 2: " + Form->ExprStr});
+                        DB->reports[contrF.get()].insert(DB->reports[contrF.get()].end(), DB->reports[Form.get()].begin(), DB->reports[Form.get()].end());
                     }
                     *contrF->Status = Fulfillment::BROKEN;
                     return {*contrF->Status, outMsg};
                 }
                 if (*Form->Status == Fulfillment::UNKNOWN) {
-                    contrF->ErrorInfo->push_back({.text = "Child fulfillment unknown for subformula: " + contrF->ExprStr});
-                    contrF->ErrorInfo->push_back({.text = "And child: " + Form->ExprStr});
-                    if (!Form->ErrorInfo->empty()) {
-                        contrF->ErrorInfo->push_back({.text = "Messages from unknown fulfillment Child: "});
-                        contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
+                    DB->reports[contrF.get()].push_back({.text = "Child fulfillment unknown for subformula: " + contrF->ExprStr});
+                    DB->reports[contrF.get()].push_back({.text = "And child: " + Form->ExprStr});
+                    if (!DB->reports[Form.get()].empty()) {
+                        DB->reports[contrF.get()].push_back({.text = "Messages from unknown fulfillment Child: "});
+                        DB->reports[contrF.get()].insert(DB->reports[contrF.get()].end(), DB->reports[Form.get()].begin(), DB->reports[Form.get()].end());
                     }
                     *contrF->Status = Fulfillment::UNKNOWN;
                     return {*contrF->Status, outMsg};
@@ -246,16 +247,16 @@ std::pair<Fulfillment,std::optional<ErrorMessage>> ContractPostProcessingPass::r
             }
             if (prevFulfil) {
                 // At least one success logged, everything is fine
-                contrF->ErrorInfo->push_back({.text = "Exactly one child satisfied of subformula: " + contrF->ExprStr});
+                DB->reports[contrF.get()].push_back({.text = "Exactly one child satisfied of subformula: " + contrF->ExprStr});
                 *contrF->Status = Fulfillment::FULFILLED;
                 return {*contrF->Status, std::nullopt};
             }
             // Not success or unknown, so no child satisfied
-            contrF->ErrorInfo->push_back({.text = "No child satisfied for subformula: " + contrF->ExprStr});
+            DB->reports[contrF.get()].push_back({.text = "No child satisfied for subformula: " + contrF->ExprStr});
             for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
-                if (!Form->ErrorInfo->empty()) {
-                    contrF->ErrorInfo->push_back({.text = "Messages from Child: " + Form->ExprStr});
-                    contrF->ErrorInfo->insert(contrF->ErrorInfo->end(), Form->ErrorInfo->begin(), Form->ErrorInfo->end());
+                if (!DB->reports[Form.get()].empty()) {
+                    DB->reports[contrF.get()].push_back({.text = "Messages from Child: " + Form->ExprStr});
+                    DB->reports[contrF.get()].insert(DB->reports[contrF.get()].end(), DB->reports[Form.get()].begin(), DB->reports[Form.get()].end());
                 }
             }
             *contrF->Status = Fulfillment::BROKEN;

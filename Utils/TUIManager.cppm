@@ -24,6 +24,7 @@ module;
 
 export module TUIManager;
 import LLVMModule;
+import ErrorMessage;
 
 using namespace llvm;
 
@@ -314,13 +315,13 @@ void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus
     ShowLines(lines, "Source Preview", focus_line);
 }
 
-bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form) {
+bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, ContractManagerAnalysis::FormulaReports const& reports) {
     std::vector<std::string> choices;
     choices.push_back("Back to Listing");
     choices.push_back("Launch Debugger");
 
     std::vector<FileReference> refs;
-    for (ErrorMessage const& err : *form->ErrorInfo) {
+    for (ErrorMessage const& err : reports.at(form.get())) {
         for (FileReference const& ref : err.references) {
             choices.push_back(std::format("View Reference: {}:{}:{}", ref.file, ref.line, ref.column));
             refs.push_back(ref);
@@ -338,9 +339,9 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form) {
     ftxui::Component render = ftxui::Renderer(
         menu, [&] {
            return ftxui::vbox({
-            getHeader("Report Details: " + (*form->ErrorInfo)[0].text),
+            getHeader("Report Details: " + reports.at(form.get())[0].text),
             ftxui::text("Full Report:"),
-            ftxui::text((*form->ErrorInfo)[0].text),
+            ftxui::text(reports.at(form.get())[0].text),
             ftxui::separator(),
             menu->Render(),
             ftxui::separator()
@@ -358,20 +359,20 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form) {
     return choice == 1; // Debug or no debug
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
+export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports) {
     std::vector<std::string> violations;
     std::vector<std::pair<std::shared_ptr<ContractFormula>, Contract>> formulas;
     violations.push_back("Exit Tool");
     for (Contract const& C : ViolatedContracts) {
         for (std::shared_ptr<ContractFormula> const& form : C.Data.Pre) {
             if (*form->Status != Fulfillment::FULFILLED) {
-                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? form->Message->text : form->ExprStr));
+                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr));
                 formulas.push_back({form, C});
             }
         }
         for (std::shared_ptr<ContractFormula> const& form : C.Data.Post) {
             if (*form->Status != Fulfillment::FULFILLED) {
-                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? form->Message->text : form->ExprStr));
+                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr));
                 formulas.push_back({form, C});
             }
         }
@@ -380,7 +381,7 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts) {
     do {
         choice = RenderMenu(violations, violations.size() == 1 ? "No reported errors!" : "Reported Errors"); // size of viol at least one for exit tool prompt
         if (choice != 0) {
-            bool debug = ShowViolationDetails(formulas[choice-1].first);
+            bool debug = ShowViolationDetails(formulas[choice-1].first, reports);
             if (debug) {
                 bool reanalyse = ShowContractDetails(formulas[choice-1].second);
                 if (reanalyse) return true;

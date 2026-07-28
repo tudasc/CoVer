@@ -2,12 +2,12 @@
 
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
-#include <map>
 #include <set>
 
 import LLVMModule;
 import ContractPassUtility;
 import TUITrace;
+import ErrorMessage;
 
 namespace llvm {
 
@@ -21,7 +21,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
 
     private:
         CallStatus checkPostCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
-        std::map<Function*, std::vector<TagUnit>> Tags;
+        ContractManagerAnalysis::ContractDatabase* DB;
         std::pair<CallStatus,bool> mergePostCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data);
         CallStatus transferPostCallStat(CallStatus cur, const Instruction* I, void* data);
         ModuleAnalysisManager* MAM;

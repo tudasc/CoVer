@@ -22,6 +22,7 @@ module;
 
 export module ContractPassUtility;
 import LLVMModule;
+import ErrorMessage;
 import BasicTypes;
 
 using namespace llvm;

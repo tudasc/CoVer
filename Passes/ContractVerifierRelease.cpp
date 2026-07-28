@@ -13,18 +13,18 @@
 
 import LLVMModule;
 import ContractPassUtility;
+import ErrorMessage;
 
 using namespace llvm;
 using namespace ContractTree;
 
 PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
-    ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
-    Tags = DB.Tags;
+    DB = &AM.getResult<ContractManagerAnalysis>(M);
     MAM = &AM;
-    printMultiReports = DB.allowMultiReports;
+    printMultiReports = DB->allowMultiReports;
 
-    for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
+    for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
         for (std::shared_ptr<ContractExpression> const& Expr : C.Post) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a postcondition
@@ -193,7 +193,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     std::string releaseFunc = static_cast<const CallOperation&>(*relOp.Until).Function;
     std::vector<CallParam> releaseParam = static_cast<const CallOperation&>(*relOp.Until).Params;
 
-    IterTypeRelease data = { {}, {}, forbiddenType, param, releaseFunc, releaseParam, nullptr, Tags, isTagRel};
+    IterTypeRelease data = { {}, {}, forbiddenType, param, releaseFunc, releaseParam, nullptr, DB->Tags, isTagRel};
     ContractPassUtility::TransferFunction<ReleaseStatus> transfer = std::bind(&ContractVerifierReleasePass::transferRelease, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     ContractPassUtility::MergeFunction<ReleaseStatus> merge = std::bind(&ContractVerifierReleasePass::mergeRelease, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
 
@@ -205,7 +205,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 data.callsite = CB;
                 ContractPassUtility::WorklistResult<ReleaseStatus> WLRes = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB, false, transfer, merge, &data, ReleaseStatus::FORBIDDEN);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
-                Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
+                DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());
                 data.err.clear();
                 for (std::pair<const Instruction *, ReleaseStatus> x : WLRes.AnalysisInfo) {
                     if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) {

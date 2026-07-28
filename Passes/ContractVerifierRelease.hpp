@@ -6,6 +6,7 @@
 import LLVMModule;
 import ContractPassUtility;
 import TUITrace;
+import ErrorMessage;
 
 namespace llvm {
 
@@ -21,7 +22,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
         ReleaseStatus transferRelease(ReleaseStatus cur, const Instruction* I, void* data);
         std::pair<ReleaseStatus,bool> mergeRelease(ReleaseStatus prev, ReleaseStatus cur, const Instruction* I, void* data);
         ReleaseStatus checkRelease(ContractTree::ReleaseOperation const& relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression& Expr, const Module& M, std::string& error);
-        std::map<Function*, std::vector<TagUnit>> Tags;
+        ContractManagerAnalysis::ContractDatabase* DB;
         ModuleAnalysisManager* MAM;
 
         static std::string releaseStatusToStr(ReleaseStatus S) {

@@ -58,7 +58,7 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
                         Fulfillment f = checkParamReq(vars, CB, ParamOp->idx, req.comp, errInfo);
                         if (f == Fulfillment::BROKEN) {
                             resf = Fulfillment::BROKEN;
-                                Expr->ErrorInfo->push_back({
+                            DB.reports[Expr.get()].push_back({
                                 .error_id = "Param",
                                 .text = std::format("{:s} Parameter Index: {:d}, Contract Value: {:s}", errInfo.empty() ? "Parameter error detected!" : errInfo, ParamOp->idx, req.value),
                                 .references = {ContractPassUtility::getFileReference(CB)},

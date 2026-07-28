@@ -7,6 +7,7 @@
 
 import LLVMModule;
 import ContractPassUtility;
+import ErrorMessage;
 
 using namespace llvm;
 using namespace ContractTree;
@@ -178,7 +179,7 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     ContractPassUtility::WorklistResult<AllocStatus> WLRes = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, true, bound_transfer, bound_merge, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
-    Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
+    DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());
 
     // Take max over all analysis info
     // Correct usage will not contain error

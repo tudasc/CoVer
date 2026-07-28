@@ -16,11 +16,10 @@ using namespace ContractTree;
 
 PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
-    ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
-    Tags = DB.Tags;
+    DB = &AM.getResult<ContractManagerAnalysis>(M);
     MAM = &AM;
 
-    for (ContractManagerAnalysis::LinearizedContract const& C : DB.LinearizedContracts) {
+    for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
         for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
             // Contract has a precondition
@@ -147,14 +146,14 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     }
     Instruction* Entry = &*mainF->getEntryBlock().getFirstNonPHIIt();
 
-    IterTypePreCall data = { {}, {}, cOP->Function, C.F, cOP->Params, isTag, Tags };
+    IterTypePreCall data = { {}, {}, cOP->Function, C.F, cOP->Params, isTag, DB->Tags };
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
     ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPreCallPass::transferPreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPreCallPass::mergePreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(Entry, true, transfer, merge, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
-    Expr.ErrorInfo->insert(Expr.ErrorInfo->end(), data.err.begin(), data.err.end());
+    DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());
 
     // Take max over all analysis info
     // Correct usage will not contain error
