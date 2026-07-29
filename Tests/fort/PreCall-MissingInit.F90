@@ -3,6 +3,7 @@
 program PreCallMissingInit
     use mpi_f08
     implicit none
+
     integer :: ierr
 
     call MPI_Finalize(ierr)

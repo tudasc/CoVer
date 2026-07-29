@@ -3,11 +3,15 @@
 #include <llvm/IR/PassManager.h>
 #include <llvm/Passes/OptimizationLevel.h>
 
+#include "BasicTypes.hpp"
 #include "ContractManager.hpp"
+#include "ContractVerifierAlloc.hpp"
 #include "ContractVerifierPreCall.hpp"
 #include "ContractVerifierPostCall.hpp"
 #include "ContractVerifierRelease.hpp"
+#include "ContractVerifierParam.hpp"
 #include "ContractPostProcess.hpp"
+#include "Intrinsics.hpp"
 #include "Instrument.hpp"
 
 using namespace llvm;
@@ -26,8 +30,20 @@ namespace {
             MPM.addPass(ContractVerifierReleasePass());
             return true;
         }
+        if (Name == "contractVerifierParam") {
+            MPM.addPass(ContractVerifierParamPass());
+            return true;
+        }
+        if (Name == "contractVerifierAlloc") {
+            MPM.addPass(ContractVerifierAllocPass());
+            return true;
+        }
         if (Name == "contractPostProcess") {
             MPM.addPass(ContractPostProcessingPass());
+            return true;
+        }
+        if (Name == "instrumentIntrinsics") {
+            MPM.addPass(IntrinsicsPass());
             return true;
         }
         if (Name == "instrumentContracts") {
@@ -38,6 +54,7 @@ namespace {
     };
 
     void MAMHook(ModuleAnalysisManager &MAM) {
+        MAM.registerPass([&] { return BasicTypesAnalysis(); });
         MAM.registerPass([&] { return ContractManagerAnalysis(); });
     };
 

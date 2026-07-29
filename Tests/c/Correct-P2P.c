@@ -17,7 +17,7 @@ int main(int argc, char** argv) {
     buf[0] = 42;
     if (rank == 0) {
         MPI_Isend(buf, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, &req);
-        printf("Buf: %d", buf[0]);
+        printf("Buf: %d\n", buf[0]);
     } else {
         MPI_Irecv(buf, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &req);
     }
