@@ -6,7 +6,7 @@
 import std;
 import LLVMModule;
 import Worklist;
-import InteractiveUI;
+import ErrorMessage;
 
 namespace llvm {
 
@@ -28,30 +28,6 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
         CallStatusVal checkPreCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
         ContractManagerAnalysis::ContractDatabase* DB;
         ModuleAnalysisManager* MAM;
-
-        static std::string preCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
-            switch (S.CurVal) {
-                case CallStatusVal::CALLED: return "CALLED";
-                case CallStatusVal::NOTCALLED: return "NOTCALLED";
-                case CallStatusVal::PARAMCHECK: return "PARAMCHECK";
-                case CallStatusVal::ERROR: return "ERROR";
-            }
-        }
-
-        static bool handleDebug(Worklist::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C, ContractManagerAnalysis::DebugContext const& context) {
-            Worklist::JumpTraceEntry<CallStatus>* startloc = nullptr;
-            for (auto const& AI : WLRes.AnalysisInfo) {
-                if (CallBase* CB = dyn_cast<CallBase>(AI.first)) {
-                    if (CB->getCalledFunction() == C.F) {
-                        if (AI.second.CurVal == CallStatusVal::ERROR) {
-                            startloc = Worklist::getTraceAfter(WLRes.JumpTraces, CB);
-                            break;
-                        }
-                    }
-                }
-            }
-            return InteractiveUI::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr, context);
-        }
 };
 
 } // namespace llvm

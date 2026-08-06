@@ -6,9 +6,36 @@ import std;
 import LLVMModule;
 import ContractPassUtility;
 import Worklist;
+import InteractiveUI;
 
 using namespace llvm;
 using namespace ContractTree;
+
+namespace {
+    std::string preCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
+        switch (S.CurVal) {
+            case ContractVerifierPreCallPass::CallStatusVal::CALLED: return "CALLED";
+            case ContractVerifierPreCallPass::CallStatusVal::NOTCALLED: return "NOTCALLED";
+            case ContractVerifierPreCallPass::CallStatusVal::PARAMCHECK: return "PARAMCHECK";
+            case ContractVerifierPreCallPass::CallStatusVal::ERROR: return "ERROR";
+        }
+    }
+
+    bool handleDebug(Worklist::WorklistResult<ContractVerifierPreCallPass::CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C, ContractManagerAnalysis::DebugContext const& context) {
+        Worklist::JumpTraceEntry<ContractVerifierPreCallPass::CallStatus>* startloc = nullptr;
+        for (auto const& AI : WLRes.AnalysisInfo) {
+            if (CallBase* CB = dyn_cast<CallBase>(AI.first)) {
+                if (CB->getCalledFunction() == C.F) {
+                    if (AI.second.CurVal == ContractVerifierPreCallPass::CallStatusVal::ERROR) {
+                        startloc = Worklist::getTraceAfter(WLRes.JumpTraces, CB);
+                        break;
+                    }
+                }
+            }
+        }
+        return InteractiveUI::ShowTrace<ContractVerifierPreCallPass::CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr, context);
+    }
+}
 
 PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
@@ -150,7 +177,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
             if (CB->getCalledOperand() == C.F) {
                 res = std::max(AI.second.CurVal, res);
                 if (AI.second.CurVal == CallStatusVal::ERROR) {
-                    DB->debugHandlers[&Expr] = std::bind(&ContractVerifierPreCallPass::handleDebug, WLRes, C, std::placeholders::_1);
+                    DB->debugHandlers[&Expr] = std::bind(&handleDebug, WLRes, C, std::placeholders::_1);
                 }
             }
         }

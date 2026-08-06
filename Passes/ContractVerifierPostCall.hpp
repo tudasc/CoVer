@@ -6,7 +6,6 @@
 import std;
 import LLVMModule;
 import Worklist;
-import InteractiveUI;
 import ErrorMessage;
 
 namespace llvm {
@@ -25,24 +24,6 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
         std::pair<CallStatus,bool> mergePostCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data);
         CallStatus transferPostCallStat(CallStatus cur, const Instruction* I, void* data);
         ModuleAnalysisManager* MAM;
-
-        static std::string postCallStatusToStr(ContractVerifierPostCallPass::CallStatus S) {
-            switch (S) {
-                case CallStatus::CALLED: return "CALLED";
-                case CallStatus::NOTCALLED: return "NOTCALLED";
-            }
-        }
-
-        static bool handleDebug(Worklist::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C, ContractManagerAnalysis::DebugContext const& context) {
-            Worklist::JumpTraceEntry<CallStatus>* startloc = nullptr;
-            for (auto const& x : WLRes.AnalysisInfo) {
-                if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
-                    startloc = WLRes.JumpTraces[x.first];
-                    break;
-                }
-            }
-            return InteractiveUI::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr, context);
-        }
 };
 
 } // namespace llvm

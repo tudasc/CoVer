@@ -6,9 +6,30 @@ import std;
 import LLVMModule;
 import ContractPassUtility;
 import Worklist;
+import InteractiveUI;
 
 using namespace llvm;
 using namespace ContractTree;
+
+namespace {
+    std::string postCallStatusToStr(ContractVerifierPostCallPass::CallStatus S) {
+        switch (S) {
+            case ContractVerifierPostCallPass::CallStatus::CALLED: return "CALLED";
+            case ContractVerifierPostCallPass::CallStatus::NOTCALLED: return "NOTCALLED";
+        }
+    }
+
+    bool handleDebug(Worklist::WorklistResult<ContractVerifierPostCallPass::CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C, ContractManagerAnalysis::DebugContext const& context) {
+        Worklist::JumpTraceEntry<ContractVerifierPostCallPass::CallStatus>* startloc = nullptr;
+        for (auto const& x : WLRes.AnalysisInfo) {
+            if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == ContractVerifierPostCallPass::CallStatus::NOTCALLED) {
+                startloc = WLRes.JumpTraces[x.first];
+                break;
+            }
+        }
+        return InteractiveUI::ShowTrace<ContractVerifierPostCallPass::CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr, context);
+    }
+}
 
 PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
@@ -121,7 +142,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
                 for (auto const& x : WLRes.AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
                         appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, DB->reports[&Expr], x.first);
-                        DB->debugHandlers[&Expr] = std::bind(&ContractVerifierPostCallPass::handleDebug, WLRes, C, std::placeholders::_1);
+                        DB->debugHandlers[&Expr] = std::bind(&handleDebug, WLRes, C, std::placeholders::_1);
                         return CallStatus::NOTCALLED;
                     }
                 }

@@ -6,10 +6,27 @@ import std;
 import LLVMModule;
 import ContractPassUtility;
 import Worklist;
+import InteractiveUI;
 import ErrorMessage;
 
 using namespace llvm;
 using namespace ContractTree;
+
+namespace {
+    std::string releaseStatusToStr(ContractVerifierReleasePass::ReleaseStatus S) {
+        switch (S) {
+            case ContractVerifierReleasePass::ReleaseStatus::FULFILLED: return "FULFILLED";
+            case ContractVerifierReleasePass::ReleaseStatus::FORBIDDEN: return "FORBIDDEN";
+            case ContractVerifierReleasePass::ReleaseStatus::ERROR_UNFULFILLED: return "ERROR_UNFULFILLED";
+            case ContractVerifierReleasePass::ReleaseStatus::ERROR: return "ERROR";
+        }
+    }
+
+    bool handleDebug(Worklist::WorklistResult<ContractVerifierReleasePass::ReleaseStatus> WLRes, Instruction* Forbidden, ContractManagerAnalysis::DebugContext const& context) {
+        // Start trace right after the first forbidden operation found
+        return InteractiveUI::ShowTrace<ContractVerifierReleasePass::ReleaseStatus>(WLRes.JumpTraces, Worklist::getTraceAfter(WLRes.JumpTraces, Forbidden), releaseStatusToStr, context);
+    }
+}
 
 PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
@@ -202,7 +219,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 data.err.clear();
                 // Error states only arise from a forbidden operation
                 if (data.forbidden) {
-                    DB->debugHandlers[&Expr] = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, const_cast<Instruction*>(data.forbidden), std::placeholders::_1);
+                    DB->debugHandlers[&Expr] = std::bind(&handleDebug, WLRes, const_cast<Instruction*>(data.forbidden), std::placeholders::_1);
                     return ReleaseStatus::ERROR;
                 }
             }
