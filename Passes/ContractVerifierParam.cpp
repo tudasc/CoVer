@@ -38,12 +38,12 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
                     for (ParamRequirement const& req : ParamOp->reqs) {
                         // Figure out value(s) to check against
                         std::set<Value*> vars;
-                        try {
-                            // First, check if constant value provided
-                            int ivalue = std::stoi(req.value);
+                        // First, check if constant value provided
+                        int ivalue;
+                        if (std::from_chars(req.value.data(), req.value.data() + req.value.size(), ivalue).ec == std::errc()) {
                             if (req.isArg) vars = {CB->getArgOperand(ivalue)};
                             else vars = {ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue)};
-                        } catch(std::exception& e) {
+                        } else {
                             // Otherwise, check against value database
                             if (!DB.ContractVariableData.contains(req.value)) {
                                 errs() << "Undefined non-constint contract value identifier \"" << req.value << "\"!\n";

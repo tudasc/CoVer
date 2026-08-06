@@ -299,13 +299,13 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             bool hasIntCmp = false;
             for (ParamRequirement const& req : pOP->reqs) {
                 Constant* var = Basic_Types.Null_Const;
-                try {
-                    int ivalue = std::stoi(req.value);
+                int ivalue;
+                if (std::from_chars(req.value.data(), req.value.data() + req.value.size(), ivalue).ec == std::errc()) {
                     var = Basic_Types.getInt64(ivalue);
                     var = ConstantExpr::getIntToPtr(var, Basic_Types.Ptr_Type);
                     reqCs.push_back(ConstantStruct::get(ParamReq_Type, {Basic_Types.getInt(req.comp), var, Basic_Types.getBool(req.isArg), Basic_Types.getBool(false)}));
                     hasIntCmp = req.isArg ? hasIntCmp : true;
-                } catch(std::exception& e) {
+                } else {
                     if (!DB->ContractVariableData.contains(req.value)) {
                         errs() << "Undefined non-constint contract value identifier \"" << req.value << "\"!\n";
                         errs() << "Param Requirement will not be instrumented!\n";

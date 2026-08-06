@@ -814,8 +814,9 @@ export bool checkCallParamApplies(const CallBase* Source, const CallBase* Target
                 candidateParams.push_back(Target->getArgOperand(*TagU.param));
             }
         }
-        if (candidateParams.empty())
-            throw "Could not find candidate parameter with matching tag! Invalid contract definition";
+        if (candidateParams.empty()) {
+            errs() << "Could not find candidate parameter with matching tag! Invalid contract definition!\n";
+        }
     }
 
     for (const Value* candidateParam : candidateParams) {

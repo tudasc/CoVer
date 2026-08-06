@@ -60,8 +60,6 @@ target_include_directories(CoVerPlugin
     Externals/llvm-dsa/include
 )
 
-target_compile_options (CoVerPlugin PUBLIC -fexceptions)
-
 ##
 ## Runtime Dependencies
 ##

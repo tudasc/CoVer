@@ -1,6 +1,7 @@
 #pragma once
 
 #include <algorithm>
+#include <charconv>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
@@ -30,7 +31,10 @@ extern std::vector<CmdInfo<T>> TraceCommands;
 template<typename T>
 std::optional<int> ParseBlock(std::string const& s, CmdContext<T>& ctx, std::string& last_res) {
     int block;
-    try { block = std::stoi(s); } catch (...) { last_res = "Block argument is not a number!"; return std::nullopt; }
+    if (std::from_chars(s.data(), s.data() + s.size(), block).ec != std::errc()) {
+        last_res = "Block argument is not a number!";
+        return std::nullopt;
+    }
     if (block < 0 || block >= ctx.trace_by_blocks.size()) {
         last_res = std::format("Invalid block number! Must be between 0 and {}", ctx.trace_by_blocks.size() - 1);
         return std::nullopt;
@@ -40,7 +44,10 @@ std::optional<int> ParseBlock(std::string const& s, CmdContext<T>& ctx, std::str
 
 inline std::optional<int> ParseAliasGroup(std::string const& s, std::string& last_res) {
     int group;
-    try { group = std::stoi(s); } catch (...) { last_res = "Group argument is not a number!"; return std::nullopt; }
+    if (std::from_chars(s.data(), s.data() + s.size(), group).ec != std::errc()) {
+        last_res = "Group argument is not a number!";
+        return std::nullopt;
+    }
     if (!ContractPassUtility::getAliasAnnots().contains(group)) {
         last_res = "Invalid alias group! Check existing groups using alias-get";
         return std::nullopt;
@@ -72,7 +79,9 @@ CmdResult CmdChild(std::vector<std::string>& args, CmdContext<T>& ctx) {
     std::optional<int> block = ParseBlock(args[0], ctx, last_res);
     if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
     int child;
-    try { child = std::stoi(args[1]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Child argument is not a number!"}; }
+    if (std::from_chars(args[1].data(), args[1].data() + args[1].size(), child).ec != std::errc()) {
+        return {CmdResultCode::INVALID_INPUT, "Child argument is not a number!"};
+    }
     TraceBlock<T> selected_block = ctx.trace_by_blocks[*block];
     if (child < 0 || child >= (int)selected_block.last_entry->predecessors.size()) {
         return {CmdResultCode::INVALID_INPUT, "Invalid child number! Must be between 0 and " + std::to_string(selected_block.last_entry->predecessors.size() - 1)};
@@ -99,7 +108,9 @@ CmdResult CmdFpTarget(std::vector<std::string>& args, CmdContext<T>& ctx) {
     std::optional<int> block = ParseBlock(args[0], ctx, last_res);
     if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
     int instr;
-    try { instr = std::stoi(args[1]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Instruction argument is not a number!"}; }
+    if (std::from_chars(args[1].data(), args[1].data() + args[1].size(), instr).ec != std::errc()) {
+        return {CmdResultCode::INVALID_INPUT, "Instruction argument is not a number!"};
+    }
     ContractPassUtility::JumpTraceEntry<T>* selected_trace = nullptr;
     int count = 0;
     for (ContractPassUtility::JumpTraceEntry<T>* cur_trace = ctx.trace_by_blocks[*block].first_entry;; cur_trace = cur_trace->predecessors[0]) {
@@ -171,7 +182,9 @@ CmdResult CmdAliasRm(std::vector<std::string>& args, CmdContext<T>& ctx) {
     auto group = ParseAliasGroup(args[0], last_res);
     if (!group) return {CmdResultCode::INVALID_INPUT, last_res};
     int idx;
-    try { idx = std::stoi(args[1]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Group member index argument is not a number!"}; }
+    if (std::from_chars(args[1].data(), args[1].data() + args[1].size(), idx).ec != std::errc()) {
+        return {CmdResultCode::INVALID_INPUT, "Group member index argument is not a number!"};
+    }
     ContractPassUtility::AliasGroup sel = ContractPassUtility::getAliasAnnots().at(*group);
     if (idx < 0 || idx >= (int)sel.members.size()) {
         return {CmdResultCode::INVALID_INPUT, std::format("Group member index must be between 0 and {}", sel.members.size())};
