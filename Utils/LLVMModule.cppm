@@ -19,7 +19,6 @@ module;
 #include <llvm/IR/ModuleSlotTracker.h>
 #include <llvm/Support/WithColor.h>
 #include <llvm/IR/PassManager.h>
-#include <llvm/Passes/PassBuilder.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/InstIterator.h>
 #include <llvm/IR/ReplaceConstant.h>
@@ -126,7 +125,6 @@ export namespace llvm {
     using llvm::InvokeInst;
     using llvm::DIType;
     using llvm::DIGlobalVariableExpression;
-    using llvm::PassBuilder;
     using llvm::ModulePassManager;
     using llvm::ArrayRef;
     using llvm::FunctionAnalysisManagerModuleProxy;

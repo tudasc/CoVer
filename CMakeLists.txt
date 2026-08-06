@@ -50,6 +50,7 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Utils/TUITrace.cppm
   Utils/TUIManager.cppm
   Utils/LLVMModule.cppm
+  Utils/LLVMPassBuilder.cppm
   Utils/ErrorMessage.cppm
 )
 

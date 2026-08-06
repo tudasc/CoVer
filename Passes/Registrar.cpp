@@ -8,10 +8,10 @@
 #include "Intrinsics.hpp"
 #include "Instrument.hpp"
 
-#include <llvm/Plugins/PassPlugin.h>
-
 import LLVMModule;
+import LLVMPassBuilder;
 import AnalysisCleanup;
+import BasicTypes;
 
 using namespace llvm;
 
@@ -68,11 +68,11 @@ namespace {
 }
 
 llvm::PassPluginLibraryInfo getCoVerInfo() {
-  return {LLVM_PLUGIN_API_VERSION, "CoVerPlugin",
-          LLVM_VERSION_STRING, PBHook};
+  return {CoVerPluginAPIVersion, "CoVerPlugin",
+          CoVerLLVMVersionString, PBHook};
 }
 
-extern "C" LLVM_ATTRIBUTE_WEAK ::llvm::PassPluginLibraryInfo
+extern "C" __attribute__((weak)) ::llvm::PassPluginLibraryInfo
 llvmGetPassPluginInfo() {
   return getCoVerInfo();
 }
