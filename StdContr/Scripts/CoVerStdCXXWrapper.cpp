@@ -1,3 +1,4 @@
+#include <cstdlib>
 #include <filesystem>
 #include <iostream>
 #include <llvm/Support/CommandLine.h>
@@ -60,25 +61,28 @@ std::string opt_level;
 bool isLinking = true;
 
 std::string exec(std::string const& cmd, bool interactive = true) {
+    int rc;
+    std::string res;
     if (interactive) {
-        int rc = std::system(cmd.c_str());
-        if (rc) exit(rc);
-        return "";
+        rc = std::system(cmd.c_str());
+        res = "";
+    } else {
+        std::array<char, 128> buffer;
+        FILE* pipe = popen(cmd.c_str(), "r");
+        if (!pipe) {
+            throw std::runtime_error("popen() failed!");
+        }
+        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+            res += buffer.data();
+        }
+        rc = WEXITSTATUS(pclose(pipe));
     }
-    std::array<char, 128> buffer;
-    std::string result;
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) {
-        throw std::runtime_error("popen() failed!");
+    if (rc != 0) {
+        // Cleanup before aborting
+        std::filesystem::remove_all(TempPath.c_str());
+        exit(rc);
     }
-    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
-        result += buffer.data();
-    }
-    int ret = WEXITSTATUS(pclose(pipe));
-    if (ret != 0) {
-        exit(ret);
-    }
-    return result;
+    return res;
 }
 
 void execSafe(std::string const& cmd) {
