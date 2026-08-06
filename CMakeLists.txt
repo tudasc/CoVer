@@ -215,3 +215,9 @@ if (ENABLE_TESTS)
   enable_testing()
   add_subdirectory(Tests/)
 endif(ENABLE_TESTS)
+
+##
+## Verification using C++26 Contracts
+##
+
+add_subdirectory(StdContr)

@@ -1,0 +1,190 @@
+#include <filesystem>
+#include <iostream>
+#include <llvm/Support/CommandLine.h>
+#include <regex>
+#include <string_view>
+
+using namespace llvm;
+
+// 1. Create a category to group your wrapper's specific options cleanly in the help output
+static cl::OptionCategory WrapperCategory("CoVer compile wrapper options");
+
+// 2. Define the flags
+static cl::opt<bool> ExecDryRun("dry-run",
+    cl::desc("Only show the commands that would be run, but do not perform any. Implies --verbose"),
+    cl::cat(WrapperCategory));
+
+static cl::opt<bool> ExecVerbose("verbose",
+    cl::desc("Print commands to be executed"),
+    cl::cat(WrapperCategory));
+
+static cl::opt<std::string> ClangPath("wrap-target-clang",
+    cl::desc("Set the clang++ compiler (for the frontend plugin)"),
+    cl::value_desc("clang compiler path"),
+    cl::init("clang++"),
+    cl::cat(WrapperCategory));
+
+static cl::opt<std::string> GCCPath("wrap-target-gcc",
+    cl::desc("Set the g++ compiler (for the compilation + backend plugin)"),
+    cl::value_desc("g++ compiler path"),
+    cl::init("g++"),
+    cl::cat(WrapperCategory));
+
+static cl::opt<std::string> ContractFile("contract-file",
+    cl::desc("Set to path to the header with CoVer contracts to convert"),
+    cl::init(""),
+    cl::Required,
+    cl::cat(WrapperCategory));
+
+static cl::opt<std::string> TempPath("temporaries-path",
+    cl::desc("Set where to store temporary files (source with converted contracts/wrappers, backend wrapfile)"),
+    cl::init("/tmp/CoVerStdCXX/"),
+    cl::cat(WrapperCategory));
+
+static cl::list<std::string> CompilerParams(cl::Sink,
+    cl::desc("<compiler params>"));
+
+static cl::opt<std::string> Autocomplete("autocomplete",
+    cl::desc("Provide autocompletion for shell"),
+    cl::Hidden);
+
+std::string_view constexpr common_flags = " -std=c++26 -fcontracts -I\"@CONTR_INCLUDE_PATH@\" ";
+
+std::regex const source_file_ending(".*(\\.cpp|\\.cc|\\.cxx)$");
+std::regex const link_file_ending(".*(\\.a|\\.so)");
+std::regex const obj_file_ending(".*(\\.o|\\.ll)");
+
+std::string source_file_paths;
+std::string bitcode_files;
+std::string dest_arg;
+std::string opt_level;
+bool isLinking = true;
+
+std::string exec(std::string const& cmd, bool interactive = true) {
+    if (interactive) {
+        int rc = std::system(cmd.c_str());
+        if (rc) exit(rc);
+        return "";
+    }
+    std::array<char, 128> buffer;
+    std::string result;
+    FILE* pipe = popen(cmd.c_str(), "r");
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+        result += buffer.data();
+    }
+    int ret = WEXITSTATUS(pclose(pipe));
+    if (ret != 0) {
+        exit(ret);
+    }
+    return result;
+}
+
+void execSafe(std::string const& cmd) {
+    if (ExecVerbose || ExecDryRun)
+        std::cout << "Wrapper " << (ExecDryRun ? "would execute: " : "is executing: ") << cmd << "\n";
+    if (!ExecDryRun) exec(cmd);
+}
+
+std::string getOptParam(std::string param, std::string full) {
+    if (full.starts_with(param + "=")) {
+        return full.substr((param + "=").size(), std::string::npos);
+    }
+    return "";
+}
+
+std::pair<std::string,std::string> parseCompilerParams(std::vector<std::string> const& all_args) {
+    std::string rem_args_link;
+    std::string rem_args_compile;
+
+    for (int i = 0; i < all_args.size(); i++) {
+        std::string arg = all_args[i];
+        if (std::regex_match(arg, source_file_ending)) {
+            source_file_paths += " " + arg;
+        } else if (arg == "-o") {
+            dest_arg = " " + arg + " " + all_args[++i];
+        } else if (arg == "-c" || arg == "-E") {
+            isLinking = false;
+        } else if (std::regex_match(arg, link_file_ending)) {
+            rem_args_link += " " + arg;
+        } else if (std::regex_match(arg, obj_file_ending)) {
+            bitcode_files += " " + arg;
+        } else if (arg == "-MT") {
+            rem_args_compile += " " + arg + " " + all_args[++i];
+        } else if (arg.starts_with("-O")) {
+            opt_level = arg;
+        } else {
+            rem_args_link += " " + arg;
+            rem_args_compile += " " + arg;
+        }
+    }
+
+    return {rem_args_link, rem_args_compile};
+}
+
+int main(int argc, const char** argv) {
+    cl::HideUnrelatedOptions(WrapperCategory);
+    cl::ParseCommandLineOptions(argc, argv,
+        "CoVerStdCXX - Compiler Wrapper which uses C++26 contracts to verify CoVer contracts\n");
+
+    if (argc <= 1) {
+        cl::PrintHelpMessage();
+        exit(0);
+    }
+
+    // Provide --autocomplete command for bash-completion
+    if (Autocomplete.getNumOccurrences() > 0) {
+        StringRef Input = Autocomplete;
+
+        // Split by comma
+        SmallVector<StringRef, 4> args;
+        Input.split(args, ',');
+        if (args.empty()) return 0;
+        StringRef Prefix = args.back();
+
+        if (!Prefix.starts_with('-')) return 0; // Default to File input
+
+        // Strip the leading dashes from the bash input
+        Prefix = Prefix.ltrim('-');
+        for (auto &It : cl::getRegisteredOptions()) {
+            StringRef OptName = It.getFirst();
+            if (It.getSecond()->getOptionHiddenFlag() != cl::NotHidden) continue;
+            if (OptName.starts_with(Prefix)) {
+                outs() << "--" << OptName << "\n";
+            }
+        }
+        return 0;
+    }
+
+    std::string rem_link, rem_compile;
+    std::tie(rem_link, rem_compile) = parseCompilerParams(CompilerParams);
+
+    if (!std::filesystem::exists(TempPath.c_str())) {
+        // Run frontend pass on input header
+        execSafe(ClangPath + " -I\"@CONTR_INCLUDE_PATH@\" "
+                        + "-fplugin=@COVER_STDCXX_FRONTEND_PATH@ "
+                        + "-Xclang -plugin-arg-CoVerStdCXXFrontend "
+                        + "-Xclang -output-folder "
+                        + "-Xclang -plugin-arg-CoVerStdCXXFrontend "
+                        + "-Xclang \"" + TempPath + "\" "
+                        + ContractFile);
+
+        // Compile wrappers
+        execSafe(GCCPath + rem_compile + " -c " + opt_level + common_flags + TempPath + "/include.cpp -o " + TempPath + "/include.o");
+    }
+
+    std::string GCCPluginLoad = " -fplugin=@COVER_STDCXX_BACKEND_PATH@ -fplugin-arg-CoVerStdCXXBackend-list=" + TempPath + "/cover_wrapfile ";
+
+    if (!isLinking) {
+        execSafe(GCCPath + GCCPluginLoad + rem_compile + opt_level + common_flags + source_file_paths);
+        return 0;
+    }
+
+    // Finish normal compilation process
+    execSafe(GCCPath + GCCPluginLoad + rem_compile + rem_link + " " + opt_level + common_flags + source_file_paths + " " + TempPath + "/include.o");
+
+    // Delete old temporaries at end
+    std::filesystem::remove_all(TempPath.c_str());
+}
