@@ -14,9 +14,24 @@
 import LLVMModule;
 import ContractPassUtility;
 import ErrorMessage;
+import TUITrace;
 
 using namespace llvm;
 using namespace ContractTree;
+
+namespace {
+    bool handleDebug(ContractPassUtility::WorklistResult<ContractVerifierReleasePass::ReleaseStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
+        ContractPassUtility::JumpTraceEntry<ContractVerifierReleasePass::ReleaseStatus>* startloc = nullptr;
+        for (std::pair<Instruction*, ContractVerifierReleasePass::ReleaseStatus> AI : WLRes.AnalysisInfo) {
+            if (AI.second >= ContractVerifierReleasePass::ReleaseStatus::ERROR_UNFULFILLED) {
+                // nextnondbg exists, forb will always be mem or call not ret instr
+                startloc = WLRes.JumpTraces[AI.first->getNextNode()];
+                break;
+            }
+        }
+        return TUITrace::ShowTrace<ContractVerifierReleasePass::ReleaseStatus>(WLRes.JumpTraces, startloc, &ContractVerifierReleasePass::releaseStatusToStr);
+    }
+}
 
 PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
@@ -209,7 +224,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 data.err.clear();
                 for (std::pair<const Instruction *, ReleaseStatus> x : WLRes.AnalysisInfo) {
                     if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) {
-                        ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, C);
+                        ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&handleDebug, WLRes, C);
                         WLRes.handleDebug = handleDebug_inst;
                         Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<ReleaseStatus>>(WLRes);
                         return ReleaseStatus::ERROR;

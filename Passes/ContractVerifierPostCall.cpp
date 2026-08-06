@@ -9,9 +9,24 @@
 
 import LLVMModule;
 import ContractPassUtility;
+import TUITrace;
+import ErrorMessage;
 
 using namespace llvm;
 using namespace ContractTree;
+
+namespace {
+    bool handleDebug(ContractPassUtility::WorklistResult<ContractVerifierPostCallPass::CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
+        ContractPassUtility::JumpTraceEntry<ContractVerifierPostCallPass::CallStatus>* startloc = nullptr;
+        for (std::pair<Instruction*, ContractVerifierPostCallPass::CallStatus> x : WLRes.AnalysisInfo) {
+            if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == ContractVerifierPostCallPass::CallStatus::NOTCALLED) {
+                startloc = WLRes.JumpTraces[x.first];
+                break;
+            }
+        }
+        return TUITrace::ShowTrace<ContractVerifierPostCallPass::CallStatus>(WLRes.JumpTraces, startloc, &ContractVerifierPostCallPass::postCallStatusToStr);
+    }
+}
 
 PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
@@ -128,7 +143,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
                 for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
                         appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, DB->reports[&Expr], x.first);
-                        ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierPostCallPass::handleDebug, WLRes, C);
+                        ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&handleDebug, WLRes, C);
                         WLRes.handleDebug = handleDebug_inst;
                         Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<CallStatus>>(WLRes);
                         return CallStatus::NOTCALLED;

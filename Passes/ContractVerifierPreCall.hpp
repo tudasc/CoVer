@@ -2,13 +2,11 @@
 
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
-#include <map>
 #include <set>
 #include <vector>
 
 import LLVMModule;
-import ContractPassUtility;
-import TUITrace;
+import ErrorMessage;
 
 namespace llvm {
 
@@ -22,15 +20,6 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
 
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
-        static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err);
-
-    private:
-        std::pair<CallStatus,bool> mergePreCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data);
-        CallStatus transferPreCallStat(CallStatus cur, const Instruction* I, void* data);
-        CallStatusVal checkPreCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
-        ContractManagerAnalysis::ContractDatabase* DB;
-        ModuleAnalysisManager* MAM;
-
         static std::string preCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
             switch (S.CurVal) {
                 case CallStatusVal::CALLED: return "CALLED";
@@ -39,22 +28,14 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
                 case CallStatusVal::ERROR: return "ERROR";
             }
         }
+    private:
+        std::pair<CallStatus,bool> mergePreCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data);
+        CallStatus transferPreCallStat(CallStatus cur, const Instruction* I, void* data);
+        CallStatusVal checkPreCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
+        ContractManagerAnalysis::ContractDatabase* DB;
+        ModuleAnalysisManager* MAM;
 
-        static bool handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
-            ContractPassUtility::JumpTraceEntry<CallStatus>* startloc;
-            for (std::pair<Instruction*, CallStatus> AI : WLRes.AnalysisInfo) {
-                if (CallBase* CB = dyn_cast<CallBase>(AI.first)) {
-                    if (CB->getCalledFunction() == C.F) {
-                        if (AI.second.CurVal == CallStatusVal::ERROR) {
-                            // nextnondbg exists, supplier is always a CB so next will at least be block terminator
-                            startloc = WLRes.JumpTraces[CB->getNextNode()];
-                            break;
-                        }
-                    }
-                }
-            }
-            return TUITrace::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
-        }
+        static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err);
 };
 
 } // namespace llvm

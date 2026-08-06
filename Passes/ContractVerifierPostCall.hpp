@@ -5,8 +5,6 @@
 #include <set>
 
 import LLVMModule;
-import ContractPassUtility;
-import TUITrace;
 import ErrorMessage;
 
 namespace llvm {
@@ -17,7 +15,12 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
 
         PreservedAnalyses run(Module &M, ModuleAnalysisManager &AM);
 
-        static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err, const Instruction* retLoc);
+        static std::string postCallStatusToStr(ContractVerifierPostCallPass::CallStatus S) {
+            switch (S) {
+                case CallStatus::CALLED: return "CALLED";
+                case CallStatus::NOTCALLED: return "NOTCALLED";
+            }
+        }
 
     private:
         CallStatus checkPostCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
@@ -26,23 +29,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
         CallStatus transferPostCallStat(CallStatus cur, const Instruction* I, void* data);
         ModuleAnalysisManager* MAM;
 
-        static std::string postCallStatusToStr(ContractVerifierPostCallPass::CallStatus S) {
-            switch (S) {
-                case CallStatus::CALLED: return "CALLED";
-                case CallStatus::NOTCALLED: return "NOTCALLED";
-            }
-        }
-
-        static bool handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
-            ContractPassUtility::JumpTraceEntry<CallStatus>* startloc = nullptr;
-            for (std::pair<Instruction*, CallStatus> x : WLRes.AnalysisInfo) {
-                if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
-                    startloc = WLRes.JumpTraces[x.first];
-                    break;
-                }
-            }
-            return TUITrace::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
-        }
+        static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err, const Instruction* retLoc);
 };
 
 } // namespace llvm

@@ -10,9 +10,29 @@
 
 import LLVMModule;
 import ContractPassUtility;
+import TUITrace;
+import ErrorMessage;
 
 using namespace llvm;
 using namespace ContractTree;
+
+namespace {
+    bool handleDebug(ContractPassUtility::WorklistResult<ContractVerifierPreCallPass::CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
+        ContractPassUtility::JumpTraceEntry<ContractVerifierPreCallPass::CallStatus>* startloc = nullptr;
+        for (std::pair<Instruction*, ContractVerifierPreCallPass::CallStatus> AI : WLRes.AnalysisInfo) {
+            if (CallBase* CB = dyn_cast<CallBase>(AI.first)) {
+                if (CB->getCalledFunction() == C.F) {
+                    if (AI.second.CurVal == ContractVerifierPreCallPass::CallStatusVal::ERROR) {
+                        // nextnondbg exists, supplier is always a CB so next will at least be block terminator
+                        startloc = WLRes.JumpTraces[CB->getNextNode()];
+                        break;
+                    }
+                }
+            }
+        }
+        return TUITrace::ShowTrace<ContractVerifierPreCallPass::CallStatus>(WLRes.JumpTraces, startloc, ContractVerifierPreCallPass::preCallStatusToStr);
+    }
+}
 
 PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
@@ -163,7 +183,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
             if (CB->getCalledOperand() == C.F) {
                 res = std::max(AI.second.CurVal, res);
                 if (AI.second.CurVal == CallStatusVal::ERROR) {
-                    ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierPreCallPass::handleDebug, WLRes, C);
+                    ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&handleDebug, WLRes, C);
                     WLRes.handleDebug = handleDebug_inst;
                     Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<CallStatus>>(WLRes);
                 }
