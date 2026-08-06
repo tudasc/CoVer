@@ -36,16 +36,19 @@ using namespace ContractTree;
 
 namespace {
 
+CompilerInstance* CI;
+
 struct DeclModifiers {
     std::set<std::string> PreCallSentinels;
     std::set<std::string> PreCallChecks;
 };
 
-#define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI.getASTContext().getLangOpts()))
+#define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
 
 constexpr std::string_view COVER_PREFIX = "COVER_SENTINEL_";
 
-std::map<FunctionDecl*,DeclModifiers> DeclToMods;
+std::map<FunctionDecl const*,DeclModifiers> DeclToMods;
+std::map<FunctionDecl const*,std::string> DeclToPreConds;
 
 // Copied from ContractManager
 const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF) {
@@ -60,10 +63,10 @@ const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(
     return exprs;
 }
 
-FunctionDecl* lookupDecl(CompilerInstance& CI, std::string target) {
-    IdentifierInfo& II = CI.getASTContext().Idents.get(target);
+FunctionDecl* lookupDecl(std::string target) {
+    IdentifierInfo& II = CI->getASTContext().Idents.get(target);
     DeclarationName DN(&II);
-    auto res = CI.getASTContext().getTranslationUnitDecl()->lookup(DN);
+    auto res = CI->getASTContext().getTranslationUnitDecl()->lookup(DN);
     for (NamedDecl* ND : res) {
         if (FunctionDecl* FD = dyn_cast<FunctionDecl>(ND)) {
             return FD;
@@ -130,9 +133,77 @@ std::string buildForwardingCall(FunctionDecl const* decl,
   return RetKeyword + Name + "(" + Args + ");";
 }
 
-void performOutput(CompilerInstance& CI, std::string output_path) {
-    SourceManager& SM = CI.getSourceManager();
-    Rewriter R(SM, CI.getLangOpts());
+std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool isPre, FunctionDecl const* decl) {
+    if (form->Children.empty()) {
+        std::shared_ptr<ContractExpression> expr = std::static_pointer_cast<ContractExpression>(form);
+        switch (expr->OP->type()) {
+            case FormulaType::AND:
+            case FormulaType::OR:
+            case FormulaType::XOR:
+                llvm_unreachable("Unexpected connective in expression!");
+                break;
+            case FormulaType::RWOP:
+            case FormulaType::READ:
+            case FormulaType::WRITE:
+                break;
+            case FormulaType::ALLOC:
+                break;
+            case FormulaType::FREE:
+                break;
+            case FormulaType::CALL: {
+                std::shared_ptr<CallOperation const> cOP = std::static_pointer_cast<CallOperation const>(expr->OP);
+                if (isPre) {
+                    DeclToMods[decl].PreCallChecks.insert(cOP->Function);
+                    DeclToMods[lookupDecl(cOP->Function)].PreCallSentinels.insert(cOP->Function);
+                    // Currently building precond, so need to return the sentinel as the boolean expr
+                    return COVER_PREFIX + cOP->Function;
+                } else {
+
+                }
+                break;
+            }
+            case FormulaType::CALLTAG: {
+                break;
+            }
+            case FormulaType::RELEASE: {
+                break;
+            }
+            case FormulaType::PARAM: {
+                break;
+            }
+        }
+    } else {
+        std::string sep = "";
+        std::string postfix = "";
+        switch (form->type) {
+            case FormulaType::AND:
+                sep = "&&";
+                break;
+            case FormulaType::OR:
+                sep = "||";
+                break;
+            case FormulaType::XOR:
+                sep = "+";
+                postfix = " == 1";
+                break;
+            default:
+                llvm_unreachable("Non-connective type with no children!");
+                break;
+        }
+        std::string_view act_sep;
+        std::string res;
+        for (std::shared_ptr<ContractFormula> child : form->Children) {
+            res += constructFormula(child, isPre, decl);
+            act_sep = sep;
+        }
+        return "(" + res + postfix + ")";
+    }
+    return "";
+}
+
+void performOutput(std::string output_path) {
+    SourceManager& SM = CI->getSourceManager();
+    Rewriter R(SM, CI->getLangOpts());
 
     std::filesystem::create_directories(output_path);
     std::ofstream backendfile(output_path + "/cover_wrapfile");
@@ -140,7 +211,6 @@ void performOutput(CompilerInstance& CI, std::string output_path) {
     std::set<std::string> sentinel_strs;
     std::set<FunctionDecl const*> declRename;
     std::map<FunctionDecl const*,std::string> functionBodies;
-    std::map<FunctionDecl const*,std::string> preContrs;
 
     // Apply modifications per declaration
     for (auto& [decl, mods] : DeclToMods) {
@@ -148,23 +218,13 @@ void performOutput(CompilerInstance& CI, std::string output_path) {
         if (AnnotateAttr* AA = decl->getAttr<AnnotateAttr>())
             R.RemoveText(SM.getExpansionRange(AA->getRange()));
 
-        if (!mods.PreCallChecks.empty()) {
-            declRename.insert(decl);
-
-            preContrs[decl] = "pre(\n";
-            
-            // Add PreCall checks
-            std::string sep = "";
-            for (std::string const& target : mods.PreCallChecks) {
-                preContrs[decl] += sep + "    " + COVER_PREFIX + target;
-                sentinel_strs.insert(target);
-                sep = " &&\n";
-            }
-            preContrs[decl] += "\n)\n";
-        }
+        // PreCallCheck is contained in precond. Only need to add to wrap list
+        if (!mods.PreCallChecks.empty()) declRename.insert(decl);
+        // PreCallSentinel needs wrap + set of sentinel value + decl of sentinel value
         if (!mods.PreCallSentinels.empty()) {
             declRename.insert(decl);
             for (std::string sentinel : mods.PreCallSentinels) {
+                sentinel_strs.insert(sentinel);
                 functionBodies[decl] += ("    " + COVER_PREFIX + sentinel + " = 1;\n").str();
             }
         }
@@ -183,7 +243,7 @@ void performOutput(CompilerInstance& CI, std::string output_path) {
     // Also, generate wrapfile
     for (FunctionDecl const* decl : declRename) {
         functionBodies[decl];
-        std::string mangledName = getMangledName(decl, CI.getASTContext());
+        std::string mangledName = getMangledName(decl, CI->getASTContext());
         backendfile << mangledName << "\n";
 
         // Remove function definition
@@ -198,9 +258,15 @@ void performOutput(CompilerInstance& CI, std::string output_path) {
 
         // Get declaration and insert with asm + contract
         std::string decl_str = R.getRewrittenText(SM.getExpansionRange(decl->getSourceRange()));
-        R.InsertTextBefore(decl->getBeginLoc(), decl_str + preContrs[decl] + " asm(\"CoVer_Wrapper_" + mangledName + "\");\n");
+        std::stringstream rewriteDeclStr;
+        rewriteDeclStr << decl_str;
+        if (DeclToPreConds.contains(decl)) rewriteDeclStr << " pre(" << DeclToPreConds[decl] << ")";
+        rewriteDeclStr << "asm(\"CoVer_Wrapper_" + mangledName + "\")";
+        rewriteDeclStr << ";\n";
+        R.InsertTextBefore(decl->getBeginLoc(), rewriteDeclStr.str());
 
-        R.InsertTextAfter(LOC_PRIOR_SEMI(CI, SM, decl), " {\n" + functionBodies[decl] + "    " + buildForwardingCall(decl, CI.getASTContext()) + "\n}");
+        // Insert modified function body with forward call
+        R.InsertTextAfter(LOC_PRIOR_SEMI(CI, SM, decl), " {\n" + functionBodies[decl] + "    " + buildForwardingCall(decl, CI->getASTContext()) + "\n}");
     }
 
     // Perform output for include file
@@ -213,40 +279,13 @@ void performOutput(CompilerInstance& CI, std::string output_path) {
 }
 
 export namespace ContractConverter {
-    void Convert(ContractInfo DB, CompilerInstance& CI, std::string output_path) {
+    void Convert(ContractInfo DB, CompilerInstance& _CI, std::string output_path) {
+        CI = &_CI;
         for (auto& [Decl, Data] : DB.Contracts) {
             errs() << "Converting contract for " << Decl->getName() << "\n";
-            for (std::shared_ptr<ContractFormula> form : Data.Pre) {
-                std::vector<std::shared_ptr<ContractExpression>> linearized = linearizeContractFormula(form);
-                for (std::shared_ptr<ContractExpression> Expr : linearized) {
-                    switch (Expr->OP->type()) {
-                        case FormulaType::AND:
-                        case FormulaType::OR:
-                        case FormulaType::XOR:
-                        case FormulaType::RWOP:
-                        case FormulaType::READ:
-                        case FormulaType::WRITE:
-                            llvm_unreachable("Impossible expr type in linearized formula!");
-                        case FormulaType::FREE:
-                            llvm_unreachable("Impossible freeOp in precondition!");
-                        case FormulaType::ALLOC:
-                            #warning TODO
-                        case FormulaType::CALL: {
-                            std::string target = std::static_pointer_cast<CallOperation const>(Expr->OP)->Function;
-                            FunctionDecl* targetDecl = lookupDecl(CI, target);
-                            DeclToMods[targetDecl].PreCallSentinels.insert(target);
-                            DeclToMods[Decl].PreCallChecks.insert(target);
-                            break;
-                        }
-                        case FormulaType::CALLTAG:
-                        case FormulaType::RELEASE:
-                        case FormulaType::PARAM:
-                            #warning TODO
-                            break;
-                    }
-                }
-            }
+            std::string preCond = constructFormula(Data.Pre, true, Decl);
+            DeclToPreConds[Decl] = preCond;
         }
-        performOutput(CI, output_path);
+        performOutput(output_path);
     }
 }

@@ -33,7 +33,6 @@ static cl::opt<std::string> GCCPath("wrap-target-gcc",
 static cl::opt<std::string> ContractFile("contract-file",
     cl::desc("Set to path to the header with CoVer contracts to convert"),
     cl::init(""),
-    cl::Required,
     cl::cat(WrapperCategory));
 
 static cl::opt<std::string> TempPath("temporaries-path",
@@ -156,6 +155,11 @@ int main(int argc, const char** argv) {
             }
         }
         return 0;
+    }
+
+    if (ContractFile.empty()) {
+        errs() << "No contract header file specified! Aborting\n";
+        return 1;
     }
 
     std::string rem_link, rem_compile;

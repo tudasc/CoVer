@@ -83,8 +83,11 @@ endif()
 
 set(COVER_STDCXX_FRONTEND_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerStdCXXFrontend.so")
 set(COVER_STDCXX_BACKEND_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerStdCXXBackend.so")
-
+set(EXECUTABLE_WRAPPER_NAME CoVerStdCXX)
 configure_file(Scripts/CoVerStdCXXWrapper.cpp ${CMAKE_CURRENT_BINARY_DIR}/CoVerStdCXXWrapper_configured.cpp @ONLY)
-add_executable(CoVerStdCXX ${CMAKE_CURRENT_BINARY_DIR}/CoVerStdCXXWrapper_configured.cpp)
-target_link_libraries(CoVerStdCXX LLVM)
+add_executable(${EXECUTABLE_WRAPPER_NAME} ${CMAKE_CURRENT_BINARY_DIR}/CoVerStdCXXWrapper_configured.cpp)
+target_link_libraries(${EXECUTABLE_WRAPPER_NAME} LLVM)
 install(TARGETS CoVerStdCXX)
+
+configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/bash-autocomplete.sh" "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/completions/${EXECUTABLE_WRAPPER_NAME}" @ONLY)
+install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/" DESTINATION share/bash-completion)
