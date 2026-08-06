@@ -220,15 +220,19 @@ bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, st
 bool ShowContractDetails(Contract C) {
     std::vector<std::string> menu_entries = {"Back to Listing"};
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
-    for (int i = 0; i < C.Data.Pre.size(); i++) {
-        if (*C.Data.Pre[i]->Status != Fulfillment::BROKEN) continue;
-        menu_entries.push_back(std::format("Inspect {} Precondition Subformula: {}", FulfillmentStr(*C.Data.Pre[i]->Status), C.Data.Pre[i]->ExprStr));
-        violated_formulas.push_back(C.Data.Pre[i]);
+    if (C.Data.Pre) {
+        for (int i = 0; i < C.Data.Pre->Children.size(); i++) {
+            if (*C.Data.Pre->Children[i]->Status != Fulfillment::BROKEN) continue;
+            menu_entries.push_back(std::format("Inspect {} Precondition Subformula: {}", FulfillmentStr(*C.Data.Pre->Children[i]->Status), C.Data.Pre->Children[i]->ExprStr));
+            violated_formulas.push_back(C.Data.Pre->Children[i]);
+        }   
     }
-    for (int i = 0; i < C.Data.Post.size(); i++) {
-        if (*C.Data.Post[i]->Status != Fulfillment::BROKEN) continue;
-        menu_entries.push_back(std::format("Inspect {} Postcondition Subformula: {}", FulfillmentStr(*C.Data.Post[i]->Status), C.Data.Post[i]->ExprStr));
-        violated_formulas.push_back(C.Data.Post[i]);
+    if (C.Data.Post) {
+        for (int i = 0; i < C.Data.Post->Children.size(); i++) {
+            if (*C.Data.Post->Children[i]->Status != Fulfillment::BROKEN) continue;
+            menu_entries.push_back(std::format("Inspect {} Postcondition Subformula: {}", FulfillmentStr(*C.Data.Post->Children[i]->Status), C.Data.Post->Children[i]->ExprStr));
+            violated_formulas.push_back(C.Data.Post->Children[i]);
+        }   
     }
     int selected = 0;
     ftxui::MenuOption menu_options = {
@@ -364,16 +368,20 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
     std::vector<std::pair<std::shared_ptr<ContractFormula>, Contract>> formulas;
     violations.push_back("Exit Tool");
     for (Contract const& C : ViolatedContracts) {
-        for (std::shared_ptr<ContractFormula> const& form : C.Data.Pre) {
-            if (*form->Status != Fulfillment::FULFILLED) {
-                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr));
-                formulas.push_back({form, C});
+        if (C.Data.Pre) {
+            for (std::shared_ptr<ContractFormula> const& form : C.Data.Pre->Children) {
+                if (*form->Status != Fulfillment::FULFILLED) {
+                    violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr));
+                    formulas.push_back({form, C});
+                }
             }
         }
-        for (std::shared_ptr<ContractFormula> const& form : C.Data.Post) {
-            if (*form->Status != Fulfillment::FULFILLED) {
-                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr));
-                formulas.push_back({form, C});
+        if (C.Data.Post) {
+            for (std::shared_ptr<ContractFormula> const& form : C.Data.Post->Children) {
+                if (*form->Status != Fulfillment::FULFILLED) {
+                    violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr));
+                    formulas.push_back({form, C});
+                }
             }
         }
     }

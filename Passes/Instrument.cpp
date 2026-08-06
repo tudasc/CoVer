@@ -197,7 +197,7 @@ std::pair<Constant*, int64_t> InstrumentPass::createReferencesGlobal(Module &M) 
 std::pair<Constant*, int64_t> InstrumentPass::createContractsGlobal(Module& M) {
     std::vector<Constant*> contractConsts;
     for (ContractManagerAnalysis::Contract C : DB->Contracts) {
-        if (C.Data.Pre.empty() && C.Data.Post.empty()) continue;
+        if (!C.Data.Pre && !C.Data.Post) continue;
         Constant* PrecondConst = createScopeGlobal(M, C.Data.Pre);
         Constant* PostcondConst = createScopeGlobal(M, C.Data.Post);
         GlobalVariable* strGlobal = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), C.F->getName()), "CONTR_FUNC_STR_" + C.F->getName().str());
@@ -212,16 +212,11 @@ std::pair<Constant*, int64_t> InstrumentPass::createContractsGlobal(Module& M) {
     return {arrContractGlobal, contractConsts.size()};
 }
 
-Constant* InstrumentPass::createScopeGlobal(Module& M, std::vector<std::shared_ptr<ContractFormula>> forms) {
-    std::vector<Constant*> formsConst;
-    static Constant* scopeMsgConst = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), "Full Scope"), "CONTR_SCOPE_STR_");
-    if (forms.empty()) return Basic_Types.Null_Const;
-    for (std::shared_ptr<ContractFormula> form : forms) {
-        formsConst.push_back(createFormulaGlobal(M, form));
-    }
-    ArrayType* ArrPreCond = ArrayType::get(Formula_Type, forms.size());
-    GlobalVariable* Sublevel = createConstantGlobalUnique(M, ConstantArray::get(ArrPreCond, formsConst), std::string("CONTR_SCOPECONDITIONS"));
-    return createConstantGlobalUnique(M, ConstantStruct::get(Formula_Type, { Sublevel, Basic_Types.getInt(forms.size()), Basic_Types.getInt((int64_t)FormulaType::AND), scopeMsgConst, Basic_Types.Null_Const}), "CONTR_SCOPE");
+Constant* InstrumentPass::createScopeGlobal(Module& M, std::shared_ptr<ContractFormula> form) {
+    if (!form) return Basic_Types.Null_Const;
+    form->Message = "Full Scope";
+    Constant* formC = createFormulaGlobal(M, form);
+    return createConstantGlobalUnique(M, formC, "CONTR_SCOPE");
 }
 
 Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form) {

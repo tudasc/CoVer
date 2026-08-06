@@ -35,20 +35,21 @@ raw_ostream& ContractPostProcessingPass::printMsg() {
     return errs();
 }
 
-void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const Contract C, std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons) {
-    std::vector<std::shared_ptr<ContractFormula>> set = type == "Precondition" ? C.Data.Pre : C.Data.Post;
-    for (std::shared_ptr<ContractFormula> form : set) {
+void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const Contract C, std::map<std::shared_ptr<ContractFormula>, ErrorMessage> const& reasons) {
+    std::shared_ptr<ContractFormula> scopeForm = type == "Precondition" ? C.Data.Pre : C.Data.Post;
+    if (!scopeForm) return;
+    for (std::shared_ptr<ContractFormula> form : scopeForm->Children) {
         if (*form->Status == Fulfillment::FULFILLED) continue;
         printMsg() << "--> " << type << " Subformula Status: " << FulfillmentStr(*form->Status) << "\n";
         if (*form->Status > Fulfillment::FULFILLED) {
             printMsg() << "    --> Formula String: " << form->ExprStr << "\n";
             if (reasons.contains(form))
-                printMsg() << "    --> Message: " << reasons[form].text << "\n";
+                printMsg() << "    --> Message: " << reasons.at(form).text << "\n";
             printMsg() << "    --> Error Info:\n";
             for (ErrorMessage errinfo : DB->reports[form.get()]) {
                 printMsg() << "        " << errinfo.text << "\n";
                 Json::Value j;
-                j["type"] = reasons[form].text;
+                j["type"] = reasons.at(form).text;
                 j["error_id"] = errinfo.error_id;
                 j["text"] = errinfo.text;
                 j["references"] = Json::arrayValue;
@@ -68,14 +69,12 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const Co
 Fulfillment ContractPostProcessingPass::checkExpressions(ContractManagerAnalysis::Contract const& C, bool output) {
     Fulfillment s = Fulfillment::FULFILLED;
     std::map<std::shared_ptr<ContractFormula>, ErrorMessage> reasons;
-    for (std::shared_ptr<ContractFormula> const& Expr : C.Data.Pre) {
-        std::pair<Fulfillment,std::optional<std::string>> result = resolveFormula(Expr);
-        if (result.second) reasons[Expr] = {.text = *result.second};
+    if (C.Data.Pre) {
+        std::pair<Fulfillment,std::optional<std::string>> result = resolveFormula(C.Data.Pre, reasons);
         s = std::max(s, result.first);
     }
-    for (std::shared_ptr<ContractFormula> const& Expr : C.Data.Post) {
-        std::pair<Fulfillment,std::optional<std::string>> result = resolveFormula(Expr);
-        if (result.second) reasons[Expr] = {.text = *result.second};
+    if (C.Data.Post) {
+        std::pair<Fulfillment,std::optional<std::string>> result = resolveFormula(C.Data.Post, reasons);
         s = std::max(s, result.first);
     }
     if (!output) return s;
@@ -187,14 +186,15 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     return PreservedAnalyses::all();
 }
 
-std::pair<Fulfillment,std::optional<std::string>> ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF) {
+std::pair<Fulfillment,std::optional<std::string>> ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF, std::map<std::shared_ptr<ContractFormula>,ErrorMessage>& reasons) {
+    std::optional<std::string> outMsg = contrF->Message;
+    if (contrF->Message) reasons[contrF] = {.text = *outMsg};
     if (contrF->Children.empty()) {
         return {*contrF->Status, *contrF->Status == Fulfillment::FULFILLED ? std::nullopt : contrF->Message};
     }
     std::vector<Fulfillment> fs;
-    std::optional<std::string> outMsg = contrF->Message;
     for (std::shared_ptr<ContractFormula> Form : contrF->Children) {
-        std::pair<Fulfillment,std::optional<std::string>> children = resolveFormula(Form);
+        std::pair<Fulfillment,std::optional<std::string>> children = resolveFormula(Form, reasons);
         fs.push_back(children.first);
     }
     switch (contrF->type) {

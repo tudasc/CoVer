@@ -223,15 +223,9 @@ void ContractManagerAnalysis::addContract(std::string contract, Function* F) {
 
     // Create and add Linearized Contract
     std::vector<std::shared_ptr<ContractExpression>> PreLin;
-    for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Pre) {
-        std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
-        PreLin.insert( PreLin.end(), contrFLin.begin(), contrFLin.end() );
-    }
+    if (newCtr.Data.Pre) PreLin = linearizeContractFormula(newCtr.Data.Pre);
     std::vector<std::shared_ptr<ContractExpression>> PostLin;
-    for (const std::shared_ptr<ContractFormula> contrF : newCtr.Data.Post) {
-        std::vector<std::shared_ptr<ContractExpression>> contrFLin = linearizeContractFormula(contrF);
-        PostLin.insert( PostLin.end(), contrFLin.begin(), contrFLin.end() );
-    }
+    if (newCtr.Data.Post) PostLin = linearizeContractFormula(newCtr.Data.Post);
 
     LinearizedContract lContract = { F, contract, PreLin, PostLin, newCtr.DebugInfo};
     curDatabase.LinearizedContracts.push_back(lContract);
