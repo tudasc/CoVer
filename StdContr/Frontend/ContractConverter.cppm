@@ -193,7 +193,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
         std::string_view act_sep;
         std::string res;
         for (std::shared_ptr<ContractFormula> child : form->Children) {
-            res += constructFormula(child, isPre, decl);
+            res += act_sep + constructFormula(child, isPre, decl);
             act_sep = sep;
         }
         return "(" + res + postfix + ")";
