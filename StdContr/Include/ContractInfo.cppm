@@ -11,6 +11,7 @@ using namespace clang;
 using namespace ContractTree;
 
 export struct ContractInfo {
-    std::map<FunctionDecl*, std::vector<TagUnit>> Tags;
+    std::map<FunctionDecl*, std::vector<TagUnit>> DeclToTags;
+    std::map<std::string, std::vector<FunctionDecl*>> TagsToDecl;
     std::map<FunctionDecl*, ContractData> Contracts;
 };

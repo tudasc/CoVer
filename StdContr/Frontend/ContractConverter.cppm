@@ -133,7 +133,7 @@ std::string buildForwardingCall(FunctionDecl const* decl,
   return RetKeyword + Name + "(" + Args + ");";
 }
 
-std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool isPre, FunctionDecl const* decl) {
+std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool isPre, FunctionDecl const* decl, std::map<std::string, std::vector<FunctionDecl*>> tags) {
     if (form->Children.empty()) {
         std::shared_ptr<ContractExpression> expr = std::static_pointer_cast<ContractExpression>(form);
         switch (expr->OP->type()) {
@@ -154,7 +154,8 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 std::shared_ptr<CallOperation const> cOP = std::static_pointer_cast<CallOperation const>(expr->OP);
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(cOP->Function);
-                    DeclToMods[lookupDecl(cOP->Function)].PreCallSentinels.insert(cOP->Function);
+                    FunctionDecl const* target_func = lookupDecl(cOP->Function);
+                    if (target_func) DeclToMods[target_func].PreCallSentinels.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
                     return COVER_PREFIX + cOP->Function;
                 } else {
@@ -163,6 +164,16 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 break;
             }
             case FormulaType::CALLTAG: {
+                std::shared_ptr<CallTagOperation const> ctOP = std::static_pointer_cast<CallTagOperation const>(expr->OP);
+                if (isPre) {
+                    DeclToMods[decl].PreCallChecks.insert(ctOP->Function);
+                    for (FunctionDecl* target : tags[ctOP->Function]) {
+                        DeclToMods[target].PreCallSentinels.insert(ctOP->Function);
+                    }
+                    return COVER_PREFIX + ctOP->Function;
+                } else {
+
+                }
                 break;
             }
             case FormulaType::RELEASE: {
@@ -193,7 +204,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
         std::string_view act_sep;
         std::string res;
         for (std::shared_ptr<ContractFormula> child : form->Children) {
-            res += act_sep + constructFormula(child, isPre, decl);
+            res += act_sep + constructFormula(child, isPre, decl, tags);
             act_sep = sep;
         }
         return "(" + res + postfix + ")";
@@ -282,9 +293,10 @@ export namespace ContractConverter {
     void Convert(ContractInfo DB, CompilerInstance& _CI, std::string output_path) {
         CI = &_CI;
         for (auto& [Decl, Data] : DB.Contracts) {
-            errs() << "Converting contract for " << Decl->getName() << "\n";
-            std::string preCond = constructFormula(Data.Pre, true, Decl);
-            DeclToPreConds[Decl] = preCond;
+            errs() << "Converting contract for " << Decl->getDeclName() << "\n";
+            if(Data.Pre) {
+                DeclToPreConds[Decl] = constructFormula(Data.Pre, true, Decl, DB.TagsToDecl);
+            }
         }
         performOutput(output_path);
     }

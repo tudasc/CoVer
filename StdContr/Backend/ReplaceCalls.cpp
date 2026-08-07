@@ -28,8 +28,6 @@
 #include <cgraph.h>
 #include <stringpool.h>
 
-int plugin_is_GPL_compatible;
-
 // Names of functions whose calls should be rewritten.
 static std::set<std::string> targets;
 
@@ -106,10 +104,10 @@ struct rewrite_pass : gimple_opt_pass {
 
 } // namespace
 
-static void load_targets(const char* path) {
+static void load_targets(std::string path) {
     std::ifstream in(path);
     if (!in) {
-        error("rewrite_calls: cannot open function list %qs", path);
+        error("rewrite_calls: cannot open function list %s", path.c_str());
         return;
     }
     std::string line;
@@ -126,19 +124,8 @@ static void load_targets(const char* path) {
     }
 }
 
-int plugin_init(struct plugin_name_args* plugin_info, struct plugin_gcc_version* version) {
-    if (!plugin_default_version_check(version, &gcc_version))
-        return 1;
-
-    const char* list_file = NULL;
-    for (int i = 0; i < plugin_info->argc; i++)
-        if (!strcmp(plugin_info->argv[i].key, "list"))
-            list_file = plugin_info->argv[i].value;
-
-    if (!list_file) {
-        error("rewrite_calls: missing -fplugin-arg-rewrite_calls-list=FILE");
-        return 1;
-    }
+void setup_funcreplace_pass(struct plugin_name_args* plugin_info, std::string list_file) {
+    if (list_file.empty()) return; // Nothing to do
     load_targets(list_file);
 
     struct register_pass_info pass_info;
@@ -148,5 +135,4 @@ int plugin_init(struct plugin_name_args* plugin_info, struct plugin_gcc_version*
     pass_info.pos_op = PASS_POS_INSERT_AFTER;
 
     register_callback(plugin_info->base_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &pass_info);
-    return 0;
 }

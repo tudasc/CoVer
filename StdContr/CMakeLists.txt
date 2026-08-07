@@ -58,7 +58,9 @@ find_path(GCCPlugin_INCLUDE_DIR gcc-plugin.h
 
 if(GCCPlugin_INCLUDE_DIR)
   add_library(CoVerStdCXXBackend MODULE
+    Backend/Main.cpp
     Backend/ReplaceCalls.cpp
+    Backend/DiscardCoVerAnnots.cpp
   )
 
   target_include_directories(CoVerStdCXXBackend SYSTEM PRIVATE
