@@ -1,5 +1,6 @@
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <llvm/Support/CommandLine.h>
 #include <regex>
@@ -7,10 +8,9 @@
 
 using namespace llvm;
 
-// 1. Create a category to group your wrapper's specific options cleanly in the help output
-static cl::OptionCategory WrapperCategory("CoVer compile wrapper options");
+// Create a category to group wrapper specific options in the help output
+static cl::OptionCategory WrapperCategory("CoVerStdCXX compile wrapper options");
 
-// 2. Define the flags
 static cl::opt<bool> ExecDryRun("dry-run",
     cl::desc("Only show the commands that would be run, but do not perform any. Implies --verbose"),
     cl::cat(WrapperCategory));
@@ -36,9 +36,9 @@ static cl::opt<std::string> ContractFile("contract-file",
     cl::init(""),
     cl::cat(WrapperCategory));
 
-static cl::opt<std::string> TempPath("temporaries-path",
+static cl::opt<std::string> TempPath("temp-path",
     cl::desc("Set where to store temporary files (source with converted contracts/wrappers, backend wrapfile)"),
-    cl::init("/tmp/CoVerStdCXX/"),
+    cl::init("/tmp/CoVerStdCXX"),
     cl::cat(WrapperCategory));
 
 static cl::list<std::string> CompilerParams(cl::Sink,
@@ -79,7 +79,7 @@ std::string exec(std::string const& cmd, bool interactive = true) {
     }
     if (rc != 0) {
         // Cleanup before aborting
-        std::filesystem::remove_all(TempPath.c_str());
+        std::filesystem::remove(TempPath + "/wrapper_compiled");
         exit(rc);
     }
     return res;
@@ -169,7 +169,7 @@ int main(int argc, const char** argv) {
     std::string rem_link, rem_compile;
     std::tie(rem_link, rem_compile) = parseCompilerParams(CompilerParams);
 
-    if (!std::filesystem::exists(TempPath.c_str())) {
+    if (!std::filesystem::exists(TempPath + "/wrapper_compiled")) {
         // Run frontend pass on input header
         execSafe(ClangPath + " -I\"@CONTR_INCLUDE_PATH@\" "
                         + "-fplugin=@COVER_STDCXX_FRONTEND_PATH@ "
@@ -181,6 +181,7 @@ int main(int argc, const char** argv) {
 
         // Compile wrappers
         execSafe(GCCPath + rem_compile + " -c " + opt_level + common_flags + TempPath + "/include.cpp -o " + TempPath + "/include.o");
+        std::ofstream(TempPath + "/wrapper_compiled");
     }
 
     std::string GCCPluginLoad = " -fplugin=@COVER_STDCXX_BACKEND_PATH@ -fplugin-arg-CoVerStdCXXBackend-list=" + TempPath + "/cover_wrapfile ";
@@ -194,5 +195,5 @@ int main(int argc, const char** argv) {
     execSafe(GCCPath + GCCPluginLoad + rem_compile + rem_link + " " + opt_level + common_flags + source_file_paths + " " + TempPath + "/include.o");
 
     // Delete old temporaries at end
-    std::filesystem::remove_all(TempPath.c_str());
+    std::filesystem::remove(TempPath + "/wrapper_compiled");
 }
