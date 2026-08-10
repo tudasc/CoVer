@@ -20,7 +20,9 @@ module;
 #include <llvm/Support/ErrorHandling.h>
 #include <memory>
 #include <set>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
@@ -315,6 +317,12 @@ void performOutput(std::string output_path) {
         // Insert modified function body with forward call
         R.InsertTextAfter(LOC_PRIOR_SEMI(CI, SM, decl), " {\n" + functionBodies[decl] + "    " + buildForwardingCall(decl, CI->getASTContext()) + "\n}");
     }
+    // Copy in the report function 
+    const char reportFunc[] = {
+        #embed "../Templates/ReportFunc.cpp"
+        , '\0'
+    };
+    R.InsertTextAfter(SM.getLocForEndOfFile(SM.getMainFileID()), reportFunc);
 
     // Perform output for include file
     FileID FID = SM.getMainFileID();

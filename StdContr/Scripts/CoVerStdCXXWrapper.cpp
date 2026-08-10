@@ -48,7 +48,7 @@ static cl::opt<std::string> Autocomplete("autocomplete",
     cl::desc("Provide autocompletion for shell"),
     cl::Hidden);
 
-std::string_view constexpr common_flags = " -std=c++26 -fcontracts -I\"@CONTR_INCLUDE_PATH@\" ";
+std::string_view constexpr common_flags = " -g -std=c++26 -fcontracts -I\"@CONTR_INCLUDE_PATH@\" ";
 
 std::regex const source_file_ending(".*(\\.cpp|\\.cc|\\.cxx)$");
 std::regex const link_file_ending(".*(\\.a|\\.so)");
@@ -174,14 +174,14 @@ int main(int argc, const char** argv) {
         execSafe(ClangPath + " -I\"@CONTR_INCLUDE_PATH@\" "
                         + "-fplugin=@COVER_STDCXX_FRONTEND_PATH@ "
                         + "-fplugin-arg-CoVerStdCXXFrontend-output-folder=\"" + TempPath + "\" "
-                        + "-x c++-header " + ContractFile);
+                        + "-g -x c++-header " + ContractFile);
 
         // Compile wrappers
         execSafe(GCCPath + rem_compile + " -fplugin=@COVER_STDCXX_BACKEND_PATH@ -c " + opt_level + common_flags + TempPath + "/include.cpp -o " + TempPath + "/include.o");
         std::ofstream(TempPath + "/wrapper_compiled");
     }
 
-    std::string GCCPluginLoad = " -fplugin=@COVER_STDCXX_BACKEND_PATH@ -fplugin-arg-CoVerStdCXXBackend-list=" + TempPath + "/cover_wrapfile ";
+    std::string GCCPluginLoad = " -g -fplugin=@COVER_STDCXX_BACKEND_PATH@ -fplugin-arg-CoVerStdCXXBackend-list=" + TempPath + "/cover_wrapfile ";
 
     if (!isLinking) {
         execSafe(GCCPath + GCCPluginLoad + rem_compile + opt_level + common_flags + source_file_paths);
