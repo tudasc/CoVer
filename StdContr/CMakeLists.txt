@@ -25,6 +25,7 @@ add_llvm_library(CoVerStdCXXFrontend NO_EXPORT PLUGIN_TOOL MODULE clang
 target_sources(CoVerStdCXXFrontend PRIVATE FILE_SET cover_front_cxx_modules TYPE CXX_MODULES FILES
   Frontend/ContractCollector.cppm
   Frontend/ContractConverter.cppm
+  Frontend/ContractValueCollector.cppm
   Include/ContractInfo.cppm
   Include/FunctionMods.cppm
 )

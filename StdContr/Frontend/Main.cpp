@@ -1,22 +1,36 @@
+#include <clang/AST/ASTConsumer.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendPluginRegistry.h>
+#include <memory>
 
 import ContractCollector;
+import ContractValueCollector;
 import ContractConverter;
+import ContractInfo;
 
 using namespace clang;
 using namespace llvm;
 
-class FuncDeclConsumer : public ASTConsumer {
+class ContractConsumer : public ASTConsumer {
   public:
-    explicit FuncDeclConsumer(CompilerInstance& _CI, std::string _output_folder) : CI(_CI), output_path(_output_folder) {}
+    explicit ContractConsumer(CompilerInstance& _CI, std::string _output_folder) : CI(_CI), output_path(_output_folder) {}
 
     void HandleTranslationUnit(ASTContext& Ctx) override {
         errs() << "Started CoVerStdCXXConverter\n";
-        ContractCollector::FuncDeclVisitor Visitor(Ctx);
-        Visitor.TraverseDecl(Ctx.getTranslationUnitDecl());
-        llvm::outs() << "-- " << Visitor.getContractInfo().Contracts.size() << " CoVer contract(s) encountered\n";
-        ContractConverter::Convert(Visitor.getContractInfo(), CI, output_path);
+        
+        // Parsed result holder
+        ContractInfo info;
+
+        // Get contracts from the func annots
+        ContractCollector::FuncDeclVisitor FuncVisitor(Ctx, info);
+        FuncVisitor.TraverseDecl(Ctx.getTranslationUnitDecl());
+
+        // Get the values from the global contract values
+        ContractValueCollector::VarDeclVisitor VarVisitor(Ctx, info);
+        VarVisitor.TraverseDecl(Ctx.getTranslationUnitDecl());
+
+        llvm::outs() << "-- " << info.Contracts.size() << " CoVer contract(s) encountered\n";
+        ContractConverter::Convert(info, CI, output_path);
     }
 
   private:
@@ -27,7 +41,7 @@ class FuncDeclConsumer : public ASTConsumer {
 class CoVerStdCXXFrontend : public PluginASTAction {
   public:
     std::unique_ptr<ASTConsumer> CreateASTConsumer(CompilerInstance& CI, llvm::StringRef) override {
-        return std::make_unique<FuncDeclConsumer>(CI, output_path);
+        return std::make_unique<ContractConsumer>(CI, output_path);
     }
 
     bool ParseArgs(const CompilerInstance& CI, const std::vector<std::string>& Args) override {

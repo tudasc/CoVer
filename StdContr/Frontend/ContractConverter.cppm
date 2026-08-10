@@ -20,6 +20,7 @@ module;
 #include <llvm/Support/ErrorHandling.h>
 #include <memory>
 #include <set>
+#include <string>
 #include <system_error>
 #include <vector>
 
@@ -45,10 +46,12 @@ struct DeclModifiers {
 
 #define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
 
-constexpr std::string_view COVER_PREFIX = "COVER_SENTINEL_";
+constexpr std::string_view COVER_SENTINEL_PREFIX = "COVER_SENTINEL_";
 
 std::map<FunctionDecl const*,DeclModifiers> DeclToMods;
 std::map<FunctionDecl const*,std::string> DeclToPreConds;
+
+std::set<std::string> ContractVars;
 
 // Copied from ContractManager
 const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF) {
@@ -133,7 +136,19 @@ std::string buildForwardingCall(FunctionDecl const* decl,
   return RetKeyword + Name + "(" + Args + ");";
 }
 
-std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool isPre, FunctionDecl const* decl, std::map<std::string, std::vector<FunctionDecl*>> tags) {
+std::string comparatorToString(Comparator const& comp) {
+    switch (comp) {
+        case NEQ: return "!=";
+        case GT: return ">";
+        case GTEQ: return ">=";
+        case LT: return "<";
+        case LTEQ: return "<=";
+        case EXEQ: return "==";
+        case EQ: return "==";
+    }
+}
+
+std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool isPre, FunctionDecl const* decl, ContractInfo const& DB) {
     if (form->Children.empty()) {
         std::shared_ptr<ContractExpression> expr = std::static_pointer_cast<ContractExpression>(form);
         switch (expr->OP->type()) {
@@ -157,7 +172,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                     FunctionDecl const* target_func = lookupDecl(cOP->Function);
                     if (target_func) DeclToMods[target_func].PreCallSentinels.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
-                    return COVER_PREFIX + cOP->Function;
+                    return COVER_SENTINEL_PREFIX + cOP->Function;
                 } else {
 
                 }
@@ -167,10 +182,10 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 std::shared_ptr<CallTagOperation const> ctOP = std::static_pointer_cast<CallTagOperation const>(expr->OP);
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(ctOP->Function);
-                    for (FunctionDecl* target : tags[ctOP->Function]) {
+                    for (FunctionDecl* target : DB.TagsToDecl.at(ctOP->Function)) {
                         DeclToMods[target].PreCallSentinels.insert(ctOP->Function);
                     }
-                    return COVER_PREFIX + ctOP->Function;
+                    return COVER_SENTINEL_PREFIX + ctOP->Function;
                 } else {
 
                 }
@@ -180,6 +195,27 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 break;
             }
             case FormulaType::PARAM: {
+                std::shared_ptr<ParamOperation const> pOP = std::static_pointer_cast<ParamOperation const>(expr->OP);
+                if (isPre) {
+                    std::string exceptions;
+                    std::string paramreq_str;
+                    std::string callVal = decl->getParamDecl(pOP->idx)->getNameAsString();
+                    for (ParamRequirement const& req : pOP->reqs) {
+                        std::string compstr = comparatorToString(req.comp);
+                        std::string compVal = req.value;
+                        if (req.isArg) compVal = decl->getParamDecl(std::stoi(req.value))->getNameAsString();
+                        else if (DB.ContractValToGlobal.contains(req.value)) compVal = "(" + decl->getParamDecl(pOP->idx)->getType().getAsString() + ")(uintptr_t)" + DB.ContractValToGlobal.at(req.value) + ".value";
+                        if (!req.isArg) ContractVars.insert(req.value);
+                        if (req.comp == Comparator::EXEQ) {
+                            exceptions += callVal + compstr + compVal + " || ";
+                        } else {
+                            paramreq_str += callVal + compstr + compVal + " && ";
+                        }
+                    }
+                    return "((" + exceptions + " false) || (" + paramreq_str + " true))";
+                } else {
+                    llvm_unreachable("Unexpected ParamOp in postcondition!\n");
+                }
                 break;
             }
         }
@@ -204,7 +240,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
         std::string_view act_sep;
         std::string res;
         for (std::shared_ptr<ContractFormula> child : form->Children) {
-            res += act_sep + constructFormula(child, isPre, decl, tags);
+            res += act_sep + constructFormula(child, isPre, decl, DB);
             act_sep = sep;
         }
         return "(" + res + postfix + ")";
@@ -236,7 +272,7 @@ void performOutput(std::string output_path) {
             declRename.insert(decl);
             for (std::string sentinel : mods.PreCallSentinels) {
                 sentinel_strs.insert(sentinel);
-                functionBodies[decl] += ("    " + COVER_PREFIX + sentinel + " = 1;\n").str();
+                functionBodies[decl] += ("    " + COVER_SENTINEL_PREFIX + sentinel + " = 1;\n").str();
             }
         }
     }
@@ -247,7 +283,7 @@ void performOutput(std::string output_path) {
     // Add global sentinel values
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <cstdint>\n");
     for (std::string sentinel : sentinel_strs) {
-        R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("int8_t " + COVER_PREFIX + sentinel + " = 0;\n").str());
+        R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("int8_t " + COVER_SENTINEL_PREFIX + sentinel + " = 0;\n").str());
     }
 
     // Rename functions to wrapper names, add call to orig, and add empty braces to turn into definition
@@ -295,7 +331,7 @@ export namespace ContractConverter {
         for (auto& [Decl, Data] : DB.Contracts) {
             errs() << "Converting contract for " << Decl->getDeclName() << "\n";
             if(Data.Pre) {
-                DeclToPreConds[Decl] = constructFormula(Data.Pre, true, Decl, DB.TagsToDecl);
+                DeclToPreConds[Decl] = constructFormula(Data.Pre, true, Decl, DB);
             }
         }
         performOutput(output_path);

@@ -25,24 +25,16 @@ namespace ContractCollector {
 
 export class FuncDeclVisitor : public RecursiveASTVisitor<FuncDeclVisitor> {
   public:
-    FuncDeclVisitor(ASTContext& Ctx) : SM(Ctx.getSourceManager()) {}
+    FuncDeclVisitor(ASTContext& Ctx, ContractInfo& _info) : SM(Ctx.getSourceManager()), contractInfo(_info) {}
 
     /// Uninstantiated templates are not traversed by default, but their
     /// patterns are declarations we want to see as well.
     bool shouldVisitTemplateInstantiations() const { return true; }
 
     bool VisitFunctionDecl(FunctionDecl* FD) {
-        report(FD);
-        return true;
-    }
-
-    ContractInfo getContractInfo() const { return contractInfo; }
-
-  private:
-    void report(FunctionDecl* FD) {
         SourceLocation Loc = FD->getLocation();
         if (FD->isImplicit() || !SM.isInMainFile(Loc))
-            return;
+            return true;
 
         if (AnnotateAttr* AA = FD->getAttr<AnnotateAttr>()) {
             StringRef annot = AA->getAnnotation();
@@ -56,10 +48,12 @@ export class FuncDeclVisitor : public RecursiveASTVisitor<FuncDeclVisitor> {
                 contractInfo.TagsToDecl[TU.tag].push_back(FD);
             }
         }
+        return true;
     }
 
+  private:
     SourceManager& SM;
-    ContractInfo contractInfo;
+    ContractInfo& contractInfo;
 };
 
 }
