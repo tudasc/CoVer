@@ -306,6 +306,7 @@ paramerror_comm = [
     ("MPI_Sendrecv", 10),
     ("MPI_Allgather", 6),
     ("MPI_Cart_get", 0),
+    ("MPI_Win_create", 4),
 ]
 for func, idx in paramerror_comm:
     add_contract(func, "PRE", f"param!({idx}:^=MPI_COMM_WORLD,!=NULL,!=MPI_COMM_NULL) MSG \"Communicator is invalid\"")
