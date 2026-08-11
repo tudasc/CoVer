@@ -31,6 +31,86 @@
 // Names of functions whose calls should be rewritten.
 static std::set<std::string> targets;
 
+static const char* const real_main_name = "CoVer_RealMain";
+static const char* const generated_main_name = "CoVer_GeneratedMain";
+
+// Rename a function, pinning the assembler name so GCC does not mangle it
+static void rename_function(tree fndecl, const char* name) {
+    tree id = get_identifier(name);
+    if (DECL_NAME(fndecl) == id)
+        return;
+    DECL_NAME(fndecl) = id;
+    symtab->change_decl_assembler_name(fndecl, id);
+}
+
+// Type of argv
+static tree argv_type() { return build_pointer_type(build_pointer_type(char_type_node)); }
+
+// Number of (non-void) parameters in a function type
+static int count_arg_types(tree fntype) {
+    int num = 0;
+    for (tree arg = TYPE_ARG_TYPES(fntype); arg && TREE_VALUE(arg) != void_type_node; arg = TREE_CHAIN(arg))
+        num++;
+    return num;
+}
+
+static tree build_dummy_parm(tree fndecl, const char* name, tree type) {
+    tree parm = build_decl(DECL_SOURCE_LOCATION(fndecl), PARM_DECL, get_identifier(name), type);
+    DECL_ARG_TYPE(parm) = type;
+    DECL_CONTEXT(parm) = fndecl;
+    DECL_ARTIFICIAL(parm) = 1;
+    DECL_IGNORED_P(parm) = 1;
+    TREE_USED(parm) = 1;
+    return parm;
+}
+
+// Transform main -> CoVer_RealMain, add params if required
+static void make_real_main(tree fndecl) {
+    int nargs = count_arg_types(TREE_TYPE(fndecl));
+
+    if (nargs > 2 && DECL_NAME(fndecl) != get_identifier(real_main_name))
+        warning_at(DECL_SOURCE_LOCATION(fndecl), 0, "CoVerStdCXXBackend: parameters of %<main%> beyond argc/argv are not forwarded");
+    rename_function(fndecl, real_main_name);
+
+    if (nargs >= 2) return; // Parameters already present
+
+    // Add missing params
+    int nparms = 0;
+    tree* slot = &DECL_ARGUMENTS(fndecl);
+    while (*slot) {
+        nparms++;
+        slot = &DECL_CHAIN(*slot);
+    }
+    if (nparms == 0) {
+        *slot = build_dummy_parm(fndecl, "unused_argc", integer_type_node);
+        slot = &DECL_CHAIN(*slot);
+    }
+    *slot = build_dummy_parm(fndecl, "unused_argv", argv_type());
+
+    TREE_TYPE(fndecl) = build_function_type_list(TREE_TYPE(TREE_TYPE(fndecl)), integer_type_node, argv_type(), NULL_TREE);
+}
+
+// Add params for calls to main if needed
+static void fixup_real_main_call(gimple_stmt_iterator* gsi, gcall* call, tree callee) {
+    unsigned nargs = gimple_call_num_args(call);
+    if (nargs >= 2) return;
+
+    auto_vec<tree> args;
+    for (unsigned i = 0; i < nargs; i++)
+        args.safe_push(gimple_call_arg(call, i));
+    if (args.length() < 1)
+        args.safe_push(build_int_cst(integer_type_node, 0));
+    args.safe_push(build_int_cst(argv_type(), 0));
+
+    /* Argument count is fixed at construction, so build a new call. */
+    gcall* newcall = gimple_build_call_vec(callee, args);
+    if (gimple_call_lhs(call))
+        gimple_call_set_lhs(newcall, gimple_call_lhs(call));
+    gimple_set_location(newcall, gimple_location(call));
+    gimple_set_block(newcall, gimple_block(call));
+    gsi_replace(gsi, newcall, true);
+}
+
 // Synthesize an extern decl with same type as old_fndecl but name asm_name,
 // and replace the call
 static tree get_replacement_decl(const char* asm_name, tree old_fndecl) {
@@ -68,29 +148,37 @@ struct rewrite_pass : gimple_opt_pass {
         tree fndecl = fun->decl;
         tree asm_id = DECL_ASSEMBLER_NAME(fndecl);
         std::string cur = IDENTIFIER_POINTER(asm_id);
-        if (cur.contains("CoVer_Wrapper_"))
+        if (cur.contains("CoVer_Wrapper_")) return 0;
+
+        /* The generated main takes over the entry point from the original one. */
+        if (cur == generated_main_name) {
+            rename_function(fndecl, "main");
             return 0;
+        }
 
         basic_block bb;
 
         FOR_EACH_BB_FN(bb, fun) {
             for (gimple_stmt_iterator gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi)) {
                 gimple* stmt = gsi_stmt(gsi);
-                if (!is_gimple_call(stmt))
-                    continue;
+                if (!is_gimple_call(stmt)) continue;
 
                 tree callee = gimple_call_fndecl(stmt);
-                if (!callee)
-                    continue;
+                if (!callee) continue;
 
                 /* Match on the mangled (assembler) name. */
                 tree asm_id = DECL_ASSEMBLER_NAME(callee);
-                if (!asm_id)
-                    continue;
+                if (!asm_id) continue;
                 const char* mangled = IDENTIFIER_POINTER(asm_id);
 
-                if (targets.find(mangled) == targets.end())
-                    continue;
+                // Fix calls to main / CoVer_RealMain
+                if (!strcmp(mangled, "main") || !strcmp(mangled, real_main_name)) {
+                    make_real_main(callee);
+                    fixup_real_main_call(&gsi, as_a<gcall*>(stmt), callee);
+                    continue; // stmt is gone, do not touch it below
+                }
+
+                if (!targets.contains(mangled)) continue;
 
                 std::string newname = std::string("CoVer_Wrapper_") + mangled;
                 tree repl = get_replacement_decl(newname.c_str(), callee);
@@ -98,6 +186,9 @@ struct rewrite_pass : gimple_opt_pass {
                 update_stmt(stmt);
             }
         }
+
+        if (cur == "main") make_real_main(fndecl);
+
         return 0;
     }
 };
@@ -125,8 +216,7 @@ static void load_targets(std::string path) {
 }
 
 void setup_funcreplace_pass(struct plugin_name_args* plugin_info, std::string list_file) {
-    if (list_file.empty()) return; // Nothing to do
-    load_targets(list_file);
+    if (!list_file.empty()) load_targets(list_file);
 
     struct register_pass_info pass_info;
     pass_info.pass = new rewrite_pass(g);
