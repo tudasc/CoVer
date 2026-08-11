@@ -42,9 +42,11 @@ namespace {
 CompilerInstance* CI;
 
 struct DeclModifiers {
-    std::set<std::string> PreCallSentinels;
+    std::set<std::string> CallSentinels;
     std::set<std::string> PreCallChecks;
 };
+
+std::map<FunctionDecl const*, std::set<std::string>> PostCallChecks;
 
 #define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
 
@@ -162,6 +164,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
             case FormulaType::RWOP:
             case FormulaType::READ:
             case FormulaType::WRITE:
+                llvm_unreachable("Unexpected memoryop in expression!");
                 break;
             case FormulaType::ALLOC:
                 break;
@@ -169,27 +172,31 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 break;
             case FormulaType::CALL: {
                 std::shared_ptr<CallOperation const> cOP = std::static_pointer_cast<CallOperation const>(expr->OP);
+                FunctionDecl const* target_func = lookupDecl(cOP->Function);
+                if (target_func) DeclToMods[target_func].CallSentinels.insert(cOP->Function);
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(cOP->Function);
-                    FunctionDecl const* target_func = lookupDecl(cOP->Function);
-                    if (target_func) DeclToMods[target_func].PreCallSentinels.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
                     return COVER_SENTINEL_PREFIX + cOP->Function;
                 } else {
-
+                    PostCallChecks[decl].insert(cOP->Function);
+                    DeclToMods[decl].CallSentinels.insert(decl->getNameAsString());
+                    return "true";
                 }
                 break;
             }
             case FormulaType::CALLTAG: {
                 std::shared_ptr<CallTagOperation const> ctOP = std::static_pointer_cast<CallTagOperation const>(expr->OP);
+                for (FunctionDecl* target : DB.TagsToDecl.at(ctOP->Function)) {
+                    DeclToMods[target].CallSentinels.insert(ctOP->Function);
+                }
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(ctOP->Function);
-                    for (FunctionDecl* target : DB.TagsToDecl.at(ctOP->Function)) {
-                        DeclToMods[target].PreCallSentinels.insert(ctOP->Function);
-                    }
                     return COVER_SENTINEL_PREFIX + ctOP->Function;
                 } else {
-
+                    PostCallChecks[decl].insert(ctOP->Function);
+                    DeclToMods[decl].CallSentinels.insert(decl->getNameAsString());
+                    return "true";
                 }
                 break;
             }
@@ -255,7 +262,6 @@ void performOutput(std::string output_path) {
     Rewriter R(SM, CI->getLangOpts());
 
     std::filesystem::create_directories(output_path);
-    std::ofstream backendfile(output_path + "/cover_wrapfile");
 
     std::set<std::string> sentinel_strs;
     std::set<FunctionDecl const*> declRename;
@@ -270,26 +276,49 @@ void performOutput(std::string output_path) {
         // PreCallCheck is contained in precond. Only need to add to wrap list
         if (!mods.PreCallChecks.empty()) declRename.insert(decl);
         // PreCallSentinel needs wrap + set of sentinel value + decl of sentinel value
-        if (!mods.PreCallSentinels.empty()) {
+        if (!mods.CallSentinels.empty()) {
             declRename.insert(decl);
-            for (std::string sentinel : mods.PreCallSentinels) {
+            for (std::string sentinel : mods.CallSentinels) {
                 sentinel_strs.insert(sentinel);
                 functionBodies[decl] += ("    " + COVER_SENTINEL_PREFIX + sentinel + " = 1;\n").str();
             }
         }
     }
 
+    // PostCall requires postcondition in main func
+    std::string postcallcheck;
+    for (std::pair<FunctionDecl const*, std::set<std::string>> PCC : PostCallChecks) {
+        postcallcheck += ("(!" + COVER_SENTINEL_PREFIX + PCC.first->getNameAsString() + " || (").str();
+        for (std::string target : PCC.second) {
+            postcallcheck += (COVER_SENTINEL_PREFIX + target + " && ");
+        }
+        postcallcheck += "true)) && ";
+    }
+    if (!postcallcheck.empty()) postcallcheck += "true";
+
+    // The backend pass renames the original main to CoVer_RealMain and this one to main
+    std::string mainFunc = "extern \"C\" int CoVer_RealMain(int argc, char** argv);\n"
+                           "extern \"C\" int CoVer_GeneratedMain(int argc, char** argv)";
+    if (!postcallcheck.empty()) {
+        // Need to check for postcalls
+        mainFunc += " post(" + postcallcheck + ")";
+    }
+    mainFunc += " { int rc = CoVer_RealMain(argc, argv); COVER_EXIT_SENTINEL = 1; return rc; }\n";
+    R.InsertTextAfter(SM.getLocForEndOfFile(SM.getMainFileID()), mainFunc);
+
     // Add include to original file
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"" + SM.getFileEntryForID(SM.getMainFileID())->tryGetRealPathName().str() + "\"\n");
 
     // Add global sentinel values
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <cstdint>\n");
+    R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "int8_t COVER_EXIT_SENTINEL = 0;\n");
     for (std::string sentinel : sentinel_strs) {
         R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("int8_t " + COVER_SENTINEL_PREFIX + sentinel + " = 0;\n").str());
     }
 
     // Rename functions to wrapper names, add call to orig, and add empty braces to turn into definition
     // Also, generate wrapfile
+    std::ofstream backendfile(output_path + "/cover_wrapfile");
     for (FunctionDecl const* decl : declRename) {
         functionBodies[decl];
         std::string mangledName = getMangledName(decl, CI->getASTContext());
@@ -317,6 +346,7 @@ void performOutput(std::string output_path) {
         // Insert modified function body with forward call
         R.InsertTextAfter(LOC_PRIOR_SEMI(CI, SM, decl), " {\n" + functionBodies[decl] + "    " + buildForwardingCall(decl, CI->getASTContext()) + "\n}");
     }
+
     // Copy in the report function 
     const char reportFunc[] = {
         #embed "../Templates/ReportFunc.cpp"
@@ -338,8 +368,11 @@ export namespace ContractConverter {
         CI = &_CI;
         for (auto& [Decl, Data] : DB.Contracts) {
             errs() << "Converting contract for " << Decl->getDeclName() << "\n";
-            if(Data.Pre) {
+            if (Data.Pre) {
                 DeclToPreConds[Decl] = constructFormula(Data.Pre, true, Decl, DB);
+            }
+            if (Data.Post) {
+                constructFormula(Data.Post, false, Decl, DB);
             }
         }
         performOutput(output_path);
