@@ -10,6 +10,7 @@ module;
 #include <fstream>
 #include <llvm/ADT/RewriteBuffer.h>
 #include <llvm/ADT/StringRef.h>
+#include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
 #include <map>
 #include <clang/AST/Decl.h>
@@ -177,7 +178,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
-                    return COVER_SENTINEL_PREFIX + cOP->Function;
+                    return ("TERM(" + COVER_SENTINEL_PREFIX + cOP->Function + ", \"PRE{" + expr->ExprStr + "}\")").str();
                 } else {
                     PostCallChecks[decl].insert(cOP->Function);
                     DeclToMods[decl].CallSentinels.insert(decl->getNameAsString());
@@ -192,7 +193,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 }
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(ctOP->Function);
-                    return COVER_SENTINEL_PREFIX + ctOP->Function;
+                    return ("TERM(" + COVER_SENTINEL_PREFIX + ctOP->Function + ", \"PRE{" + expr->ExprStr + "}\")").str();
                 } else {
                     PostCallChecks[decl].insert(ctOP->Function);
                     DeclToMods[decl].CallSentinels.insert(decl->getNameAsString());
@@ -221,7 +222,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                             paramreq_str += callVal + compstr + compVal + " && ";
                         }
                     }
-                    return "((" + exceptions + " false) || (" + paramreq_str + " true))";
+                    return "TERM(((" + exceptions + " false) || (" + paramreq_str + " true)), \"PRE{" + expr->ExprStr + "}\")";
                 } else {
                     llvm_unreachable("Unexpected ParamOp in postcondition!\n");
                 }
@@ -290,7 +291,7 @@ void performOutput(std::string output_path) {
     for (std::pair<FunctionDecl const*, std::set<std::string>> PCC : PostCallChecks) {
         postcallcheck += ("(!" + COVER_SENTINEL_PREFIX + PCC.first->getNameAsString() + " || (").str();
         for (std::string target : PCC.second) {
-            postcallcheck += (COVER_SENTINEL_PREFIX + target + " && ");
+            postcallcheck += ("TERM(" + COVER_SENTINEL_PREFIX + target + ", \"" + PCC.first->getNameAsString() + ": call(_tag)!(" + target + ")\") && ").str();
         }
         postcallcheck += "true)) && ";
     }
@@ -301,13 +302,14 @@ void performOutput(std::string output_path) {
                            "extern \"C\" int CoVer_GeneratedMain(int argc, char** argv)";
     if (!postcallcheck.empty()) {
         // Need to check for postcalls
-        mainFunc += " post(" + postcallcheck + ")";
+        mainFunc += " post(cr::check{}(" + postcallcheck + "))";
     }
     mainFunc += " { int rc = CoVer_RealMain(argc, argv); COVER_EXIT_SENTINEL = 1; return rc; }\n";
     R.InsertTextAfter(SM.getLocForEndOfFile(SM.getMainFileID()), mainFunc);
 
-    // Add include to original file
+    // Add includes: orig file, ContractReport.hpp
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"" + SM.getFileEntryForID(SM.getMainFileID())->tryGetRealPathName().str() + "\"\n");
+    R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"ContractReport.hpp\"\n");
 
     // Add global sentinel values
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <cstdint>\n");
@@ -338,7 +340,7 @@ void performOutput(std::string output_path) {
         std::string decl_str = R.getRewrittenText(SM.getExpansionRange(decl->getSourceRange()));
         std::stringstream rewriteDeclStr;
         rewriteDeclStr << decl_str;
-        if (DeclToPreConds.contains(decl)) rewriteDeclStr << " pre(" << DeclToPreConds[decl] << ")";
+        if (DeclToPreConds.contains(decl)) rewriteDeclStr << " pre(cr::check{}(" << DeclToPreConds[decl] << "))";
         rewriteDeclStr << "asm(\"CoVer_Wrapper_" + mangledName + "\")";
         rewriteDeclStr << ";\n";
         R.InsertTextBefore(decl->getBeginLoc(), rewriteDeclStr.str());
@@ -347,7 +349,14 @@ void performOutput(std::string output_path) {
         R.InsertTextAfter(LOC_PRIOR_SEMI(CI, SM, decl), " {\n" + functionBodies[decl] + "    " + buildForwardingCall(decl, CI->getASTContext()) + "\n}");
     }
 
-    // Copy in the report function 
+    // Copy in the report function and output ContractReport header
+    const char reportUtil[] = {
+        #embed "../Templates/ContractReport.hpp"
+        , '\0'
+    };
+    std::error_code EC;
+    raw_fd_ostream out_rep(output_path + "/ContractReport.hpp", EC, sys::fs::OF_Text);
+    out_rep << reportUtil << "\n";
     const char reportFunc[] = {
         #embed "../Templates/ReportFunc.cpp"
         , '\0'
@@ -356,8 +365,7 @@ void performOutput(std::string output_path) {
 
     // Perform output for include file
     FileID FID = SM.getMainFileID();
-    std::error_code EC;
-    llvm::raw_fd_ostream Out(output_path + "/include.cpp", EC, llvm::sys::fs::OF_Text);
+    raw_fd_ostream Out(output_path + "/include.cpp", EC, sys::fs::OF_Text);
     R.getEditBuffer(FID).write(Out);
 }
 
