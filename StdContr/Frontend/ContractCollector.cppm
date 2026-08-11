@@ -41,6 +41,7 @@ export class FuncDeclVisitor : public RecursiveASTVisitor<FuncDeclVisitor> {
             std::optional<ContractTree::ContractData> data = getContractData(annot.str());
             if (!data) {
                 errs() << "Found non-CoVer annotation at " << SM.getFilename(Loc) << ":" << SM.getSpellingLineNumber(Loc) << " for function " << FD->getName() << "\n";
+                return true;
             }
             contractInfo.Contracts.insert({FD, *data});
             contractInfo.DeclToTags[FD].insert(contractInfo.DeclToTags[FD].end(), data->Tags.begin(), data->Tags.end());
