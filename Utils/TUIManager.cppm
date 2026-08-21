@@ -30,7 +30,7 @@ using namespace llvm;
 
 namespace TUIManager {
 
-using Contract = llvm::ContractManagerAnalysis::Contract;
+using Contract = ContractManagerAnalysis::Contract;
 
 export constexpr int UI_ANALYSISINFO_PAD_SIZE = 15;
 
@@ -258,10 +258,10 @@ bool ShowContractDetails(Contract C) {
     return ShowContractFormula(violated_formulas[*menu_options.selected-1], "Inspecting Contract Subformula for Function: " + C.F->getName().str());
 }
 
-export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB) {
+export void StartMenu(ContractManagerAnalysis::ContractDatabase DB) {
     std::vector<std::string> contr_funcs;
     contr_funcs.push_back("Start Analysis");
-    for (llvm::ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
+    for (ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
         contr_funcs.push_back("Read Contract: " + contract.F->getName().str());
     }
 
