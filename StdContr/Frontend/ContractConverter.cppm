@@ -47,6 +47,7 @@ struct DeclModifiers {
     std::set<std::string> CallSentinels;
     std::set<std::string> PreCallChecks;
     std::set<std::string> PostAllocProcessing;
+    std::set<std::string> PostFreeProcessing;
 };
 
 std::map<FunctionDecl const*, std::set<std::string>> PostCallChecks;
@@ -181,13 +182,20 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                         allocSizeStr += "*";
                         cur = cur->other;
                     }
-                    std::string storeAlloc = ("    " + COVER_OPTMP_PREFIX + "Allocs.insert((std::uintptr_t)" + base_ptr + ", (std::uintptr_t)" + allocSizeStr + ");\n").str();
+                    std::string storeAlloc = ("    " + COVER_OPTMP_PREFIX + "Allocs.insert((std::uintptr_t)" + base_ptr + ", (std::uintptr_t)" + allocSizeStr + ");").str();
                     DeclToMods[decl].PostAllocProcessing.insert(storeAlloc);
                     return "true";
                 }
                 break;
             }
             case FormulaType::FREE:
+                if (isPre) {
+                    llvm_unreachable("Did not expect freeop in precondition!");
+                } else {
+                    std::shared_ptr<FreeOperation const> fOP = std::static_pointer_cast<FreeOperation const>(expr->OP);
+                    std::string base_ptr = fOP->contrP == 99 ? "_ret" : decl->getParamDecl(fOP->contrP)->getNameAsString();
+                    DeclToMods[decl].PostFreeProcessing.insert(("    " + COVER_OPTMP_PREFIX + "Allocs.erase((std::uintptr_t)" + base_ptr + ");").str());
+                }
                 break;
             case FormulaType::CALL: {
                 std::shared_ptr<CallOperation const> cOP = std::static_pointer_cast<CallOperation const>(expr->OP);
@@ -289,20 +297,25 @@ void performOutput(std::string output_path) {
 
     // Apply modifications per declaration
     for (auto& [decl, mods] : DeclToMods) {
-        // PreCallCheck is contained in precond. Only need to add to wrap list
-        if (!mods.PreCallChecks.empty()) declRename.insert(decl);
+        declRename.insert(decl);
+
         // PreCallSentinel needs wrap + set of sentinel value + decl of sentinel value
         if (!mods.CallSentinels.empty()) {
-            declRename.insert(decl);
             for (std::string sentinel : mods.CallSentinels) {
                 sentinel_strs.insert(sentinel);
                 functionBodiesPre[decl] += ("    " + COVER_SENTINEL_PREFIX + sentinel + " = 1;\n").str();
             }
         }
 
+        // PostFreeProcessing removes alloc'd value
+        if (!mods.PostFreeProcessing.empty()) {            
+            for (std::string removeAlloc : mods.PostFreeProcessing) {
+                functionBodiesPost[decl] += removeAlloc + "\n";
+            }
+        }
+
         // PostAllocProcessing needs to compute alloc size and store it
         if (!mods.PostAllocProcessing.empty()) {
-            declRename.insert(decl);
             for (std::string storeAlloc : mods.PostAllocProcessing) {
                 functionBodiesPost[decl] += storeAlloc + "\n";
             }
