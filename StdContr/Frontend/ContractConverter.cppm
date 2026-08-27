@@ -169,10 +169,19 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
             case FormulaType::ALLOC: {
                 std::shared_ptr<AllocOperation const> aOP = std::static_pointer_cast<AllocOperation const>(expr->OP);
                 if (isPre) {
-                    return ("TERM(" + COVER_OPTMP_PREFIX + "Allocs.contains(" + decl->getParamDecl(aOP->contrP)->getNameAsString() + "), \"PRE{" + expr->ExprStr + "}\")").str();
+                    return ("TERM(" + COVER_OPTMP_PREFIX + "Allocs.contains((std::uintptr_t)" + decl->getParamDecl(aOP->contrP)->getNameAsString() + "), \"PRE{" + expr->ExprStr + "}\")").str();
                 } else {
-                    std::string storeAlloc = "   " + (aOP->contrP == 99 ? (COVER_OPTMP_PREFIX + "Allocs[_ret];").str() :
-                                                     (COVER_OPTMP_PREFIX + "Allocs[" + decl->getParamDecl(aOP->contrP)->getNameAsString() + "];").str());
+                    std::string base_ptr = aOP->contrP == 99 ? "_ret" : decl->getParamDecl(aOP->contrP)->getNameAsString();
+                    std::string allocSizeStr;
+                    std::shared_ptr<MathExpr> cur = aOP->size;
+                    while (cur) {
+                        std::string value = cur->isArg ? decl->getParamDecl(cur->value)->getNameAsString() : std::to_string(cur->value);
+                        allocSizeStr += value;
+                        if (cur->type == MathType::UNARY_VALUE) break;
+                        allocSizeStr += "*";
+                        cur = cur->other;
+                    }
+                    std::string storeAlloc = ("    " + COVER_OPTMP_PREFIX + "Allocs.insert((std::uintptr_t)" + base_ptr + ", (std::uintptr_t)" + allocSizeStr + ");\n").str();
                     DeclToMods[decl].PostAllocProcessing.insert(storeAlloc);
                     return "true";
                 }
@@ -315,7 +324,7 @@ void performOutput(std::string output_path) {
     if (!postcallcheck.empty()) postcallcheck += "true";
 
     // The backend pass renames the original main to CoVer_RealMain and this one to main
-    std::string mainFunc = "extern \"C\" int CoVer_RealMain(int argc, char** argv);\n"
+    std::string mainFunc = "\nextern \"C\" int CoVer_RealMain(int argc, char** argv);\n"
                            "extern \"C\" int CoVer_GeneratedMain(int argc, char** argv)";
     if (!postcallcheck.empty()) {
         // Need to check for postcalls
@@ -324,15 +333,16 @@ void performOutput(std::string output_path) {
     mainFunc += " { int rc = CoVer_RealMain(argc, argv); COVER_EXIT_SENTINEL = 1; return rc; }\n";
     R.InsertTextAfter(SM.getLocForEndOfFile(SM.getMainFileID()), mainFunc);
 
-    // Add includes: orig file, ContractReport.hpp
+    // Add includes: orig file, util headers
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"" + SM.getFileEntryForID(SM.getMainFileID())->tryGetRealPathName().str() + "\"\n");
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"ContractReport.hpp\"\n");
+    R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"RangeSet.hpp\"\n");
 
     // Add global sentinel values and operation stores
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <cstdint>\n");
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <map>\n");
     R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "int8_t COVER_EXIT_SENTINEL = 0;\n");
-    R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("std::map<void*,int32_t>" + COVER_OPTMP_PREFIX + "Allocs" + ";\n").str());
+    R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("range_set " + COVER_OPTMP_PREFIX + "Allocs" + ";\n").str());
     for (std::string sentinel : sentinel_strs) {
         R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("int8_t " + COVER_SENTINEL_PREFIX + sentinel + " = 0;\n").str());
     }
@@ -375,17 +385,23 @@ void performOutput(std::string output_path) {
                                        (decl->getReturnType()->isVoidType() ? "    " + buildForwardingCall(decl, CI->getASTContext()) + "\n" :
                                                                               "    auto _ret = " + buildForwardingCall(decl, CI->getASTContext()) + "\n") +
                                        functionBodiesPost[decl] +
-                                       (decl->getReturnType()->isVoidType() ? "" : "return _ret;\n") +
+                                       (decl->getReturnType()->isVoidType() ? "" : "    return _ret;\n") +
                                        "}";
         R.InsertTextAfter(LOC_PRIOR_SEMI(CI, SM, decl), fullFunctionBody);
     }
 
-    // Copy in the report function and output ContractReport header
+    // Copy in the report function and output utility headers
+    std::error_code EC;
+    const char rangeSet[] = {
+        #embed "../Templates/RangeSet.hpp"
+        , '\0'
+    };
+    raw_fd_ostream out_range(output_path + "/RangeSet.hpp", EC, sys::fs::OF_Text);
+    out_range << rangeSet << "\n";
     const char reportUtil[] = {
         #embed "../Templates/ContractReport.hpp"
         , '\0'
     };
-    std::error_code EC;
     raw_fd_ostream out_rep(output_path + "/ContractReport.hpp", EC, sys::fs::OF_Text);
     out_rep << reportUtil << "\n";
     const char reportFunc[] = {
