@@ -20,6 +20,7 @@ module;
 #include <clang/Lex/Lexer.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <memory>
+#include <ranges>
 #include <set>
 #include <sstream>
 #include <string>
@@ -45,6 +46,7 @@ CompilerInstance* CI;
 struct DeclModifiers {
     std::set<std::string> CallSentinels;
     std::set<std::string> PreCallChecks;
+    std::set<std::string> PostAllocProcessing;
 };
 
 std::map<FunctionDecl const*, std::set<std::string>> PostCallChecks;
@@ -52,6 +54,7 @@ std::map<FunctionDecl const*, std::set<std::string>> PostCallChecks;
 #define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
 
 constexpr std::string_view COVER_SENTINEL_PREFIX = "COVER_SENTINEL_";
+constexpr std::string_view COVER_OPTMP_PREFIX = "COVER_TMP_";
 
 std::map<FunctionDecl const*,DeclModifiers> DeclToMods;
 std::map<FunctionDecl const*,std::string> DeclToPreConds;
@@ -134,11 +137,7 @@ std::string buildForwardingCall(FunctionDecl const* decl,
     OS.flush();
   }
 
-  std::string RetKeyword;
-  if (!decl->getReturnType()->isVoidType())
-    RetKeyword = "return ";
-
-  return RetKeyword + Name + "(" + Args + ");";
+  return Name + "(" + Args + ");";
 }
 
 std::string comparatorToString(Comparator const& comp) {
@@ -167,8 +166,18 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
             case FormulaType::WRITE:
                 llvm_unreachable("Unexpected memoryop in expression!");
                 break;
-            case FormulaType::ALLOC:
+            case FormulaType::ALLOC: {
+                std::shared_ptr<AllocOperation const> aOP = std::static_pointer_cast<AllocOperation const>(expr->OP);
+                if (isPre) {
+                    return ("TERM(" + COVER_OPTMP_PREFIX + "Allocs.contains(" + decl->getParamDecl(aOP->contrP)->getNameAsString() + "), \"PRE{" + expr->ExprStr + "}\")").str();
+                } else {
+                    std::string storeAlloc = "   " + (aOP->contrP == 99 ? (COVER_OPTMP_PREFIX + "Allocs[_ret];").str() :
+                                                     (COVER_OPTMP_PREFIX + "Allocs[" + decl->getParamDecl(aOP->contrP)->getNameAsString() + "];").str());
+                    DeclToMods[decl].PostAllocProcessing.insert(storeAlloc);
+                    return "true";
+                }
                 break;
+            }
             case FormulaType::FREE:
                 break;
             case FormulaType::CALL: {
@@ -266,14 +275,11 @@ void performOutput(std::string output_path) {
 
     std::set<std::string> sentinel_strs;
     std::set<FunctionDecl const*> declRename;
-    std::map<FunctionDecl const*,std::string> functionBodies;
+    std::map<FunctionDecl const*,std::string> functionBodiesPre;
+    std::map<FunctionDecl const*,std::string> functionBodiesPost;
 
     // Apply modifications per declaration
     for (auto& [decl, mods] : DeclToMods) {
-        // Remove CoVer contract annotation
-        if (AnnotateAttr* AA = decl->getAttr<AnnotateAttr>())
-            R.RemoveText(SM.getExpansionRange(AA->getRange()));
-
         // PreCallCheck is contained in precond. Only need to add to wrap list
         if (!mods.PreCallChecks.empty()) declRename.insert(decl);
         // PreCallSentinel needs wrap + set of sentinel value + decl of sentinel value
@@ -281,10 +287,21 @@ void performOutput(std::string output_path) {
             declRename.insert(decl);
             for (std::string sentinel : mods.CallSentinels) {
                 sentinel_strs.insert(sentinel);
-                functionBodies[decl] += ("    " + COVER_SENTINEL_PREFIX + sentinel + " = 1;\n").str();
+                functionBodiesPre[decl] += ("    " + COVER_SENTINEL_PREFIX + sentinel + " = 1;\n").str();
+            }
+        }
+
+        // PostAllocProcessing needs to compute alloc size and store it
+        if (!mods.PostAllocProcessing.empty()) {
+            declRename.insert(decl);
+            for (std::string storeAlloc : mods.PostAllocProcessing) {
+                functionBodiesPost[decl] += storeAlloc + "\n";
             }
         }
     }
+
+    // Also wrap all funcs that have a precond/postcond
+    for (FunctionDecl const* decl : DeclToPreConds | std::views::keys) declRename.insert(decl);
 
     // PostCall requires postcondition in main func
     std::string postcallcheck;
@@ -311,9 +328,11 @@ void performOutput(std::string output_path) {
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"" + SM.getFileEntryForID(SM.getMainFileID())->tryGetRealPathName().str() + "\"\n");
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"ContractReport.hpp\"\n");
 
-    // Add global sentinel values
+    // Add global sentinel values and operation stores
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <cstdint>\n");
+    R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <map>\n");
     R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "int8_t COVER_EXIT_SENTINEL = 0;\n");
+    R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("std::map<void*,int32_t>" + COVER_OPTMP_PREFIX + "Allocs" + ";\n").str());
     for (std::string sentinel : sentinel_strs) {
         R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("int8_t " + COVER_SENTINEL_PREFIX + sentinel + " = 0;\n").str());
     }
@@ -322,7 +341,12 @@ void performOutput(std::string output_path) {
     // Also, generate wrapfile
     std::ofstream backendfile(output_path + "/cover_wrapfile");
     for (FunctionDecl const* decl : declRename) {
-        functionBodies[decl];
+        // Remove CoVer contract annotation, if it exists
+        if (AnnotateAttr* AA = decl->getAttr<AnnotateAttr>())
+            R.RemoveText(SM.getExpansionRange(AA->getRange()));
+
+        functionBodiesPre[decl];
+        functionBodiesPost[decl];
         std::string mangledName = getMangledName(decl, CI->getASTContext());
         backendfile << mangledName << "\n";
 
@@ -346,7 +370,14 @@ void performOutput(std::string output_path) {
         R.InsertTextBefore(decl->getBeginLoc(), rewriteDeclStr.str());
 
         // Insert modified function body with forward call
-        R.InsertTextAfter(LOC_PRIOR_SEMI(CI, SM, decl), " {\n" + functionBodies[decl] + "    " + buildForwardingCall(decl, CI->getASTContext()) + "\n}");
+        std::string fullFunctionBody = "{\n" +
+                                       functionBodiesPre[decl] +
+                                       (decl->getReturnType()->isVoidType() ? "    " + buildForwardingCall(decl, CI->getASTContext()) + "\n" :
+                                                                              "    auto _ret = " + buildForwardingCall(decl, CI->getASTContext()) + "\n") +
+                                       functionBodiesPost[decl] +
+                                       (decl->getReturnType()->isVoidType() ? "" : "return _ret;\n") +
+                                       "}";
+        R.InsertTextAfter(LOC_PRIOR_SEMI(CI, SM, decl), fullFunctionBody);
     }
 
     // Copy in the report function and output ContractReport header
