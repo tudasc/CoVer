@@ -189,7 +189,7 @@ int main(int argc, const char** argv) {
     }
 
     // Finish normal compilation process
-    execSafe(GCCPath + GCCPluginLoad + rem_compile + rem_link + " " + opt_level + common_flags + source_file_paths + " " + TempPath + "/include.o");
+    execSafe(GCCPath + GCCPluginLoad + rem_compile + rem_link + " " + opt_level + common_flags + source_file_paths + " " + TempPath + "/include.o -Wl,--whole-archive @COVER_INTRINSICS_LIB_PATH@ -Wl,--no-whole-archive");
 
     // Delete old temporaries at end
     std::filesystem::remove(TempPath + "/wrapper_compiled");

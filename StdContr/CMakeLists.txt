@@ -62,6 +62,7 @@ if(GCCPlugin_INCLUDE_DIR)
     Backend/Main.cpp
     Backend/ReplaceCalls.cpp
     Backend/DiscardCoVerAnnots.cpp
+    Backend/RegisterMemory.cpp
   )
 
   target_include_directories(CoVerStdCXXBackend SYSTEM PRIVATE
@@ -86,6 +87,7 @@ endif()
 
 set(COVER_STDCXX_FRONTEND_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerStdCXXFrontend.so")
 set(COVER_STDCXX_BACKEND_PATH "${CMAKE_INSTALL_PREFIX}/lib/CoVerStdCXXBackend.so")
+set(COVER_INTRINSICS_LIB_PATH ${CMAKE_INSTALL_PREFIX}/lib/libCoVerIntrinsics.a)
 set(EXECUTABLE_WRAPPER_NAME CoVerStdCXX)
 configure_file(Scripts/CoVerStdCXXWrapper.cpp ${CMAKE_CURRENT_BINARY_DIR}/CoVerStdCXXWrapper_configured.cpp @ONLY)
 add_executable(${EXECUTABLE_WRAPPER_NAME} ${CMAKE_CURRENT_BINARY_DIR}/CoVerStdCXXWrapper_configured.cpp)
