@@ -31,9 +31,6 @@
 // Names of functions whose calls should be rewritten.
 static std::set<std::string> targets;
 
-static const char* const real_main_name = "CoVer_RealMain";
-static const char* const generated_main_name = "CoVer_GeneratedMain";
-
 // Rename a function, pinning the assembler name so GCC does not mangle it
 static void rename_function(tree fndecl, const char* name) {
     tree id = get_identifier(name);
@@ -68,9 +65,9 @@ static tree build_dummy_parm(tree fndecl, const char* name, tree type) {
 static void make_real_main(tree fndecl) {
     int nargs = count_arg_types(TREE_TYPE(fndecl));
 
-    if (nargs > 2 && DECL_NAME(fndecl) != get_identifier(real_main_name))
+    if (nargs > 2 && DECL_NAME(fndecl) != get_identifier("CoVer_RealMain"))
         warning_at(DECL_SOURCE_LOCATION(fndecl), 0, "CoVerStdCXXBackend: parameters of %<main%> beyond argc/argv are not forwarded");
-    rename_function(fndecl, real_main_name);
+    rename_function(fndecl, "CoVer_RealMain");
 
     if (nargs >= 2) return; // Parameters already present
 
@@ -151,7 +148,7 @@ struct rewrite_pass : gimple_opt_pass {
         if (cur.contains("CoVer_Wrapper_")) return 0;
 
         /* The generated main takes over the entry point from the original one. */
-        if (cur == generated_main_name) {
+        if (cur == "CoVer_GeneratedMain") {
             rename_function(fndecl, "main");
             return 0;
         }
@@ -172,7 +169,7 @@ struct rewrite_pass : gimple_opt_pass {
                 const char* mangled = IDENTIFIER_POINTER(asm_id);
 
                 // Fix calls to main / CoVer_RealMain
-                if (!strcmp(mangled, "main") || !strcmp(mangled, real_main_name)) {
+                if (!strcmp(mangled, "main") || !strcmp(mangled, "CoVer_RealMain")) {
                     make_real_main(callee);
                     fixup_real_main_call(&gsi, as_a<gcall*>(stmt), callee);
                     continue; // stmt is gone, do not touch it below

@@ -498,7 +498,7 @@ void __attribute__((weak)) CoVer_RegisterGlobal(void* ptr, int64_t size) CONTRAC
 void* calloc(size_t num, size_t size) __THROW CONTRACT( POST {{ alloc!(R[ 0 _arg * 1 _arg]) }});
 void* malloc(size_t size) __THROW CONTRACT( POST {{ alloc!(R[0 _arg]) }});
 
-void free(void*) __THROW CONTRACT( POST {{ free!(0) }});
+void free(void* ptr) __THROW CONTRACT( POST {{ free!(0) }});
 
 #ifdef __cplusplus
 }}
