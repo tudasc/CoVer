@@ -5,6 +5,7 @@ module;
 #include <clang/AST/DeclCXX.h>
 #include <clang/AST/DeclarationName.h>
 #include <clang/Basic/IdentifierTable.h>
+#include <clang/Basic/SourceLocation.h>
 #include <clang/Basic/SourceManager.h>
 #include <filesystem>
 #include <fstream>
@@ -54,7 +55,6 @@ std::map<FunctionDecl const*, std::set<std::string>> PostCallChecks;
 
 #define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
 
-constexpr std::string_view COVER_SENTINEL_PREFIX = "COVER_SENTINEL_";
 constexpr std::string_view COVER_OPTMP_PREFIX = "COVER_TMP_";
 
 std::map<FunctionDecl const*,DeclModifiers> DeclToMods;
@@ -81,7 +81,7 @@ FunctionDecl* lookupDecl(std::string target) {
     auto res = CI->getASTContext().getTranslationUnitDecl()->lookup(DN);
     for (NamedDecl* ND : res) {
         if (FunctionDecl* FD = dyn_cast<FunctionDecl>(ND)) {
-            return FD;
+            return FD->getCanonicalDecl();
         }
     }
     return nullptr;
@@ -205,7 +205,12 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
-                    return ("TERM(" + COVER_SENTINEL_PREFIX + cOP->Function + ", \"PRE{" + expr->ExprStr + "}\")").str();
+                    std::string callCheck = (COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function).str();
+                    // Also check params
+                    for (CallParam const& param : cOP->Params) {
+                        callCheck += (" && " + COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function + ".checkMatch(" + std::to_string(param.callP) + ", (uintptr_t)" + decl->getParamDecl(param.contrP)->getNameAsString() + ")").str();
+                    }
+                    return "TERM(" + callCheck + ", \"PRE{" + expr->ExprStr + "}\")";
                 } else {
                     PostCallChecks[decl].insert(cOP->Function);
                     DeclToMods[decl].CallSentinels.insert(decl->getNameAsString());
@@ -220,7 +225,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 }
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(ctOP->Function);
-                    return ("TERM(" + COVER_SENTINEL_PREFIX + ctOP->Function + ", \"PRE{" + expr->ExprStr + "}\")").str();
+                    return ("TERM(" + COVER_OPTMP_PREFIX + "Callsites_" + ctOP->Function + ", \"PRE{" + expr->ExprStr + "}\")").str();
                 } else {
                     PostCallChecks[decl].insert(ctOP->Function);
                     DeclToMods[decl].CallSentinels.insert(decl->getNameAsString());
@@ -304,7 +309,11 @@ void performOutput(std::string output_path) {
         if (!mods.CallSentinels.empty()) {
             for (std::string sentinel : mods.CallSentinels) {
                 sentinel_strs.insert(sentinel);
-                functionBodiesPre[decl] += ("    " + COVER_SENTINEL_PREFIX + sentinel + " = 1;\n").str();
+                functionBodiesPre[decl] += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + sentinel + ".addCallsite({").str();
+                for (int i = 0; i+1 < decl->getNumParams(); i++) {
+                    functionBodiesPre[decl] += "(uintptr_t)" + decl->getParamDecl(i)->getNameAsString() + ", ";
+                }
+                functionBodiesPre[decl] += decl->getNumParams() != 0 ? "(uintptr_t)" + decl->getParamDecl(decl->getNumParams() - 1)->getNameAsString() + "});\n" : "});\n";
             }
         }
 
@@ -329,9 +338,9 @@ void performOutput(std::string output_path) {
     // PostCall requires postcondition in main func
     std::string postcallcheck;
     for (std::pair<FunctionDecl const*, std::set<std::string>> PCC : PostCallChecks) {
-        postcallcheck += ("(!" + COVER_SENTINEL_PREFIX + PCC.first->getNameAsString() + " || (").str();
+        postcallcheck += ("(!" + COVER_OPTMP_PREFIX + "Callsites_" + PCC.first->getNameAsString() + " || (").str();
         for (std::string target : PCC.second) {
-            postcallcheck += ("TERM(" + COVER_SENTINEL_PREFIX + target + ", \"" + PCC.first->getNameAsString() + ": call(_tag)!(" + target + ")\") && ").str();
+            postcallcheck += ("TERM(" + COVER_OPTMP_PREFIX + "Callsites_" + target + ", \"" + PCC.first->getNameAsString() + ": call(_tag)!(" + target + ")\") && ").str();
         }
         postcallcheck += "true)) && ";
     }
@@ -349,8 +358,6 @@ void performOutput(std::string output_path) {
 
     // Add includes: orig file, util headers
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"" + SM.getFileEntryForID(SM.getMainFileID())->tryGetRealPathName().str() + "\"\n");
-    R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"ContractReport.hpp\"\n");
-    R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"RangeSet.hpp\"\n");
 
     // Add global sentinel values and operation stores
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <cstdint>\n");
@@ -358,7 +365,7 @@ void performOutput(std::string output_path) {
     R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "int8_t COVER_EXIT_SENTINEL = 0;\n");
     R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("range_set " + COVER_OPTMP_PREFIX + "Allocs" + ";\n").str());
     for (std::string sentinel : sentinel_strs) {
-        R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("int8_t " + COVER_SENTINEL_PREFIX + sentinel + " = 0;\n").str());
+        R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("FuncCallsites " + COVER_OPTMP_PREFIX + "Callsites_" + sentinel + ";\n").str());
     }
 
     // Rename functions to wrapper names, add call to orig, and add empty braces to turn into definition
@@ -382,7 +389,7 @@ void performOutput(std::string output_path) {
         }
 
         // Rename to wrapper func
-        R.InsertTextBefore(decl->getLocation(), "CoVer_Wrapper_");
+        R.ReplaceText(decl->getNameInfo().getSourceRange(), "CoVer_Wrapper_" + mangledName);
 
         // Get declaration and insert with asm + contract
         std::string decl_str = R.getRewrittenText(SM.getExpansionRange(decl->getSourceRange()));
@@ -410,14 +417,26 @@ void performOutput(std::string output_path) {
         #embed "../Templates/RangeSet.hpp"
         , '\0'
     };
-    raw_fd_ostream out_range(output_path + "/RangeSet.hpp", EC, sys::fs::OF_Text);
-    out_range << rangeSet << "\n";
+    const char callsiteUtil[] = {
+        #embed "../Templates/Callsites.hpp"
+        , '\0'
+    };
     const char reportUtil[] = {
         #embed "../Templates/ContractReport.hpp"
         , '\0'
     };
-    raw_fd_ostream out_rep(output_path + "/ContractReport.hpp", EC, sys::fs::OF_Text);
-    out_rep << reportUtil << "\n";
+    const std::pair<std::string, const char *> templates[] = {
+        {"RangeSet.hpp",       rangeSet},
+        {"Callsites.hpp",      callsiteUtil},
+        {"ContractReport.hpp", reportUtil},
+    };
+    for (auto &[name, data] : templates) {
+        std::error_code EC;
+        raw_fd_ostream outfile(output_path + "/" + name, EC, sys::fs::OF_Text);
+        outfile << data << "\n";
+        R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"" + name + "\"\n");
+    }
+
     const char reportFunc[] = {
         #embed "../Templates/ReportFunc.cpp"
         , '\0'
