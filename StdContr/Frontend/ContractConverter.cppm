@@ -194,7 +194,8 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 } else {
                     std::shared_ptr<FreeOperation const> fOP = std::static_pointer_cast<FreeOperation const>(expr->OP);
                     std::string base_ptr = fOP->contrP == 99 ? "_ret" : decl->getParamDecl(fOP->contrP)->getNameAsString();
-                    DeclToMods[decl].PostFreeProcessing.insert(("    " + COVER_OPTMP_PREFIX + "Allocs.erase((std::uintptr_t)" + base_ptr + ");").str());
+                    std::string eraseCall = ("    " + COVER_OPTMP_PREFIX + "Allocs.erase((std::uintptr_t)" + base_ptr + ");").str();
+                    DeclToMods[decl].PostFreeProcessing.insert(eraseCall);
                 }
                 break;
             case FormulaType::CALL: {
