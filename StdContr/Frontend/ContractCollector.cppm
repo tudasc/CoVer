@@ -13,6 +13,7 @@ module;
 #include <clang/AST/Attrs.inc>
 #include <optional>
 #include <map>
+#include <set>
 
 export module ContractCollector;
 import ContractDataExtractor;
@@ -32,6 +33,11 @@ export class FuncDeclVisitor : public RecursiveASTVisitor<FuncDeclVisitor> {
     bool shouldVisitTemplateInstantiations() const { return true; }
 
     bool VisitFunctionDecl(FunctionDecl* FD) {
+        // Deduplicate multiple decls
+        FD = FD->getCanonicalDecl();
+        if (processed.contains(FD)) return true;
+        else processed.insert(FD);
+
         SourceLocation Loc = FD->getLocation();
         if (FD->isImplicit() || !SM.isInMainFile(Loc))
             return true;
@@ -53,6 +59,7 @@ export class FuncDeclVisitor : public RecursiveASTVisitor<FuncDeclVisitor> {
     }
 
   private:
+    std::set<FunctionDecl*> processed;
     SourceManager& SM;
     ContractInfo& contractInfo;
 };
