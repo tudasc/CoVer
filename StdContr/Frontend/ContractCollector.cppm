@@ -47,7 +47,7 @@ export class FuncDeclVisitor : public RecursiveASTVisitor<FuncDeclVisitor> {
             contractInfo.Contracts.insert({FD, *data});
             contractInfo.DeclToTags[FD].insert(contractInfo.DeclToTags[FD].end(), data->Tags.begin(), data->Tags.end());
             for (ContractTree::TagUnit const& TU : data->Tags) {
-                contractInfo.TagsToDecl[TU.tag].push_back(FD);
+                contractInfo.TagsToDecl[TU.tag].insert(FD);
             }
         }
         return true;

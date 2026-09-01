@@ -53,6 +53,14 @@ struct DeclModifiers {
 
 std::string PostCallChecks;
 
+struct ReleaseInfo {
+    std::set<FunctionDecl const*> forbFuncs;
+    std::set<FunctionDecl const*> relFuncs;
+    std::string relStr;
+    std::string origExpr;
+};
+std::map<FunctionDecl const*, ReleaseInfo> ReleaseChecks;
+
 #define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
 
 constexpr std::string_view COVER_OPTMP_PREFIX = "COVER_TMP_";
@@ -153,7 +161,26 @@ std::string comparatorToString(Comparator const& comp) {
     }
 }
 
-std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool isPre, FunctionDecl const* decl, ContractInfo const& DB) {
+std::set<FunctionDecl const*> createSentinelsForCallOp(std::shared_ptr<CallOperation const> const& cOP, ContractInfo const& DB) {
+    if (cOP->type() == FormulaType::CALL) {
+        FunctionDecl const* target_func = lookupDecl(cOP->Function);
+        if (target_func) DeclToMods[target_func].CallSentinels[cOP->Function] = {};
+        return {target_func};
+    } else {
+        for (FunctionDecl const* target : DB.TagsToDecl.at(cOP->Function)) {
+            std::set<int> indices;
+            for (TagUnit const& tag : DB.DeclToTags.at(target)) {
+                if (tag.tag != cOP->Function) continue;
+                if (tag.param) indices.insert(*tag.param);
+            }
+            DeclToMods[target].CallSentinels[cOP->Function] = indices;
+        }
+        return DB.TagsToDecl.at(cOP->Function);
+    }
+}
+
+enum struct ConstructMode { PRE, POSTCALL, RELEASE };
+std::string constructFormula(std::shared_ptr<ContractFormula> const& form, ConstructMode mode, FunctionDecl const* decl, ContractInfo const& DB) {
     if (form->Children.empty()) {
         std::shared_ptr<ContractExpression> expr = std::static_pointer_cast<ContractExpression>(form);
         switch (expr->OP->type()) {
@@ -169,7 +196,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 break;
             case FormulaType::ALLOC: {
                 std::shared_ptr<AllocOperation const> aOP = std::static_pointer_cast<AllocOperation const>(expr->OP);
-                if (isPre) {
+                if (mode == ConstructMode::PRE) {
                     return ("TERM(" + COVER_OPTMP_PREFIX + "Allocs.contains((std::uintptr_t)" + decl->getParamDecl(aOP->contrP)->getNameAsString() + "), \"PRE{" + expr->ExprStr + "}\")").str();
                 } else {
                     std::string base_ptr = aOP->contrP == 99 ? "_ret" : decl->getParamDecl(aOP->contrP)->getNameAsString();
@@ -189,7 +216,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                 break;
             }
             case FormulaType::FREE:
-                if (isPre) {
+                if (mode == ConstructMode::PRE) {
                     llvm_unreachable("Did not expect freeop in precondition!");
                 } else {
                     std::shared_ptr<FreeOperation const> fOP = std::static_pointer_cast<FreeOperation const>(expr->OP);
@@ -202,20 +229,8 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
             case FormulaType::CALL:
             case FormulaType::CALLTAG: {
                 std::shared_ptr<CallOperation const> cOP = std::static_pointer_cast<CallOperation const>(expr->OP);
-                if (expr->OP->type() == FormulaType::CALL) {
-                    FunctionDecl const* target_func = lookupDecl(cOP->Function);
-                    if (target_func) DeclToMods[target_func].CallSentinels[cOP->Function] = {};
-                } else {
-                    for (FunctionDecl* target : DB.TagsToDecl.at(cOP->Function)) {
-                        std::set<int> indices;
-                        for (TagUnit const& tag : DB.DeclToTags.at(target)) {
-                            if (tag.tag != cOP->Function) continue;
-                            if (tag.param) indices.insert(*tag.param);
-                        }
-                        DeclToMods[target].CallSentinels[cOP->Function] = indices;
-                    }
-                }
-                if (isPre) {
+                createSentinelsForCallOp(cOP, DB);
+                if (mode == ConstructMode::PRE) {
                     DeclToMods[decl].PreCallChecks.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
                     std::string callCheck = (COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function).str();
@@ -230,18 +245,40 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                         callCheck += ", " + std::to_string((int)param.contrParamAccess) + ")";
                     }
                     return "TERM(" + callCheck + ", \"PRE{" + expr->ExprStr + "}\")";
-                } else {
+                } else if (mode == ConstructMode::POSTCALL) {
                     DeclToMods[decl].CallSentinels[decl->getNameAsString()] = {};
                     return ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_" + decl->getNameAsString() + " || " + COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function + "), \"POST{" + expr->ExprStr + "}\")").str();
-                }
+                } else return "true";
                 break;
             }
             case FormulaType::RELEASE: {
-                break;
+                if (mode == ConstructMode::PRE) llvm_unreachable("Unexpected releaseOp in precondition!");
+                if (mode == ConstructMode::POSTCALL) return "true"; // Dont interfere here, current return will be used for supplier not forbop
+                std::shared_ptr<ReleaseOperation const> rOP = std::static_pointer_cast<ReleaseOperation const>(expr->OP);
+                switch (rOP->Forbidden->type()) {
+                    case FormulaType::READ:
+                    case FormulaType::WRITE:
+                        #warning TODO
+                        return "true";
+                    case FormulaType::CALL:
+                    case FormulaType::CALLTAG: {
+                        // Ensure CallSentinels exist for forbOp
+                        std::set<FunctionDecl const*> forbCalls = createSentinelsForCallOp(std::static_pointer_cast<CallOperation const>(rOP->Forbidden), DB);
+                        ReleaseChecks[decl].forbFuncs.insert(forbCalls.begin(), forbCalls.end());
+                        ReleaseChecks[decl].origExpr = expr->ExprStr;
+                        break;
+                    }
+                    default: llvm_unreachable("Unexpected forbidden operation!");
+                }
+                // For relop, dont need sentinels. They just need to delete the matching funccalls on match
+                std::shared_ptr<CallOperation const> rcOp = std::static_pointer_cast<CallOperation const>(rOP->Until);
+                if (rcOp->type() == FormulaType::CALL) ReleaseChecks[decl].relFuncs.insert(lookupDecl(rcOp->Function));
+                else ReleaseChecks[decl].relFuncs.insert(DB.TagsToDecl.at(rcOp->Function).begin(), DB.TagsToDecl.at(rcOp->Function).end());
+                return "false"; // Later, at forb func, adds to "!supplier || false. TODO Add param support"
             }
             case FormulaType::PARAM: {
                 std::shared_ptr<ParamOperation const> pOP = std::static_pointer_cast<ParamOperation const>(expr->OP);
-                if (isPre) {
+                if (mode == ConstructMode::PRE) {
                     std::string exceptions;
                     std::string paramreq_str;
                     std::string callVal = decl->getParamDecl(pOP->idx)->getNameAsString();
@@ -285,11 +322,26 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
         std::string_view act_sep;
         std::string res;
         for (std::shared_ptr<ContractFormula> child : form->Children) {
-            res += act_sep + constructFormula(child, isPre, decl, DB);
+            res += act_sep + constructFormula(child, mode, decl, DB);
             act_sep = sep;
         }
         return "(" + res + postfix + ")";
     }
+}
+
+std::string createCallsiteParamStr(FunctionDecl const* decl, std::string name, std::set<int> indices) {
+    std::string res;
+    res += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + name + ".addCallsite({{").str();
+    for (int i = 0; i+1 < decl->getNumParams(); i++) {
+        res += "(uintptr_t)" + decl->getParamDecl(i)->getNameAsString() + ", ";
+    }
+    if (decl->getNumParams() != 0) res += "(uintptr_t)" + decl->getParamDecl(decl->getNumParams() - 1)->getNameAsString();
+    res += "}, {";
+    for (int idx : indices) {
+        res += std::to_string(idx) + ", ";
+    }
+    res += "}});\n";
+    return res;
 }
 
 void performOutput(std::string output_path) {
@@ -311,16 +363,7 @@ void performOutput(std::string output_path) {
         if (!mods.CallSentinels.empty()) {
             for (std::pair<std::string,std::set<int>> sentinel : mods.CallSentinels) {
                 sentinel_strs.insert(sentinel.first);
-                functionBodiesPre[decl] += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + sentinel.first + ".addCallsite({{").str();
-                for (int i = 0; i+1 < decl->getNumParams(); i++) {
-                    functionBodiesPre[decl] += "(uintptr_t)" + decl->getParamDecl(i)->getNameAsString() + ", ";
-                }
-                if (decl->getNumParams() != 0) functionBodiesPre[decl] += "(uintptr_t)" + decl->getParamDecl(decl->getNumParams() - 1)->getNameAsString();
-                functionBodiesPre[decl] += "}, {";
-                for (int idx : sentinel.second) {
-                    functionBodiesPre[decl] += std::to_string(idx) + ", ";
-                }
-                functionBodiesPre[decl] += "}});\n";
+                functionBodiesPre[decl] += createCallsiteParamStr(decl, sentinel.first, sentinel.second);
             }
         }
 
@@ -336,6 +379,19 @@ void performOutput(std::string output_path) {
             for (std::string storeAlloc : mods.PostAllocProcessing) {
                 functionBodiesPost[decl] += storeAlloc + "\n";
             }
+        }
+    }
+
+    // Add contracts to forbidden funcs for release
+    for (auto& [supplier, info] : ReleaseChecks) {
+        functionBodiesPre[supplier] += createCallsiteParamStr(supplier, "REL" + supplier->getNameAsString(), {});
+        sentinel_strs.insert("REL" + supplier->getNameAsString());
+        for (FunctionDecl const* forbF : info.forbFuncs) {
+            if (!DeclToPreConds[forbF].empty()) DeclToPreConds[forbF] += " && ";
+            DeclToPreConds[forbF] += ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + " || " + info.relStr + "), \"POST{" + info.origExpr + "}\")").str();
+        }
+        for (FunctionDecl const* relF : info.relFuncs) {
+            functionBodiesPost[relF] += ("    " + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + ".clear();\n").str();
         }
     }
 
@@ -453,10 +509,12 @@ export namespace ContractConverter {
         for (auto& [Decl, Data] : DB.Contracts) {
             errs() << "Converting contract for " << Decl->getDeclName() << "\n";
             if (Data.Pre) {
-                DeclToPreConds[Decl] = constructFormula(Data.Pre, true, Decl, DB);
+                DeclToPreConds[Decl] = constructFormula(Data.Pre, ConstructMode::PRE, Decl, DB);
             }
             if (Data.Post) {
-                PostCallChecks += constructFormula(Data.Post, false, Decl, DB) + " && ";
+                PostCallChecks += constructFormula(Data.Post, ConstructMode::POSTCALL, Decl, DB) + " && ";
+                std::string newRel = constructFormula(Data.Post, ConstructMode::RELEASE, Decl, DB);
+                if (ReleaseChecks.contains(Decl)) ReleaseChecks[Decl].relStr = newRel; // Avoid adding useless conditions if decl did not contain relops
             }
         }
         if (!PostCallChecks.empty()) PostCallChecks.erase(PostCallChecks.size() - 4); // Remove trailing " && "
