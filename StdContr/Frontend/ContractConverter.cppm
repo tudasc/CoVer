@@ -51,7 +51,7 @@ struct DeclModifiers {
     std::set<std::string> PostFreeProcessing;
 };
 
-std::map<FunctionDecl const*, std::set<std::string>> PostCallChecks;
+std::string PostCallChecks;
 
 #define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
 
@@ -196,6 +196,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                     std::string base_ptr = fOP->contrP == 99 ? "_ret" : decl->getParamDecl(fOP->contrP)->getNameAsString();
                     std::string eraseCall = ("    " + COVER_OPTMP_PREFIX + "Allocs.erase((std::uintptr_t)" + base_ptr + ");").str();
                     DeclToMods[decl].PostFreeProcessing.insert(eraseCall);
+                    return "true";
                 }
                 break;
             case FormulaType::CALL:
@@ -230,9 +231,8 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                     }
                     return "TERM(" + callCheck + ", \"PRE{" + expr->ExprStr + "}\")";
                 } else {
-                    PostCallChecks[decl].insert(cOP->Function);
                     DeclToMods[decl].CallSentinels[decl->getNameAsString()] = {};
-                    return "true";
+                    return ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_" + decl->getNameAsString() + " || " + COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function + "), \"POST{" + expr->ExprStr + "}\")").str();
                 }
                 break;
             }
@@ -290,7 +290,6 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
         }
         return "(" + res + postfix + ")";
     }
-    return "";
 }
 
 void performOutput(std::string output_path) {
@@ -343,23 +342,12 @@ void performOutput(std::string output_path) {
     // Also wrap all funcs that have a precond/postcond
     for (FunctionDecl const* decl : DeclToPreConds | std::views::keys) declRename.insert(decl);
 
-    // PostCall requires postcondition in main func
-    std::string postcallcheck;
-    for (std::pair<FunctionDecl const*, std::set<std::string>> PCC : PostCallChecks) {
-        postcallcheck += ("(!" + COVER_OPTMP_PREFIX + "Callsites_" + PCC.first->getNameAsString() + " || (").str();
-        for (std::string target : PCC.second) {
-            postcallcheck += ("TERM(" + COVER_OPTMP_PREFIX + "Callsites_" + target + ", \"" + PCC.first->getNameAsString() + ": call(_tag)!(" + target + ")\") && ").str();
-        }
-        postcallcheck += "true)) && ";
-    }
-    if (!postcallcheck.empty()) postcallcheck += "true";
-
     // The backend pass renames the original main to CoVer_RealMain and this one to main
     std::string mainFunc = "\nextern \"C\" int CoVer_RealMain(int argc, char** argv);\n"
                            "extern \"C\" int CoVer_GeneratedMain(int argc, char** argv)";
-    if (!postcallcheck.empty()) {
+    if (!PostCallChecks.empty()) {
         // Need to check for postcalls
-        mainFunc += " post(cr::check{}(" + postcallcheck + "))";
+        mainFunc += " post(cr::check{}(" + PostCallChecks + "))";
     }
     mainFunc += " { int rc = CoVer_RealMain(argc, argv); COVER_EXIT_SENTINEL = 1; return rc; }\n";
     R.InsertTextAfter(SM.getLocForEndOfFile(SM.getMainFileID()), mainFunc);
@@ -468,9 +456,10 @@ export namespace ContractConverter {
                 DeclToPreConds[Decl] = constructFormula(Data.Pre, true, Decl, DB);
             }
             if (Data.Post) {
-                constructFormula(Data.Post, false, Decl, DB);
+                PostCallChecks += constructFormula(Data.Post, false, Decl, DB) + " && ";
             }
         }
+        if (!PostCallChecks.empty()) PostCallChecks.erase(PostCallChecks.size() - 4); // Remove trailing " && "
         performOutput(output_path);
     }
 }
