@@ -33,11 +33,6 @@ export class FuncDeclVisitor : public RecursiveASTVisitor<FuncDeclVisitor> {
     bool shouldVisitTemplateInstantiations() const { return true; }
 
     bool VisitFunctionDecl(FunctionDecl* FD) {
-        // Deduplicate multiple decls
-        FD = FD->getCanonicalDecl();
-        if (processed.contains(FD)) return true;
-        else processed.insert(FD);
-
         SourceLocation Loc = FD->getLocation();
         if (FD->isImplicit() || !SM.isInMainFile(Loc))
             return true;
