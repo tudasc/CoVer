@@ -45,7 +45,7 @@ namespace {
 CompilerInstance* CI;
 
 struct DeclModifiers {
-    std::set<std::string> CallSentinels;
+    std::map<std::string,std::set<int>> CallSentinels;
     std::set<std::string> PreCallChecks;
     std::set<std::string> PostAllocProcessing;
     std::set<std::string> PostFreeProcessing;
@@ -198,37 +198,40 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, bool 
                     DeclToMods[decl].PostFreeProcessing.insert(eraseCall);
                 }
                 break;
-            case FormulaType::CALL: {
+            case FormulaType::CALL:
+            case FormulaType::CALLTAG: {
                 std::shared_ptr<CallOperation const> cOP = std::static_pointer_cast<CallOperation const>(expr->OP);
-                FunctionDecl const* target_func = lookupDecl(cOP->Function);
-                if (target_func) DeclToMods[target_func].CallSentinels.insert(cOP->Function);
+                if (expr->OP->type() == FormulaType::CALL) {
+                    FunctionDecl const* target_func = lookupDecl(cOP->Function);
+                    if (target_func) DeclToMods[target_func].CallSentinels[cOP->Function] = {};
+                } else {
+                    for (FunctionDecl* target : DB.TagsToDecl.at(cOP->Function)) {
+                        std::set<int> indices;
+                        for (TagUnit const& tag : DB.DeclToTags.at(target)) {
+                            if (tag.tag != cOP->Function) continue;
+                            if (tag.param) indices.insert(*tag.param);
+                        }
+                        DeclToMods[target].CallSentinels[cOP->Function] = indices;
+                    }
+                }
                 if (isPre) {
                     DeclToMods[decl].PreCallChecks.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
                     std::string callCheck = (COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function).str();
                     // Also check params
                     for (CallParam const& param : cOP->Params) {
-                        callCheck += (" && " + COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function + ".checkMatch(" + std::to_string(param.callP) + ", (uintptr_t)" + decl->getParamDecl(param.contrP)->getNameAsString() + ")").str();
+                        callCheck += (" && " + COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function).str();
+                        if (!param.callPisTagVar) {
+                            callCheck += ".checkMatchParam(" + std::to_string(param.callP) + ", (uintptr_t)" + decl->getParamDecl(param.contrP)->getNameAsString();
+                        } else {
+                            callCheck += ".checkMatchTag((uintptr_t)" + decl->getParamDecl(param.contrP)->getNameAsString();
+                        }
+                        callCheck += ", " + std::to_string((int)param.contrParamAccess) + ")";
                     }
                     return "TERM(" + callCheck + ", \"PRE{" + expr->ExprStr + "}\")";
                 } else {
                     PostCallChecks[decl].insert(cOP->Function);
-                    DeclToMods[decl].CallSentinels.insert(decl->getNameAsString());
-                    return "true";
-                }
-                break;
-            }
-            case FormulaType::CALLTAG: {
-                std::shared_ptr<CallTagOperation const> ctOP = std::static_pointer_cast<CallTagOperation const>(expr->OP);
-                for (FunctionDecl* target : DB.TagsToDecl.at(ctOP->Function)) {
-                    DeclToMods[target].CallSentinels.insert(ctOP->Function);
-                }
-                if (isPre) {
-                    DeclToMods[decl].PreCallChecks.insert(ctOP->Function);
-                    return ("TERM(" + COVER_OPTMP_PREFIX + "Callsites_" + ctOP->Function + ", \"PRE{" + expr->ExprStr + "}\")").str();
-                } else {
-                    PostCallChecks[decl].insert(ctOP->Function);
-                    DeclToMods[decl].CallSentinels.insert(decl->getNameAsString());
+                    DeclToMods[decl].CallSentinels[decl->getNameAsString()] = {};
                     return "true";
                 }
                 break;
@@ -307,13 +310,18 @@ void performOutput(std::string output_path) {
 
         // PreCallSentinel needs wrap + set of sentinel value + decl of sentinel value
         if (!mods.CallSentinels.empty()) {
-            for (std::string sentinel : mods.CallSentinels) {
-                sentinel_strs.insert(sentinel);
-                functionBodiesPre[decl] += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + sentinel + ".addCallsite({").str();
+            for (std::pair<std::string,std::set<int>> sentinel : mods.CallSentinels) {
+                sentinel_strs.insert(sentinel.first);
+                functionBodiesPre[decl] += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + sentinel.first + ".addCallsite({{").str();
                 for (int i = 0; i+1 < decl->getNumParams(); i++) {
                     functionBodiesPre[decl] += "(uintptr_t)" + decl->getParamDecl(i)->getNameAsString() + ", ";
                 }
-                functionBodiesPre[decl] += decl->getNumParams() != 0 ? "(uintptr_t)" + decl->getParamDecl(decl->getNumParams() - 1)->getNameAsString() + "});\n" : "});\n";
+                if (decl->getNumParams() != 0) functionBodiesPre[decl] += "(uintptr_t)" + decl->getParamDecl(decl->getNumParams() - 1)->getNameAsString();
+                functionBodiesPre[decl] += "}, {";
+                for (int idx : sentinel.second) {
+                    functionBodiesPre[decl] += std::to_string(idx) + ", ";
+                }
+                functionBodiesPre[decl] += "}});\n";
             }
         }
 
