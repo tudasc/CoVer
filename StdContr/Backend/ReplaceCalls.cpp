@@ -1,14 +1,3 @@
-/* rewrite_calls.c
- * Build: gcc -I`gcc -print-file-name=plugin`/include -fPIC -shared \
- *            rewrite_calls.c -o rewrite_calls.so
- * Use:   gcc -fplugin=./rewrite_calls.so \
- *            -fplugin-arg-rewrite_calls-list=funcs.txt file.c
- *
- * funcs.txt: one function name per line. Blank lines and lines
- * starting with '#' are ignored. Each call to <name> becomes a
- * call to wrap_<name>.
- */
-
 #include <string>
 #include <set>
 #include <fstream>

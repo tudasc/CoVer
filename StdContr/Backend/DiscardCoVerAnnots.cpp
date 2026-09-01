@@ -1,11 +1,6 @@
-/* annotate_attr.c — register the "annotate" attribute with GCC.
-   Fold this into your existing plugin, or build standalone. */
-
 #include "gcc-plugin.h"
 #include "plugin-version.h"
 #include "tree.h"
-#include "stringpool.h"
-#include "attribs.h" /* register_attribute, struct attribute_spec */
 
 /* Handler invoked when GCC applies the attribute to a decl/type.
    Returning without setting *no_add_attrs = true keeps the attribute
