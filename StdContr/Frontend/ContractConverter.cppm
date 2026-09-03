@@ -209,7 +209,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                         allocSizeStr += "*";
                         cur = cur->other;
                     }
-                    std::string storeAlloc = ("    " + COVER_OPTMP_PREFIX + "Allocs.insert((std::uintptr_t)" + base_ptr + ", (std::uintptr_t)" + allocSizeStr + ");").str();
+                    std::string storeAlloc = ("    " + COVER_OPTMP_PREFIX + "Allocs.insert((std::uintptr_t)" + (aOP->contrParamAccess == ParamAccess::DEREF ? "*(void**)" : "") + base_ptr + ", (std::uintptr_t)" + allocSizeStr + ");").str();
                     DeclToMods[decl].PostAllocProcessing.insert(storeAlloc);
                     return "true";
                 }
