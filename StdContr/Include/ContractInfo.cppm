@@ -1,6 +1,7 @@
 module;
 
 #include <map>
+#include <set>
 #include <clang/AST/Decl.h>
 #include "ContractTree.hpp"
 
@@ -40,8 +41,8 @@ export struct ContractValue {
 };
 
 export struct ContractInfo {
-    std::map<FunctionDecl*, std::vector<TagUnit>> DeclToTags;
-    std::map<std::string, std::vector<FunctionDecl*>> TagsToDecl;
+    std::map<FunctionDecl const*, std::vector<TagUnit>> DeclToTags;
+    std::map<std::string, std::set<FunctionDecl const*>> TagsToDecl;
     std::map<FunctionDecl*, ContractData> Contracts;
     std::map<std::string,std::string> ContractValToGlobal;
 };
