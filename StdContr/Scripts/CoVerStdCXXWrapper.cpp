@@ -50,7 +50,7 @@ static cl::opt<std::string> Autocomplete("autocomplete",
 
 std::string_view constexpr common_flags = " -g -std=c++26 -fcontracts -I\"@CONTR_INCLUDE_PATH@\" ";
 
-std::regex const source_file_ending(".*(\\.cpp|\\.cc|\\.cxx)$");
+std::regex const source_file_ending(".*(\\.cpp|\\.cc|\\.cxx|\\.c)$");
 std::regex const link_file_ending(".*(\\.a|\\.so)");
 std::regex const obj_file_ending(".*(\\.o|\\.ll)");
 
@@ -189,7 +189,8 @@ int main(int argc, const char** argv) {
     }
 
     // Finish normal compilation process
-    execSafe(GCCPath + GCCPluginLoad + rem_compile + rem_link + " " + opt_level + common_flags + source_file_paths + " " + TempPath + "/include.o -Wl,--whole-archive @COVER_INTRINSICS_LIB_PATH@ -Wl,--no-whole-archive");
+    #warning TODO check if need to remove -lstdc++exp once contract and std::stacktrace support matures
+    execSafe(GCCPath + GCCPluginLoad + rem_compile + rem_link + " " + opt_level + common_flags + source_file_paths + dest_arg + " " + TempPath + "/include.o -Wl,--whole-archive @COVER_INTRINSICS_LIB_PATH@ -Wl,--no-whole-archive -lstdc++ -lstdc++exp");
 
     // Delete old temporaries at end
     std::filesystem::remove(TempPath + "/wrapper_compiled");
