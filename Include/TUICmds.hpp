@@ -12,6 +12,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 #include "TUITraceTypes.hpp"
@@ -224,6 +225,16 @@ CmdResult CmdPatch(std::vector<std::string>& args, CmdContext<T>& ctx) {
 }
 
 template<typename T>
+CmdResult CmdDump(std::vector<std::string>& args, CmdContext<T>& ctx) {
+    std::error_code EC;
+    raw_fd_ostream out(args[0], EC);
+    Module* M = ctx.trace_by_blocks.begin()->first_entry->loc->getModule();
+    M->print(out, nullptr);
+    out << "\n";
+    return {CmdResultCode::SUCCESS_CONTINUE, "Wrote module IR to " + args[0]};
+}
+
+template<typename T>
 CmdResult CmdHistory(std::vector<std::string>&, CmdContext<T>& ctx) {
     int constexpr res_size = 17;
     std::vector<ftxui::Element> lines;
@@ -304,6 +315,7 @@ std::vector<CmdInfo<T>> TraceCommands = {
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
     {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdDiff<T>},
     {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdPatch<T>},
+    {"dump",          "[filepath]",                                               "Write module to file", 1, CmdDump<T>},
     {"history",       "",                                                         "Print the current commands applied", 0, CmdHistory<T>},
     {"exit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
     {"quit",          "",                                                         "Exit the debugger", 0, CmdExit<T>},
