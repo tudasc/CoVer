@@ -63,7 +63,16 @@ struct ReleaseInfo {
     std::string origExpr;
 };
 std::map<FunctionDecl const*, ReleaseInfo> ReleaseChecks;
-std::map<FunctionDecl const*, std::set<std::pair<std::string,std::string>>> ReleaseResponsibilities;
+
+// One sentinel a forbidden function has to clear when it violates an obligation
+struct ReleaseResponsibility {
+    std::string sentinel;
+    std::string concrete;
+    std::string store;
+    std::vector<std::string> queries;
+    auto operator<=>(ReleaseResponsibility const&) const = default;
+};
+std::map<FunctionDecl const*, std::set<ReleaseResponsibility>> ReleaseResponsibilities;
 int ReleaseIdxMax = 0;
 
 #define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
@@ -268,14 +277,15 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                 std::shared_ptr<ReleaseOperation const> rOP = std::static_pointer_cast<ReleaseOperation const>(expr->OP);
                 ReleaseChecks[decl].origExpr = expr->ExprStr;
                 std::string forbID = "(CoVer_RelCheck_" + std::to_string(ReleaseIdxMax++) + ")";
+                std::string store = (COVER_OPTMP_PREFIX + "Callsites_REL" + decl->getNameAsString()).str();
                 switch (rOP->Forbidden->type()) {
                     case FormulaType::READ:
                     case FormulaType::WRITE: {
                         FunctionDecl const* forbDecl = rOP->Forbidden->type() == FormulaType::READ ? memRF : memWF;
                         std::shared_ptr<RWOperation const> rwOP = std::static_pointer_cast<RWOperation const>(rOP->Forbidden);
                         ReleaseChecks[decl].forbFuncs.insert(forbDecl);
-                        std::string concrete = ("!" + COVER_OPTMP_PREFIX + "Callsites_REL" + decl->getNameAsString() + ".checkMatchParam(" + std::to_string(rwOP->contrP) + ", (uintptr_t)ptr, " + std::to_string((int)ParamAccess::NORMAL) + ")").str();
-                        ReleaseResponsibilities[forbDecl].insert({forbID, concrete});
+                        std::string query = store + ".checkMatchParam(" + std::to_string(rwOP->contrP) + ", (uintptr_t)ptr, " + std::to_string((int)ParamAccess::NORMAL) + ")";
+                        ReleaseResponsibilities[forbDecl].insert({forbID, "!" + query, store, {query}});
                         break;
                     }
                     case FormulaType::CALL:
@@ -285,10 +295,11 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                         ReleaseChecks[decl].forbFuncs.insert(forbDecls.begin(), forbDecls.end());
                         for (FunctionDecl const* forbDecl : forbDecls) {
                             std::string concrete = "false";
+                            std::vector<std::string> queries;
                             for (CallParam const& param : forbCallOp->Params) {
-                                concrete += (" || !" + COVER_OPTMP_PREFIX + "Callsites_REL" + decl->getNameAsString()).str();
+                                std::string query = store + ".checkMatchParam(" + std::to_string(param.contrP) + ", (uintptr_t)";
                                 if (!param.callPisTagVar) {
-                                    concrete += ".checkMatchParam(" + std::to_string(param.contrP) + ", (uintptr_t)" + forbDecl->getParamDecl(param.callP)->getNameAsString();
+                                    query += forbDecl->getParamDecl(param.callP)->getNameAsString();
                                 } else {
                                     int tagIdx = -1;
                                     for (TagUnit const& tag : DB.DeclToTags.at(forbDecl)) {
@@ -296,11 +307,13 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                                         tagIdx = *tag.param;
                                         break;
                                     }
-                                    concrete += ".checkMatchParam(" + std::to_string(param.contrP) + ", (uintptr_t)" + forbDecl->getParamDecl(tagIdx)->getNameAsString();
+                                    query += forbDecl->getParamDecl(tagIdx)->getNameAsString();
                                 }
-                                concrete += ", " + std::to_string((int)param.contrParamAccess) + ")";
+                                query += ", " + std::to_string((int)param.contrParamAccess) + ")";
+                                queries.push_back(query);
+                                concrete += " || !" + query;
                             }
-                            ReleaseResponsibilities[forbDecl].insert({forbID, concrete});
+                            ReleaseResponsibilities[forbDecl].insert({forbID, concrete, queries.empty() ? "" : store, queries});
                         }
                         break;
                     }
@@ -380,6 +393,35 @@ std::string createCallsiteParamStr(FunctionDecl const* decl, std::string name, s
     return res;
 }
 
+// Group release responsibilities by store for efficiency
+std::string createReleaseBodyStr(std::set<ReleaseResponsibility> const& resps) {
+    std::string res;
+
+    std::map<std::string, std::vector<ReleaseResponsibility const*>> byStore;
+    for (ReleaseResponsibility const& resp : resps) {
+        if (resp.store.empty()) res += "    if (!(" + resp.concrete + ")) " + resp.sentinel + " = 0;\n";
+        else byStore[resp.store].push_back(&resp);
+    }
+
+    for (auto const& [store, group] : byStore) {
+        std::map<std::string, std::string> queryVar;
+        std::string decls, updates;
+        for (ReleaseResponsibility const* resp : group) {
+            std::string concrete = resp->concrete;
+            for (std::string const& query : resp->queries) {
+                auto [it, isNew] = queryVar.try_emplace(query, "cover_relq_" + std::to_string(queryVar.size()));
+                if (isNew) decls += "        bool const " + it->second + " = " + query + ";\n";
+                for (std::size_t pos; (pos = concrete.find(query)) != std::string::npos;)
+                    concrete.replace(pos, query.size(), it->second);
+            }
+            updates += "        if (!(" + concrete + ")) " + resp->sentinel + " = 0;\n";
+        }
+        res += "    if (" + store + ") {\n" + decls + updates + "    }\n";
+    }
+
+    return res;
+}
+
 void performOutput(std::string output_path) {
     SourceManager& SM = CI->getSourceManager();
     Rewriter R(SM, CI->getLangOpts());
@@ -425,10 +467,9 @@ void performOutput(std::string output_path) {
         sentinel_strs.insert("REL" + supplier->getNameAsString());
         for (FunctionDecl const* forbDecl : info.forbFuncs) {
             std::string concrete_templ = info.relStr;
-            for (std::pair<std::string,std::string> IDinfo : ReleaseResponsibilities[forbDecl]) {
-                if (std::size_t pos = concrete_templ.find(IDinfo.first); pos != std::string::npos)
-                    concrete_templ.replace(pos, IDinfo.first.size(), IDinfo.second);
-                functionBodiesPost[forbDecl] += "    if (!(" + IDinfo.second + ")) " + IDinfo.first + " = 0;\n";
+            for (ReleaseResponsibility const& resp : ReleaseResponsibilities[forbDecl]) {
+                if (std::size_t pos = concrete_templ.find(resp.sentinel); pos != std::string::npos)
+                    concrete_templ.replace(pos, resp.sentinel.size(), resp.concrete);
             }
             if (!DeclToPreConds[forbDecl].empty()) DeclToPreConds[forbDecl] += " && ";
             DeclToPreConds[forbDecl] += ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + " || " + concrete_templ + "), \"POST{" + info.origExpr + "}\")").str();
@@ -438,6 +479,10 @@ void performOutput(std::string output_path) {
             functionBodiesPost[relF] += ("    " + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + ".clear();\n").str();
         }
     }
+
+    // Create function bodies for all forbidden funcs
+    for (auto const& [forbDecl, resps] : ReleaseResponsibilities)
+        functionBodiesPost[forbDecl] += createReleaseBodyStr(resps);
 
     // Also wrap all funcs that have a precond/postcond
     for (FunctionDecl const* decl : DeclToPreConds | std::views::keys) declRename.insert(decl);
