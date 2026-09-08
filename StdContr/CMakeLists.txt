@@ -63,6 +63,7 @@ if(GCCPlugin_INCLUDE_DIR)
     Backend/ReplaceCalls.cpp
     Backend/DiscardCoVerAnnots.cpp
     Backend/RegisterMemory.cpp
+    Backend/InstrumentMemory.cpp
   )
 
   target_include_directories(CoVerStdCXXBackend SYSTEM PRIVATE
