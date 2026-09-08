@@ -25,12 +25,12 @@ class FuncCallsites {
         void addCallsite(Callsite const& callsite) {
             callsites.push_back(callsite);
         }
-        void eraseOnMatchParam(int32_t idx, uintptr_t val, int8_t const& acc) {
+        void eraseOnMatchParam(int32_t const& idx, uintptr_t const& val, int8_t const& acc) {
             std::erase_if(callsites, [&](Callsite const& callsite){
                 return primitiveMatch(val, callsite.params[idx], (ParamAccess)acc);
             });
         }
-        void eraseOnMatchTag(uintptr_t val, int8_t const& acc) {
+        void eraseOnMatchTag(uintptr_t const& val, int8_t const& acc) {
             std::erase_if(callsites, [&](Callsite const& callsite){
                 for (int idx : callsite.tag_idx) {
                     if (primitiveMatch(val, callsite.params[idx], (ParamAccess)acc)) return true;
@@ -39,12 +39,12 @@ class FuncCallsites {
             });
         }
         void clear() { callsites.clear(); }
-        bool checkMatchParam(int32_t idx, uintptr_t val, int8_t const& acc) const {
+        bool checkMatchParam(int32_t const& idx, uintptr_t const& val, int8_t const& acc) const {
             return std::any_of(callsites.begin(), callsites.end(), [&](Callsite const& callsite){
                 return primitiveMatch(val, callsite.params[idx], (ParamAccess)acc);
             });
         }
-        bool checkMatchTag(uintptr_t val, int8_t const& acc) const {
+        bool checkMatchTag(uintptr_t const& val, int8_t const& acc) const {
             return std::any_of(callsites.begin(), callsites.end(), [&](Callsite const& callsite){
                 for (int idx : callsite.tag_idx) {
                     if (primitiveMatch(val, callsite.params[idx], (ParamAccess)acc)) return true;
