@@ -433,6 +433,7 @@ void performOutput(std::string output_path) {
             DeclToPreConds[forbDecl] += ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + " || " + concrete_templ + "), \"POST{" + info.origExpr + "}\")").str();
         }
         for (FunctionDecl const* relF : info.relFuncs) {
+            declRename.insert(relF);
             functionBodiesPost[relF] += ("    " + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + ".clear();\n").str();
         }
     }
