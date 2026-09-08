@@ -273,7 +273,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                         FunctionDecl const* forbDecl = rOP->Forbidden->type() == FormulaType::READ ? memRF : memWF;
                         std::shared_ptr<RWOperation const> rwOP = std::static_pointer_cast<RWOperation const>(rOP->Forbidden);
                         ReleaseChecks[decl].forbFuncs.insert(forbDecl);
-                        std::string concrete = ("!" + COVER_OPTMP_PREFIX + "Callsites_REL" + decl->getNameAsString() + ".checkMatchParam(" + std::to_string(rwOP->contrP) + ", (uintptr_t)ptr, " + std::to_string((int)rwOP->contrParamAccess) + ")").str();
+                        std::string concrete = ("!" + COVER_OPTMP_PREFIX + "Callsites_REL" + decl->getNameAsString() + ".checkMatchParam(" + std::to_string(rwOP->contrP) + ", (uintptr_t)ptr, " + std::to_string((int)ParamAccess::NORMAL) + ")").str();
                         ReleaseResponsibilities[forbDecl].insert({forbID, concrete});
                         break;
                     }

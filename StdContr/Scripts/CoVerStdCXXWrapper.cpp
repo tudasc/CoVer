@@ -177,7 +177,7 @@ int main(int argc, const char** argv) {
                         + "-g -x c++-header " + ContractFile);
 
         // Compile wrappers
-        execSafe(GCCPath + rem_compile + " -fplugin=@COVER_STDCXX_BACKEND_PATH@ -c " + opt_level + common_flags + TempPath + "/include.cpp -o " + TempPath + "/include.o");
+        execSafe(GCCPath + rem_compile + " -fplugin=@COVER_STDCXX_BACKEND_PATH@ -fplugin-arg-CoVerStdCXXBackend-runtime -c " + opt_level + common_flags + TempPath + "/include.cpp -o " + TempPath + "/include.o");
         std::ofstream(TempPath + "/wrapper_compiled");
     }
 
