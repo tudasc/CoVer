@@ -173,7 +173,8 @@ std::set<FunctionDecl const*> getCallOpTgts(std::shared_ptr<CallOperation const>
     if (cOP->type() == FormulaType::CALL) {
         FunctionDecl const* target_func = lookupDecl(cOP->Function);
         if (target_func && createSentinels) DeclToMods[target_func].CallSentinels[cOP->Function] = {};
-        return {target_func};
+        if (target_func) return {target_func};
+        else return {};
     } else {
         if (createSentinels) {
             for (FunctionDecl const* target : DB.TagsToDecl.at(cOP->Function)) {
