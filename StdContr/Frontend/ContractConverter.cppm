@@ -1,12 +1,15 @@
 module;
 
 #include <clang/AST/ASTContext.h>
+#include <clang/AST/Attr.h>
 #include <clang/AST/DeclBase.h>
 #include <clang/AST/DeclCXX.h>
 #include <clang/AST/DeclarationName.h>
+#include <clang/AST/TypeBase.h>
 #include <clang/Basic/IdentifierTable.h>
 #include <clang/Basic/SourceLocation.h>
 #include <clang/Basic/SourceManager.h>
+#include <clang/Basic/Specifiers.h>
 #include <filesystem>
 #include <fstream>
 #include <llvm/ADT/RewriteBuffer.h>
@@ -60,6 +63,8 @@ struct ReleaseInfo {
     std::string origExpr;
 };
 std::map<FunctionDecl const*, ReleaseInfo> ReleaseChecks;
+std::map<FunctionDecl const*, std::set<std::pair<std::string,std::string>>> ReleaseResponsibilities;
+int ReleaseIdxMax = 0;
 
 #define LOC_PRIOR_SEMI(CI, SM, decl) (Lexer::getLocForEndOfToken(SM.getExpansionRange(decl->getSourceRange()).getEnd(), 0, SM, CI->getASTContext().getLangOpts()))
 
@@ -69,6 +74,9 @@ std::map<FunctionDecl const*,DeclModifiers> DeclToMods;
 std::map<FunctionDecl const*,std::string> DeclToPreConds;
 
 std::set<std::string> ContractVars;
+
+FunctionDecl* memRF;
+FunctionDecl* memWF;
 
 // Copied from ContractManager
 const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF) {
@@ -161,19 +169,21 @@ std::string comparatorToString(Comparator const& comp) {
     }
 }
 
-std::set<FunctionDecl const*> createSentinelsForCallOp(std::shared_ptr<CallOperation const> const& cOP, ContractInfo const& DB) {
+std::set<FunctionDecl const*> getCallOpTgts(std::shared_ptr<CallOperation const> const& cOP, ContractInfo const& DB, bool createSentinels) {
     if (cOP->type() == FormulaType::CALL) {
         FunctionDecl const* target_func = lookupDecl(cOP->Function);
-        if (target_func) DeclToMods[target_func].CallSentinels[cOP->Function] = {};
+        if (target_func && createSentinels) DeclToMods[target_func].CallSentinels[cOP->Function] = {};
         return {target_func};
     } else {
-        for (FunctionDecl const* target : DB.TagsToDecl.at(cOP->Function)) {
-            std::set<int> indices;
-            for (TagUnit const& tag : DB.DeclToTags.at(target)) {
-                if (tag.tag != cOP->Function) continue;
-                if (tag.param) indices.insert(*tag.param);
+        if (createSentinels) {
+            for (FunctionDecl const* target : DB.TagsToDecl.at(cOP->Function)) {
+                std::set<int> indices;
+                for (TagUnit const& tag : DB.DeclToTags.at(target)) {
+                    if (tag.tag != cOP->Function) continue;
+                    if (tag.param) indices.insert(*tag.param);
+                }
+                DeclToMods[target].CallSentinels[cOP->Function] = indices;
             }
-            DeclToMods[target].CallSentinels[cOP->Function] = indices;
         }
         return DB.TagsToDecl.at(cOP->Function);
     }
@@ -229,7 +239,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
             case FormulaType::CALL:
             case FormulaType::CALLTAG: {
                 std::shared_ptr<CallOperation const> cOP = std::static_pointer_cast<CallOperation const>(expr->OP);
-                createSentinelsForCallOp(cOP, DB);
+                getCallOpTgts(cOP, DB, true);
                 if (mode == ConstructMode::PRE) {
                     DeclToMods[decl].PreCallChecks.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
@@ -255,17 +265,42 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                 if (mode == ConstructMode::PRE) llvm_unreachable("Unexpected releaseOp in precondition!");
                 if (mode == ConstructMode::POSTCALL) return "true"; // Dont interfere here, current return will be used for supplier not forbop
                 std::shared_ptr<ReleaseOperation const> rOP = std::static_pointer_cast<ReleaseOperation const>(expr->OP);
+                ReleaseChecks[decl].origExpr = expr->ExprStr;
+                std::string forbID = "(CoVer_RelCheck_" + std::to_string(ReleaseIdxMax++) + ")";
                 switch (rOP->Forbidden->type()) {
                     case FormulaType::READ:
-                    case FormulaType::WRITE:
-                        #warning TODO
-                        return "true";
+                    case FormulaType::WRITE: {
+                        FunctionDecl const* forbDecl = rOP->Forbidden->type() == FormulaType::READ ? memRF : memWF;
+                        std::shared_ptr<RWOperation const> rwOP = std::static_pointer_cast<RWOperation const>(rOP->Forbidden);
+                        ReleaseChecks[decl].forbFuncs.insert(forbDecl);
+                        std::string concrete = ("!" + COVER_OPTMP_PREFIX + "Callsites_REL" + decl->getNameAsString() + ".checkMatchParam(" + std::to_string(rwOP->contrP) + ", (uintptr_t)ptr, " + std::to_string((int)rwOP->contrParamAccess) + ")").str();
+                        ReleaseResponsibilities[forbDecl].insert({forbID, concrete});
+                        break;
+                    }
                     case FormulaType::CALL:
                     case FormulaType::CALLTAG: {
-                        // Ensure CallSentinels exist for forbOp
-                        std::set<FunctionDecl const*> forbCalls = createSentinelsForCallOp(std::static_pointer_cast<CallOperation const>(rOP->Forbidden), DB);
-                        ReleaseChecks[decl].forbFuncs.insert(forbCalls.begin(), forbCalls.end());
-                        ReleaseChecks[decl].origExpr = expr->ExprStr;
+                        std::shared_ptr<CallOperation const> forbCallOp = std::static_pointer_cast<CallOperation const>(rOP->Forbidden);
+                        std::set<FunctionDecl const*> forbDecls = getCallOpTgts(forbCallOp, DB, false);
+                        ReleaseChecks[decl].forbFuncs.insert(forbDecls.begin(), forbDecls.end());
+                        for (FunctionDecl const* forbDecl : forbDecls) {
+                            std::string concrete = "false";
+                            for (CallParam const& param : forbCallOp->Params) {
+                                concrete += (" || !" + COVER_OPTMP_PREFIX + "Callsites_REL" + decl->getNameAsString()).str();
+                                if (!param.callPisTagVar) {
+                                    concrete += ".checkMatchParam(" + std::to_string(param.contrP) + ", (uintptr_t)" + forbDecl->getParamDecl(param.callP)->getNameAsString();
+                                } else {
+                                    int tagIdx = -1;
+                                    for (TagUnit const& tag : DB.DeclToTags.at(forbDecl)) {
+                                        if (tag.tag != forbCallOp->Function) continue;
+                                        tagIdx = *tag.param;
+                                        break;
+                                    }
+                                    concrete += ".checkMatchParam(" + std::to_string(param.contrP) + ", (uintptr_t)" + forbDecl->getParamDecl(tagIdx)->getNameAsString();
+                                }
+                                concrete += ", " + std::to_string((int)param.contrParamAccess) + ")";
+                            }
+                            ReleaseResponsibilities[forbDecl].insert({forbID, concrete});
+                        }
                         break;
                     }
                     default: llvm_unreachable("Unexpected forbidden operation!");
@@ -274,7 +309,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                 std::shared_ptr<CallOperation const> rcOp = std::static_pointer_cast<CallOperation const>(rOP->Until);
                 if (rcOp->type() == FormulaType::CALL) ReleaseChecks[decl].relFuncs.insert(lookupDecl(rcOp->Function));
                 else ReleaseChecks[decl].relFuncs.insert(DB.TagsToDecl.at(rcOp->Function).begin(), DB.TagsToDecl.at(rcOp->Function).end());
-                return "false"; // Later, at forb func, adds to "!supplier || false. TODO Add param support"
+                return forbID;
             }
             case FormulaType::PARAM: {
                 std::shared_ptr<ParamOperation const> pOP = std::static_pointer_cast<ParamOperation const>(expr->OP);
@@ -383,12 +418,19 @@ void performOutput(std::string output_path) {
     }
 
     // Add contracts to forbidden funcs for release
-    for (auto& [supplier, info] : ReleaseChecks) {
+    for (auto const& [supplier, info] : ReleaseChecks) {
+        declRename.insert(supplier);
         functionBodiesPre[supplier] += createCallsiteParamStr(supplier, "REL" + supplier->getNameAsString(), {});
         sentinel_strs.insert("REL" + supplier->getNameAsString());
-        for (FunctionDecl const* forbF : info.forbFuncs) {
-            if (!DeclToPreConds[forbF].empty()) DeclToPreConds[forbF] += " && ";
-            DeclToPreConds[forbF] += ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + " || " + info.relStr + "), \"POST{" + info.origExpr + "}\")").str();
+        for (FunctionDecl const* forbDecl : info.forbFuncs) {
+            std::string concrete_templ = info.relStr;
+            for (std::pair<std::string,std::string> IDinfo : ReleaseResponsibilities[forbDecl]) {
+                if (std::size_t pos = concrete_templ.find(IDinfo.first); pos != std::string::npos)
+                    concrete_templ.replace(pos, IDinfo.first.size(), IDinfo.second);
+                functionBodiesPost[forbDecl] += "    if (!(" + IDinfo.second + ")) " + IDinfo.first + " = 0;\n";
+            }
+            if (!DeclToPreConds[forbDecl].empty()) DeclToPreConds[forbDecl] += " && ";
+            DeclToPreConds[forbDecl] += ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + " || " + concrete_templ + "), \"POST{" + info.origExpr + "}\")").str();
         }
         for (FunctionDecl const* relF : info.relFuncs) {
             functionBodiesPost[relF] += ("    " + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + ".clear();\n").str();
@@ -408,6 +450,16 @@ void performOutput(std::string output_path) {
     mainFunc += " { int rc = CoVer_RealMain(argc, argv); COVER_EXIT_SENTINEL = 1; return rc; }\n";
     R.InsertTextAfter(SM.getLocForEndOfFile(SM.getMainFileID()), mainFunc);
 
+    // Memory instr func
+    std::string memFuncs;
+    for (FunctionDecl* memDecl : {memRF, memWF}) {
+        memFuncs += "\nextern \"C\" void " + memDecl->getNameAsString() + "(uintptr_t ptr)";
+        if (DeclToPreConds.contains(memDecl)) memFuncs += " pre(cr::check{}(" + DeclToPreConds[memDecl] + "))";
+        memFuncs += ";\nextern \"C\" void " + memDecl->getNameAsString() + "(uintptr_t ptr) {\n";
+        memFuncs += functionBodiesPre[memDecl] + "\n" + functionBodiesPost[memDecl] + "}\n";
+    }
+    R.InsertTextAfter(SM.getLocForEndOfFile(SM.getMainFileID()), memFuncs);
+
     // Add includes: orig file, util headers
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include \"" + SM.getFileEntryForID(SM.getMainFileID())->tryGetRealPathName().str() + "\"\n");
 
@@ -419,11 +471,18 @@ void performOutput(std::string output_path) {
     for (std::string sentinel : sentinel_strs) {
         R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("FuncCallsites " + COVER_OPTMP_PREFIX + "Callsites_" + sentinel + ";\n").str());
     }
+    // Add sentinels for release
+    for (int i = 0; i < ReleaseIdxMax; i++) {
+        R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "int8_t CoVer_RelCheck_" + std::to_string(i) + " = 1;\n");
+    }
 
     // Rename functions to wrapper names, add call to orig, and add empty braces to turn into definition
     // Also, generate wrapfile
     std::ofstream backendfile(output_path + "/cover_wrapfile");
     for (FunctionDecl const* decl : declRename) {
+        // Skip here, mem is handled specially above
+        if (decl->getNameAsString().starts_with("CoVer_Mem")) continue;
+
         // Remove CoVer contract annotation, if it exists
         if (AnnotateAttr* AA = decl->getAttr<AnnotateAttr>())
             R.RemoveText(SM.getExpansionRange(AA->getRange()));
@@ -503,9 +562,21 @@ void performOutput(std::string output_path) {
 
 }
 
+FunctionDecl* createMemDummy(std::string name, ASTContext& Ctx) {
+    static QualType memFTy = Ctx.getFunctionType(Ctx.VoidTy, {Ctx.getUIntPtrType()}, FunctionProtoType::ExtProtoInfo());
+    FunctionDecl* F = FunctionDecl::Create(Ctx, Ctx.getTranslationUnitDecl(), {}, {}, &Ctx.Idents.get(name), memFTy, Ctx.getTrivialTypeSourceInfo(memFTy), SC_Static);
+    F->addAttr(AsmLabelAttr::CreateImplicit(Ctx, name));
+
+    ParmVarDecl* param = ParmVarDecl::Create(Ctx, F, {}, {}, &Ctx.Idents.get("ptr"), Ctx.getUIntPtrType(), Ctx.getTrivialTypeSourceInfo(Ctx.getUIntPtrType()), SC_None, nullptr);
+    F->setParams({param});
+    return F;
+}
+
 export namespace ContractConverter {
     void Convert(ContractInfo DB, CompilerInstance& _CI, std::string output_path) {
         CI = &_CI;
+        memRF = createMemDummy("CoVer_MemRDummy", CI->getASTContext());
+        memWF = createMemDummy("CoVer_MemWDummy", CI->getASTContext());
         for (auto& [Decl, Data] : DB.Contracts) {
             errs() << "Converting contract for " << Decl->getDeclName() << "\n";
             if (Data.Pre) {
