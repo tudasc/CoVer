@@ -9,6 +9,7 @@ void setup_funcreplace_pass(struct plugin_name_args* plugin_info, std::string li
 void setup_annotdiscard_pass(struct plugin_name_args* plugin_info);
 void setup_memregister_pass(struct plugin_name_args* plugin_info, bool is_runtime_tu);
 void setup_meminstr_pass(struct plugin_name_args* plugin_info, bool is_runtime_tu);
+void setup_runtime_isolation_pass(struct plugin_name_args* plugin_info, bool is_runtime_tu);
 
 int plugin_init(struct plugin_name_args* plugin_info, struct plugin_gcc_version* version) {
     if (!plugin_default_version_check(version, &gcc_version))
@@ -27,6 +28,9 @@ int plugin_init(struct plugin_name_args* plugin_info, struct plugin_gcc_version*
 
     // Runs ahead of optimization so wrappers are inlined where useful
     setup_funcreplace_pass(plugin_info, list_file);
+
+    // RUns ahead of visibility, keeps the analysis runtime from binding to instrumented code
+    setup_runtime_isolation_pass(plugin_info, is_runtime_tu);
 
     // After optimization, in order of execution
     setup_meminstr_pass(plugin_info, is_runtime_tu);
