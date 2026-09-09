@@ -1,4 +1,5 @@
 #include <string>
+#include <string_view>
 #include <set>
 #include <fstream>
 
@@ -20,9 +21,11 @@
 // Names of functions whose calls should be rewritten.
 static std::set<std::string> targets;
 
+bool cover_is_rewrite_target(std::string mangled) { return targets.contains(mangled); }
+
 // Rename a function, pinning the assembler name so GCC does not mangle it
-static void rename_function(tree fndecl, const char* name) {
-    tree id = get_identifier(name);
+static void rename_function(tree fndecl, std::string name) {
+    tree id = get_identifier(name.c_str());
     if (DECL_NAME(fndecl) == id)
         return;
     DECL_NAME(fndecl) = id;
@@ -164,7 +167,7 @@ struct rewrite_pass : gimple_opt_pass {
                     continue; // stmt is gone, do not touch it below
                 }
 
-                if (!targets.contains(mangled)) continue;
+                if (!cover_is_rewrite_target(mangled)) continue;
 
                 std::string newname = std::string("CoVer_Wrapper_") + mangled;
                 tree repl = get_replacement_decl(newname.c_str(), callee);

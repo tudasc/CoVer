@@ -15,10 +15,25 @@
 #include <tree-cfg.h>
 #include <cgraph.h>
 #include <stringpool.h>
+#include <value-range.h>
+#include <tree-ssanames.h>
 
-// Extern declaration of an intrinsic, explicitly set asm name
-static tree intrinsic_decl(const char* name, tree fntype) {
-    tree id = get_identifier(name);
+static bool runtime_tu = false;
+bool cover_is_rewrite_target(std::string mangled);
+
+bool cover_is_internal_name(std::string const& mangled) {
+    return mangled.starts_with("CoVer_") && mangled != "CoVer_RealMain";
+}
+
+// Extern declaration of an intrinsic, explicitly set asm name.
+// Intrinsics are declared after rewrite_calls has run, so a wrapped one has to be named here.
+tree cover_intrinsic_decl(std::string name, tree fntype) {
+    if (cover_is_rewrite_target(name)) name = "CoVer_Wrapper_" + name;
+
+    tree id = get_identifier(name.c_str());
+    if (symtab_node* known = symtab_node::get_for_asmname(id))
+        if (TREE_CODE(known->decl) == FUNCTION_DECL) return known->decl;
+
     tree decl = build_decl(UNKNOWN_LOCATION, FUNCTION_DECL, id, fntype);
     TREE_PUBLIC(decl) = 1;
     DECL_EXTERNAL(decl) = 1;
@@ -56,11 +71,11 @@ static void instrument_frame(function* fun) {
     tree frame_address = builtin_decl_explicit(BUILT_IN_FRAME_ADDRESS);
     if (!stack_save || !frame_address) return;
 
-    tree stack_ptr = create_tmp_var(ptr_type_node, "cover_stack_ptr");
-    tree frame_ptr = create_tmp_var(ptr_type_node, "cover_frame_ptr");
-    tree stack_int = create_tmp_var(size_type_node, "cover_stack_int");
-    tree frame_int = create_tmp_var(size_type_node, "cover_frame_int");
-    tree frame_size = create_tmp_var(size_type_node, "cover_frame_size");
+    tree stack_ptr = make_ssa_name(create_tmp_var(ptr_type_node, "cover_stack_ptr"));
+    tree frame_ptr = make_ssa_name(create_tmp_var(ptr_type_node, "cover_frame_ptr"));
+    tree stack_int = make_ssa_name(create_tmp_var(size_type_node, "cover_stack_int"));
+    tree frame_int = make_ssa_name(create_tmp_var(size_type_node, "cover_frame_int"));
+    tree frame_size = make_ssa_name(create_tmp_var(size_type_node, "cover_frame_size"));
 
     gimple_seq seq = NULL;
 
@@ -75,7 +90,7 @@ static void instrument_frame(function* fun) {
     gimple_seq_add_stmt(&seq, gimple_build_assign(stack_int, NOP_EXPR, stack_ptr));
     gimple_seq_add_stmt(&seq, gimple_build_assign(frame_int, NOP_EXPR, frame_ptr));
     gimple_seq_add_stmt(&seq, gimple_build_assign(frame_size, MINUS_EXPR, frame_int, stack_int));
-    gimple_seq_add_stmt(&seq, gimple_build_call(intrinsic_decl("CoVer_AllocStack", alloc_stack_type()), 2, stack_ptr, frame_size));
+    gimple_seq_add_stmt(&seq, gimple_build_call(cover_intrinsic_decl("CoVer_AllocStack", alloc_stack_type()), 2, stack_ptr, frame_size));
 
     /* Inserting on the entry edge splits it if the first block is also reached
        from elsewhere, so the sequence runs exactly once. */
@@ -88,7 +103,7 @@ static void instrument_frame(function* fun) {
         gimple_stmt_iterator gsi = gsi_last_bb(bb);
         if (gsi_end_p(gsi)) continue;
         if (gimple_code(gsi_stmt(gsi)) != GIMPLE_RETURN) continue;
-        gcall* free_call = gimple_build_call(intrinsic_decl("CoVer_FreeStack", free_stack_type()), 1, stack_ptr);
+        gcall* free_call = gimple_build_call(cover_intrinsic_decl("CoVer_FreeStack", free_stack_type()), 1, stack_ptr);
         gsi_insert_before(&gsi, free_call, GSI_SAME_STMT);
     }
 }
@@ -112,7 +127,7 @@ static void instrument_globals(function* fun) {
         tree asm_id = DECL_ASSEMBLER_NAME(var);
         if (asm_id && !strncmp(IDENTIFIER_POINTER(asm_id), "COVER_", 6)) continue; // Bookkeeping of the wrappers themselves
 
-        gimple_seq_add_stmt(&seq, gimple_build_call(intrinsic_decl("CoVer_RegisterGlobal", register_global_type()), 2,
+        gimple_seq_add_stmt(&seq, gimple_build_call(cover_intrinsic_decl("CoVer_RegisterGlobal", register_global_type()), 2,
                                                     build_fold_addr_expr_with_type(var, ptr_type_node),
                                                     build_int_cst(long_long_integer_type_node, tree_to_uhwi(size))));
     }
@@ -127,15 +142,17 @@ const pass_data memregister_pass_data = {
     "cover_memregister",
     OPTGROUP_NONE,
     TV_NONE,
-    PROP_gimple_any,
+    PROP_ssa | PROP_cfg,
     0,
     0,
     0,
-    TODO_update_ssa,
+    TODO_update_ssa | TODO_rebuild_cgraph_edges,
 };
 
 struct memregister_pass : gimple_opt_pass {
     memregister_pass(gcc::context* ctxt) : gimple_opt_pass(memregister_pass_data, ctxt) {}
+
+    bool gate(function*) override { return !runtime_tu; }
 
     unsigned int execute(function* fun) override {
         tree fndecl = fun->decl;
@@ -143,8 +160,8 @@ struct memregister_pass : gimple_opt_pass {
         if (!asm_id) return 0;
         std::string cur = IDENTIFIER_POINTER(asm_id);
 
-        // Dont instrument intrinsics or wrappers
-        if (cur.starts_with("CoVer_")) return 0;
+        // Dont instrument intrinsics or wrappers, except realmain
+        if (cover_is_internal_name(cur.c_str())) return 0;
 
         // Dont instrument sys headers
         if (DECL_IN_SYSTEM_HEADER(fndecl)) return 0;
@@ -161,14 +178,14 @@ struct memregister_pass : gimple_opt_pass {
 
 }
 
-void setup_memregister_pass(struct plugin_name_args* plugin_info) {
+void setup_memregister_pass(struct plugin_name_args* plugin_info, bool is_runtime_tu) {
+    runtime_tu = is_runtime_tu;
+
     struct register_pass_info pass_info;
     pass_info.pass = new memregister_pass(g);
-    /* The calls added here are still under their plain names, so they have to
-       pass through the call rewriting before they mean anything. */
-    pass_info.reference_pass_name = "rewrite_calls";
+    pass_info.reference_pass_name = "cover_meminstr";
     pass_info.ref_pass_instance_number = 1;
-    pass_info.pos_op = PASS_POS_INSERT_BEFORE;
+    pass_info.pos_op = PASS_POS_INSERT_AFTER;
 
     register_callback(plugin_info->base_name, PLUGIN_PASS_MANAGER_SETUP, NULL, &pass_info);
 }

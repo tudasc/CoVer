@@ -188,7 +188,8 @@ int main(int argc, const char** argv) {
         return 0;
     }
 
-    // Finish normal compilation process
+    // Finish normal compilation process.
+    // include.o has to stay behind the sources here!
     #warning TODO check if need to remove -lstdc++exp once contract and std::stacktrace support matures
     execSafe(GCCPath + GCCPluginLoad + rem_compile + rem_link + " " + opt_level + common_flags + source_file_paths + dest_arg + " " + TempPath + "/include.o -Wl,--whole-archive @COVER_INTRINSICS_LIB_PATH@ -Wl,--no-whole-archive -lstdc++ -lstdc++exp");
 
