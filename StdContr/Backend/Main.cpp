@@ -7,7 +7,7 @@ int plugin_is_GPL_compatible;
 
 void setup_funcreplace_pass(struct plugin_name_args* plugin_info, std::string list_file);
 void setup_annotdiscard_pass(struct plugin_name_args* plugin_info);
-void setup_memregister_pass(struct plugin_name_args* plugin_info);
+void setup_memregister_pass(struct plugin_name_args* plugin_info, bool is_runtime_tu);
 void setup_meminstr_pass(struct plugin_name_args* plugin_info, bool is_runtime_tu);
 
 int plugin_init(struct plugin_name_args* plugin_info, struct plugin_gcc_version* version) {
@@ -25,10 +25,14 @@ int plugin_init(struct plugin_name_args* plugin_info, struct plugin_gcc_version*
             is_runtime_tu = true;
     }
 
-    // Setup passes in reverse order that they are run
+    // Runs ahead of optimization so wrappers are inlined where useful
     setup_funcreplace_pass(plugin_info, list_file);
-    setup_memregister_pass(plugin_info); // Must be registered after the funcreplace pass, and runs before
-    setup_meminstr_pass(plugin_info, is_runtime_tu); // Runs before the memory registration, so only original accesses are seen
+
+    // After optimization, in order of execution
+    setup_meminstr_pass(plugin_info, is_runtime_tu);
+    setup_memregister_pass(plugin_info, is_runtime_tu);
+
+    // Register contract annotation handler
     setup_annotdiscard_pass(plugin_info);
     
     return 0;

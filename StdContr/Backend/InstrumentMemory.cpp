@@ -12,22 +12,16 @@
 #include <gimple-iterator.h>
 #include <gimple-expr.h>
 #include <gimple-walk.h>
+#include <cgraph.h>
 #include <gimplify.h>
 #include <gimplify-me.h>
 #include <fold-const.h>
 #include <tree-cfg.h>
 #include <stringpool.h>
 
-// Extern declaration of an intrinsic, explicitly set asm name
-static tree intrinsic_decl(const char* name, tree fntype) {
-    tree id = get_identifier(name);
-    tree decl = build_decl(UNKNOWN_LOCATION, FUNCTION_DECL, id, fntype);
-    TREE_PUBLIC(decl) = 1;
-    DECL_EXTERNAL(decl) = 1;
-    TREE_USED(decl) = 1;
-    SET_DECL_ASSEMBLER_NAME(decl, id);
-    return decl;
-}
+static bool runtime_tu = false;
+bool cover_is_internal_name(std::string const& mangled);
+tree cover_intrinsic_decl(std::string name, tree fntype);
 
 /* void (uintptr_t), the signature ContractConverter gives the dummies it emits
    into include.cpp. */
@@ -81,15 +75,11 @@ bool collect_write(gimple*, tree, tree op, void* data) {
 
 // Hand ADDR to DUMMY, converted to the integer type it takes
 static void add_notification(gimple_seq* seq, tree dummy, tree addr) {
-    /* force_gimple_operand clears the sequence it is handed, so it gets its
-       own and the result is appended. */
     gimple_seq pre = NULL;
-    addr = force_gimple_operand(addr, &pre, true, NULL_TREE);
+    addr = force_gimple_operand(fold_convert(pointer_sized_int_node, addr), &pre, true, NULL_TREE);
     gimple_seq_add_seq(seq, pre);
 
-    tree val = create_tmp_var(pointer_sized_int_node, "cover_mem_addr");
-    gimple_seq_add_stmt(seq, gimple_build_assign(val, NOP_EXPR, addr));
-    gimple_seq_add_stmt(seq, gimple_build_call(dummy, 1, val));
+    gimple_seq_add_stmt(seq, gimple_build_call(dummy, 1, addr));
 }
 
 /* The dummies report accesses that already happened, so they belong behind the
@@ -109,13 +99,6 @@ static void insert_notifications(basic_block bb, gimple_stmt_iterator* gsi, gimp
     gsi_insert_seq_before(gsi, seq, GSI_SAME_STMT);
 }
 
-/* Set for the translation unit holding CoVers own runtime. The contract checks,
-   callsite stores and report functions in there carry ordinary names, but they
-   are what the dummies run, so a write of theirs that reports itself arrives
-   right back in the same check and recurses until the stack is gone. Nothing in
-   that unit is user code, the program being verified is compiled separately. */
-static bool runtime_tu = false;
-
 namespace {
 
 const pass_data meminstr_pass_data = {
@@ -123,11 +106,11 @@ const pass_data meminstr_pass_data = {
     "cover_meminstr",
     OPTGROUP_NONE,
     TV_NONE,
-    PROP_gimple_any,
+    PROP_ssa | PROP_cfg,
     0,
     0,
     0,
-    TODO_update_ssa,
+    TODO_update_ssa | TODO_rebuild_cgraph_edges,
 };
 
 struct meminstr_pass : gimple_opt_pass {
@@ -139,17 +122,12 @@ struct meminstr_pass : gimple_opt_pass {
         tree fndecl = fun->decl;
         tree asm_id = DECL_ASSEMBLER_NAME(fndecl);
         if (!asm_id) return 0;
-        std::string cur = IDENTIFIER_POINTER(asm_id);
 
-        /* Dont instrument intrinsics or wrappers. The dummies themselves live
-           under this prefix, instrumenting them would recurse. */
-        if (cur.starts_with("CoVer_")) return 0;
+        // Dont instrument intrinsics or wrappers, except CoVer_RealMain
+        if (cover_is_internal_name(IDENTIFIER_POINTER(asm_id))) return 0;
 
-        // Dont instrument sys headers
-        if (DECL_IN_SYSTEM_HEADER(fndecl)) return 0;
-
-        tree memR = intrinsic_decl("CoVer_MemRDummy", mem_dummy_type());
-        tree memW = intrinsic_decl("CoVer_MemWDummy", mem_dummy_type());
+        tree memR = cover_intrinsic_decl("CoVer_MemRDummy", mem_dummy_type());
+        tree memW = cover_intrinsic_decl("CoVer_MemWDummy", mem_dummy_type());
 
         /* Reporting onto an edge can split it, which appends to the block list.
            Collect the blocks up front so only the original code is walked. */
@@ -189,9 +167,7 @@ void setup_meminstr_pass(struct plugin_name_args* plugin_info, bool is_runtime_t
 
     struct register_pass_info pass_info;
     pass_info.pass = new meminstr_pass(g);
-    /* Same slot as the other instrumentation: still plain GIMPLE, before the
-       call rewriting gets to the statements. */
-    pass_info.reference_pass_name = "rewrite_calls";
+    pass_info.reference_pass_name = "optimized";
     pass_info.ref_pass_instance_number = 1;
     pass_info.pos_op = PASS_POS_INSERT_BEFORE;
 
