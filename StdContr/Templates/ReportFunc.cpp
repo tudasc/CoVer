@@ -19,7 +19,7 @@ void handle_contract_violation(std::contracts::contract_violation const& v) noex
     if (!COVER_EXIT_SENTINEL) {
         std::string func = v.location().function_name();
         std::cerr << "At function call to " << (func.empty() ? "unknown function" : std::regex_replace(func, std::regex(R"(CoVer_Wrapper_)"), ""))  << "\n";
-        std::cerr << "Call Location: " << std::stacktrace::current().at(3).source_file() << ":" << std::stacktrace::current().at(3).source_line() << "\n";
+        std::cerr << "Call Location: " << std::stacktrace::current()[0].source_file() << ":" << std::stacktrace::current()[0].source_line() << "\n";
     } else {
         std::cerr << "Detected at program exit\n";
     }
