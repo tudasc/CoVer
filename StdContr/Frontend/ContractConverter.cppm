@@ -433,6 +433,11 @@ void performOutput(std::string output_path) {
     std::map<FunctionDecl const*,std::string> functionBodiesPre;
     std::map<FunctionDecl const*,std::string> functionBodiesPost;
 
+    // Release checks must happen first, before adding callsite
+    // Otherwise might cause FP due to same call being forb
+    for (auto const& [forbDecl, resps] : ReleaseResponsibilities)
+        functionBodiesPre[forbDecl] += createReleaseBodyStr(resps);
+
     // Apply modifications per declaration
     for (auto& [decl, mods] : DeclToMods) {
         declRename.insert(decl);
@@ -479,10 +484,6 @@ void performOutput(std::string output_path) {
             functionBodiesPost[relF] += ("    " + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + ".clear();\n").str();
         }
     }
-
-    // Create function bodies for all forbidden funcs
-    for (auto const& [forbDecl, resps] : ReleaseResponsibilities)
-        functionBodiesPost[forbDecl] += createReleaseBodyStr(resps);
 
     // Also wrap all funcs that have a precond/postcond
     for (FunctionDecl const* decl : DeclToPreConds | std::views::keys) declRename.insert(decl);
