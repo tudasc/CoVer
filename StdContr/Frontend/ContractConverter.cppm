@@ -60,7 +60,6 @@ struct ReleaseInfo {
     std::set<FunctionDecl const*> forbFuncs;
     std::set<FunctionDecl const*> relFuncs;
     std::string relStr;
-    std::string origExpr;
 };
 std::map<FunctionDecl const*, ReleaseInfo> ReleaseChecks;
 
@@ -275,7 +274,6 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                 if (mode == ConstructMode::PRE) llvm_unreachable("Unexpected releaseOp in precondition!");
                 if (mode == ConstructMode::POSTCALL) return "true"; // Dont interfere here, current return will be used for supplier not forbop
                 std::shared_ptr<ReleaseOperation const> rOP = std::static_pointer_cast<ReleaseOperation const>(expr->OP);
-                ReleaseChecks[decl].origExpr = expr->ExprStr;
                 std::string forbID = "(CoVer_RelCheck_" + std::to_string(ReleaseIdxMax++) + ")";
                 std::string store = (COVER_OPTMP_PREFIX + "Callsites_REL" + decl->getNameAsString()).str();
                 switch (rOP->Forbidden->type()) {
@@ -323,7 +321,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                 std::shared_ptr<CallOperation const> rcOp = std::static_pointer_cast<CallOperation const>(rOP->Until);
                 if (rcOp->type() == FormulaType::CALL) ReleaseChecks[decl].relFuncs.insert(lookupDecl(rcOp->Function));
                 else ReleaseChecks[decl].relFuncs.insert(DB.TagsToDecl.at(rcOp->Function).begin(), DB.TagsToDecl.at(rcOp->Function).end());
-                return forbID;
+                return "TERM(" + forbID + ", \"POST{" + expr->ExprStr + "}\")";
             }
             case FormulaType::PARAM: {
                 std::shared_ptr<ParamOperation const> pOP = std::static_pointer_cast<ParamOperation const>(expr->OP);
@@ -477,7 +475,7 @@ void performOutput(std::string output_path) {
                     concrete_templ.replace(pos, resp.sentinel.size(), resp.concrete);
             }
             if (!DeclToPreConds[forbDecl].empty()) DeclToPreConds[forbDecl] += " && ";
-            DeclToPreConds[forbDecl] += ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + " || " + concrete_templ + "), \"POST{" + info.origExpr + "}\")").str();
+            DeclToPreConds[forbDecl] += ("(!" + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + " || " + concrete_templ + ")").str();
         }
         for (FunctionDecl const* relF : info.relFuncs) {
             declRename.insert(relF);
