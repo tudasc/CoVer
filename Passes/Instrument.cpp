@@ -687,7 +687,7 @@ bool InstrumentPass::checkIsStrParam(CallBase* CB, int idx) {
     // Now, check if its a global string
     if (GlobalVariable const* GV = dyn_cast<GlobalVariable>(V)) {
         Constant const* Init = GV->getInitializer();
-        return Init && !Init->isZeroValue() && isa<ArrayType>(Init->getType()) && dyn_cast<ArrayType>(Init->getType())->getElementType() == IntegerType::get(V->getContext(), 8);
+        return Init && !Init->isNullValue() && isa<ArrayType>(Init->getType()) && dyn_cast<ArrayType>(Init->getType())->getElementType() == IntegerType::get(V->getContext(), 8);
     }
     return false;
 }
