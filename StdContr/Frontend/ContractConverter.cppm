@@ -24,6 +24,7 @@ module;
 #include <clang/Lex/Lexer.h>
 #include <llvm/Support/ErrorHandling.h>
 #include <memory>
+#include <optional>
 #include <ranges>
 #include <set>
 #include <sstream>
@@ -65,6 +66,7 @@ std::map<FunctionDecl const*, ReleaseInfo> ReleaseChecks;
 
 // One sentinel a forbidden function has to clear when it violates an obligation
 struct ReleaseResponsibility {
+    FunctionDecl const* supplier;
     std::string sentinel;
     std::string concrete;
     std::string store;
@@ -85,6 +87,8 @@ std::set<std::string> ContractVars;
 
 FunctionDecl* memRF;
 FunctionDecl* memWF;
+
+std::optional<std::set<std::string>> UsedFuncs;
 
 // Copied from ContractManager
 const std::vector<std::shared_ptr<ContractExpression>> linearizeContractFormula(const std::shared_ptr<ContractFormula> contrF) {
@@ -129,6 +133,12 @@ std::string getMangledName(const NamedDecl *ND, ASTContext &Ctx) {
     MC->mangleName(GlobalDecl(ND), OS);
 
   return OS.str();
+}
+
+// A function the program never calls never records a callsite, so checks depending on one hold trivially
+bool isUsed(FunctionDecl const* decl) {
+    if (!UsedFuncs || decl->getNameAsString().starts_with("CoVer_")) return true;
+    return UsedFuncs->contains("CoVer_Wrapper_" + getMangledName(decl, CI->getASTContext()));
 }
 
 std::string buildForwardingCall(FunctionDecl const* decl,
@@ -283,7 +293,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                         std::shared_ptr<RWOperation const> rwOP = std::static_pointer_cast<RWOperation const>(rOP->Forbidden);
                         ReleaseChecks[decl].forbFuncs.insert(forbDecl);
                         std::string query = store + ".checkMatchParam(" + std::to_string(rwOP->contrP) + ", (uintptr_t)ptr, " + std::to_string((int)ParamAccess::NORMAL) + ")";
-                        ReleaseResponsibilities[forbDecl].insert({forbID, "!" + query, store, {query}});
+                        ReleaseResponsibilities[forbDecl].insert({decl, forbID, "!" + query, store, {query}});
                         break;
                     }
                     case FormulaType::CALL:
@@ -311,7 +321,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                                 queries.push_back(query);
                                 concrete += " || !" + query;
                             }
-                            ReleaseResponsibilities[forbDecl].insert({forbID, concrete, queries.empty() ? "" : store, queries});
+                            ReleaseResponsibilities[forbDecl].insert({decl, forbID, concrete, queries.empty() ? "" : store, queries});
                         }
                         break;
                     }
@@ -397,6 +407,7 @@ std::string createReleaseBodyStr(std::set<ReleaseResponsibility> const& resps) {
 
     std::map<std::string, std::vector<ReleaseResponsibility const*>> byStore;
     for (ReleaseResponsibility const& resp : resps) {
+        if (!isUsed(resp.supplier)) continue;
         if (resp.store.empty()) res += "    if (!(" + resp.concrete + ")) " + resp.sentinel + " = 0;\n";
         else byStore[resp.store].push_back(&resp);
     }
@@ -465,6 +476,7 @@ void performOutput(std::string output_path) {
 
     // Add contracts to forbidden funcs for release
     for (auto const& [supplier, info] : ReleaseChecks) {
+        if (!isUsed(supplier)) continue;
         declRename.insert(supplier);
         functionBodiesPre[supplier] += createCallsiteParamStr(supplier, "REL" + supplier->getNameAsString(), {});
         sentinel_strs.insert("REL" + supplier->getNameAsString());
@@ -537,6 +549,9 @@ void performOutput(std::string output_path) {
         functionBodiesPost[decl];
         std::string mangledName = getMangledName(decl, CI->getASTContext());
         backendfile << mangledName << "\n";
+
+        // The wrapfile always lists every candidate, but unused ones get no wrapper
+        if (!isUsed(decl)) continue;
 
         // Remove function definition
         if (decl->isThisDeclarationADefinition()) {
@@ -619,8 +634,9 @@ FunctionDecl* createMemDummy(std::string name, ASTContext& Ctx) {
 }
 
 export namespace ContractConverter {
-    void Convert(ContractInfo DB, CompilerInstance& _CI, std::string output_path) {
+    void Convert(ContractInfo DB, CompilerInstance& _CI, std::string output_path, std::optional<std::set<std::string>> const& used_funcs) {
         CI = &_CI;
+        UsedFuncs = used_funcs;
         memRF = createMemDummy("CoVer_MemRDummy", CI->getASTContext());
         memWF = createMemDummy("CoVer_MemWDummy", CI->getASTContext());
         for (auto& [Decl, Data] : DB.Contracts) {
@@ -629,7 +645,9 @@ export namespace ContractConverter {
                 DeclToPreConds[Decl] = constructFormula(Data.Pre, ConstructMode::PRE, Decl, DB);
             }
             if (Data.Post) {
-                PostCallChecks += constructFormula(Data.Post, ConstructMode::POSTCALL, Decl, DB) + " && ";
+                // Always construct, the sentinels it registers may be needed by other checks
+                std::string postCall = constructFormula(Data.Post, ConstructMode::POSTCALL, Decl, DB);
+                if (isUsed(Decl)) PostCallChecks += postCall + " && ";
                 std::string newRel = constructFormula(Data.Post, ConstructMode::RELEASE, Decl, DB);
                 if (ReleaseChecks.contains(Decl)) ReleaseChecks[Decl].relStr = newRel; // Avoid adding useless conditions if decl did not contain relops
             }
