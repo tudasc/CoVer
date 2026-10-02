@@ -65,6 +65,7 @@ if(GCCPlugin_INCLUDE_DIR)
     Backend/RegisterMemory.cpp
     Backend/InstrumentMemory.cpp
     Backend/IsolateRuntime.cpp
+    Backend/ListFunctions.cpp
   )
 
   target_include_directories(CoVerStdCXXBackend SYSTEM PRIVATE
