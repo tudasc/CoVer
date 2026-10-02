@@ -96,15 +96,30 @@ static void instrument_frame(function* fun) {
        from elsewhere, so the sequence runs exactly once. */
     gsi_insert_seq_on_edge_immediate(single_succ_edge(ENTRY_BLOCK_PTR_FOR_FN(fun)), seq);
 
-    /* Frames left through an exception keep their range: EH has been lowered by
+    /* A sibling call leaves through a jump with the epilogue already run, so it
+       never reaches a return and the frame would stay announced for a stack
+       region the callee is about to reuse. Demote those to ordinary calls; a
+       musttail one cannot be demoted, so release the frame right before it -
+       by then the frame really is gone - and skip the return that follows it.
+       Frames left through an exception keep their range: EH has been lowered by
        now, so only returns are reachable insertion points. */
     basic_block bb;
     FOR_EACH_BB_FN(bb, fun) {
-        gimple_stmt_iterator gsi = gsi_last_bb(bb);
-        if (gsi_end_p(gsi)) continue;
-        if (gimple_code(gsi_stmt(gsi)) != GIMPLE_RETURN) continue;
-        gcall* free_call = gimple_build_call(cover_intrinsic_decl("CoVer_FreeStack", free_stack_type()), 1, stack_ptr);
-        gsi_insert_before(&gsi, free_call, GSI_SAME_STMT);
+        bool released = false;
+        for (gimple_stmt_iterator gsi = gsi_start_bb(bb); !gsi_end_p(gsi); gsi_next(&gsi)) {
+            gimple* stmt = gsi_stmt(gsi);
+            gcall* call = dyn_cast<gcall*>(stmt);
+            if (call && gimple_call_tail_p(call) && !gimple_call_must_tail_p(call)) {
+                gimple_call_set_tail(call, false);
+                continue;
+            }
+            bool must_tail = call && gimple_call_must_tail_p(call);
+            if (!must_tail && gimple_code(stmt) != GIMPLE_RETURN) continue;
+            if (!must_tail && released) continue;
+            gcall* free_call = gimple_build_call(cover_intrinsic_decl("CoVer_FreeStack", free_stack_type()), 1, stack_ptr);
+            gsi_insert_before(&gsi, free_call, GSI_SAME_STMT);
+            released = must_tail;
+        }
     }
 }
 
