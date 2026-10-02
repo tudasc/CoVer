@@ -1,5 +1,4 @@
 #include <ostream>
-#include <regex>
 #ifdef __clang__
 #define __cpp_lib_contracts
 #endif
@@ -15,10 +14,11 @@ void handle_contract_violation(std::contracts::contract_violation const& v) noex
     if (!cr::has_report()) return; // Contract violation did not come from CoVer
     std::flush(std::cout);
     std::flush(std::cerr);
-    std::cerr << "## Contract Violation detected! ##\n";
+    std::cerr << "## Contract violation detected! ##\n";
     if (!COVER_EXIT_SENTINEL) {
         std::string func = v.location().function_name();
-        std::cerr << "At function call to " << (func.empty() ? "unknown function" : std::regex_replace(func, std::regex(R"(CoVer_Wrapper_)"), ""))  << "\n";
+        if (func.starts_with("CoVer_Wrapper_")) func.erase(0, 14);
+        std::cerr << "At function call to " << (func.empty() ? "unknown function" : func) << "\n";
         std::cerr << "Call Location: " << std::stacktrace::current()[0].source_file() << ":" << std::stacktrace::current()[0].source_line() << "\n";
     } else {
         std::cerr << "Detected at program exit\n";
