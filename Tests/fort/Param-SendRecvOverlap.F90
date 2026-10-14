@@ -1,6 +1,7 @@
 ! Copied from MPI-BugBench: InvalidParam-Buffer-mpi_sendrecv-001
 
-! RUN: %flangContracts %run_common
+! RUN: %CoVerFC %run_compile
+! RUN: %run_dynamic
 
 program main
     use mpi_f08

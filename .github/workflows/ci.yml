@@ -10,7 +10,7 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-latest
     env:
-      LLVM_VER: "22"
+      LLVM_VER: "23"
     steps:
       - uses: actions/checkout@v6
         with:

@@ -1,4 +1,5 @@
-// RUN: %clangContracts %run_common
+// RUN: %CoVerCC %run_compile
+// RUN: %run_dynamic
 
 #include <mpi.h>
 

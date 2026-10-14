@@ -1,4 +1,5 @@
-! RUN: %flangContracts %run_common
+! RUN: %CoVerFC %run_compile
+! RUN: %run_dynamic
 
 program PostCallMissingFinalize
     use mpi_f08
