@@ -10,7 +10,7 @@ See [Usage](./Docs/Usage.md)
 
 ## Prerequisites
 
-- LLVM 21 or newer
+- LLVM 22 or newer
 - Java (Build dependency only)
 
 Optionally:

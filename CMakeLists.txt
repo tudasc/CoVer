@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 ##
 
 find_package(LLVM REQUIRED CONFIG)
-set(LLVM_VERSION_MIN 21)
+set(LLVM_VERSION_MIN 22)
 if (${LLVM_VERSION_MAJOR} LESS ${LLVM_VERSION_MIN})
   message(FATAL_ERROR "LLVM/Clang version ${LLVM_VERSION_MAJOR} is unsupported, minimum required is ${LLVM_VERSION_MIN}!")
 else()
