@@ -30,4 +30,5 @@ Alternatively, the Docker file provides a known working environment for testing.
 | ---------- | --------------- |
 | [Verifying MPI API Usage Requirements with Contracts](https://doi.org/10.1007/978-3-032-07194-1_4) | First CoVer Publication |
 | [Coupling Static and Dynamic MPI Correctness Tools to Optimize Accuracy and Overhead](https://doi.org/10.1145/3731599.3767360) | Corresponds to [PR 1](https://github.com/tudasc/CoVer/pull/1) |
+| [Dynamic Contract Analysis for Parallel Programming Models](https://doi.org/10.1109/IPDPSW71298.2026.00041) | Corresponds to [PR 2](https://github.com/tudasc/CoVer/pull/1) |
 | [Allocation Tracking and Parameter Checking for Parallel Programming Models Using Contracts](https://doi.org/10.1007/978-3-032-40777-1_4) | Corresponds to [PR 5](https://github.com/tudasc/CoVer/pull/5) |
