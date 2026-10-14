@@ -218,7 +218,7 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   set(COMPILER_WRAP_TARGET "${TARGET_NAME}")
   set(COMPILE_SRC_FILE_ENDINGS "${FILE_ENDINGS}")
   set(EXECUTABLE_WRAPPER_NAME "${WRAPPER_NAME}")
-  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/clangContracts.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CoVerWrapper.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
   add_executable(${WRAPPER_NAME} "${WRAPPER_NAME}.cpp")
   target_link_libraries(${WRAPPER_NAME} LLVM)
   install(TARGETS ${WRAPPER_NAME})
