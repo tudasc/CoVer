@@ -4,8 +4,8 @@ import re
 import json
 import random
 
-if len(sys.argv) < 3:
-    print(f"Insufficient arguments!\nUsage: {os.path.basename(__file__)} <outpath> <mpi.h location> [identifier]")
+if len(sys.argv) < 4:
+    print(f"Insufficient arguments!\nUsage: {os.path.basename(__file__)} <outpath> <mpi.h location> <apis.json location> [identifier]")
     exit(1)
 
 # Output filepath for header file
@@ -14,9 +14,12 @@ output_path = sys.argv[1]
 # Filepath for input header
 inputh_location = sys.argv[2]
 
+# Filepath for pympistandard API definitions
+apis_json_location = sys.argv[3]
+
 ver_identifier = "Not given"
-if len(sys.argv) > 3:
-    ver_identifier = sys.argv[3]
+if len(sys.argv) > 4:
+    ver_identifier = sys.argv[4]
 
 # Deprecated / Ignored functions
 # From: https://www.mpi-forum.org/docs/mpi-3.1/mpi31-report/node34.htm#Node34
@@ -563,7 +566,7 @@ exclude_fortran_nof08 = [
     "MPI_Session_attach_buffer"
 ] # Only supported in modern MPI
 
-with open("apis.json", "r") as api_file:
+with open(apis_json_location, "r") as api_file:
     mpi_funcs = json.load(api_file)
 
 def create_contract_output_for_func(types, contrs):
