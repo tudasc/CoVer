@@ -5,7 +5,7 @@ from spack_repo.builtin.build_systems.cmake import CMakePackage, generator
 from spack.package import *
 
 
-class CoVer(CMakePackage):
+class Cover(CMakePackage):
     """CoVer: contract-based verification of MPI/OpenSHMEM programs via an LLVM plugin."""
 
     homepage = "https://github.com/tudasc/CoVer"
