@@ -40,6 +40,20 @@ std::optional<int> ParseBlock(std::string const& s, CmdContext<T>& ctx, std::str
     return block;
 }
 
+template<typename T>
+Instruction* ParseTraceInstr(std::string const& s, int block, CmdContext<T>& ctx, std::string& last_res) {
+    int instr;
+    try { instr = std::stoi(s); } catch (...) { last_res = "Instruction argument is not a number!"; return nullptr; }
+    int count = 0;
+    for (ContractPassUtility::JumpTraceEntry<T>* cur_trace = ctx.trace_by_blocks[block].first_entry;; cur_trace = cur_trace->predecessors[0]) {
+        if (count == instr) return cur_trace->loc;
+        if (cur_trace == ctx.trace_by_blocks[block].last_entry) break;
+        count++;
+    }
+    last_res = "No such instruction!";
+    return nullptr;
+}
+
 inline std::optional<int> ParseAliasGroup(std::string const& s, std::string& last_res) {
     int group;
     try { group = std::stoi(s); } catch (...) { last_res = "Group argument is not a number!"; return std::nullopt; }
@@ -100,32 +114,24 @@ CmdResult CmdFpTarget(std::vector<std::string>& args, CmdContext<T>& ctx) {
     std::string last_res;
     std::optional<int> block = ParseBlock(args[0], ctx, last_res);
     if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
-    int instr;
-    try { instr = std::stoi(args[1]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Instruction argument is not a number!"}; }
-    ContractPassUtility::JumpTraceEntry<T>* selected_trace = nullptr;
-    int count = 0;
-    for (ContractPassUtility::JumpTraceEntry<T>* cur_trace = ctx.trace_by_blocks[*block].first_entry;; cur_trace = cur_trace->predecessors[0]) {
-        if (count == instr) { selected_trace = cur_trace; break; }
-        if (cur_trace == ctx.trace_by_blocks[*block].last_entry) break;
-        count++;
-    }
-    if (selected_trace == nullptr) { return {CmdResultCode::INVALID_INPUT, "No such instruction!"}; }
-    if (!isa<CallBase>(selected_trace->loc) || !dyn_cast<CallBase>(selected_trace->loc)->isIndirectCall()) {
+    Instruction* selected = ParseTraceInstr(args[1], *block, ctx, last_res);
+    if (!selected) return {CmdResultCode::INVALID_INPUT, last_res};
+    if (!isa<CallBase>(selected) || !dyn_cast<CallBase>(selected)->isIndirectCall()) {
         return {CmdResultCode::INVALID_INPUT, "Instruction is not an indirect function call!"};
     }
     std::vector<std::string> funcs;
-    Module* M = selected_trace->loc->getModule();
+    Module* M = selected->getModule();
     for (Function const& F : M->functions()) {
         if (!F.getName().starts_with("CoVer_") && !F.getName().starts_with("llvm.")) funcs.push_back(F.getName().str());
     }
-    std::set<Function*> selected_func = ContractPassUtility::getFPAnnots(dyn_cast<CallBase>(selected_trace->loc));
+    std::set<Function*> selected_func = ContractPassUtility::getFPAnnots(dyn_cast<CallBase>(selected));
     std::set<std::string> previously_selected;
     std::transform(selected_func.begin(), selected_func.end(), std::inserter(previously_selected, previously_selected.end()), [](Function* F){ return F->getName().str(); });
     std::vector<std::string> sel_func_str = TUIManager::RenderMultiMenu(funcs, "Select Function Target", previously_selected);
     selected_func.clear();
     std::transform(sel_func_str.begin(), sel_func_str.end(), std::inserter(selected_func, selected_func.end()), [&](std::string Fstr){ return M->getFunction(Fstr); });
-    ContractPassUtility::setFPTarget(dyn_cast<CallBase>(selected_trace->loc), selected_func);
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{}.{} now has {} possible target(s)", *block, instr, selected_func.size())};
+    ContractPassUtility::setFPTarget(dyn_cast<CallBase>(selected), selected_func);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{}.{} now has {} possible target(s)", *block, args[1], selected_func.size())};
 }
 
 template<typename T>
@@ -173,13 +179,34 @@ CmdResult CmdAliasRm(std::vector<std::string>& args, CmdContext<T>& ctx) {
     auto group = ParseAliasGroup(args[0], last_res);
     if (!group) return {CmdResultCode::INVALID_INPUT, last_res};
     int idx;
+    if (args[1].starts_with("e")) {
+        try { idx = std::stoi(args[1].substr(1)); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Epoch index argument is not a number!"}; }
+        int num_epochs = ContractPassUtility::getAliasEpochs(*group).size();
+        if (idx < 0 || idx >= num_epochs) {
+            return {CmdResultCode::INVALID_INPUT, std::format("Epoch index must be between e0 and e{}", num_epochs - 1)};
+        }
+        ContractPassUtility::removeAliasEpoch(*group, idx);
+        return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias epoch {:>3}.e{:0>2}", *group, idx)};
+    }
     try { idx = std::stoi(args[1]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Group member index argument is not a number!"}; }
     ContractPassUtility::AliasGroup sel = ContractPassUtility::getAliasAnnots().at(*group);
     if (idx < 0 || idx >= (int)sel.members.size()) {
-        return {CmdResultCode::INVALID_INPUT, std::format("Group member index must be between 0 and {}", sel.members.size())};
+        return {CmdResultCode::INVALID_INPUT, std::format("Group member index must be between 0 and {}", sel.members.size() - 1)};
     }
     ContractPassUtility::removeFromAliasGroup(*group, idx);
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias annotation {:>3}.{:0>3}", *group, idx)};
+}
+
+template<typename T>
+CmdResult CmdAliasEpoch(std::vector<std::string>& args, CmdContext<T>& ctx) {
+    std::string last_res;
+    std::optional<int> group = ParseAliasGroup(args[0], last_res);
+    std::optional<int> block = ParseBlock(args[1], ctx, last_res);
+    if (!group || !block) return {CmdResultCode::INVALID_INPUT, last_res};
+    Instruction* selected = ParseTraceInstr(args[2], *block, ctx, last_res);
+    if (!selected) return {CmdResultCode::INVALID_INPUT, last_res};
+    ContractPassUtility::addAliasEpoch(*group, selected);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Added epoch for alias group {} at {}.{}", *group, *block, args[2])};
 }
 
 template<typename T>
@@ -194,6 +221,11 @@ CmdResult CmdAliasGet(std::vector<std::string>&, CmdContext<T>&) {
             raw_string_ostream strstream(out);
             V->print(strstream);
             group_lines.push_back(ftxui::text(std::format("{}.{:0>3} | {}", G.first, num++, out)));
+        }
+        // Epoch nums
+        num = 0;
+        for (CallBase const* CB : ContractPassUtility::getAliasEpochs(G.first)) {
+            group_lines.push_back(ftxui::text(std::format("{}.e{:0>2} | epoch in {} at {}", G.first, num++, CB->getFunction()->getName().str(), ContractPassUtility::getInstrLocStr(CB))));
         }
     }
     TUIManager::ShowLines(group_lines, "Current Alias Groups");
@@ -311,7 +343,8 @@ std::vector<CmdInfo<T>> TraceCommands = {
     {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAliasCreate<T>},
     {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAliasAdd<T>},
     {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAliasType<T>},
-    {"alias-rm",      "[group num] [value num]",                                  "Remove a value from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
+    {"alias-rm",      "[group num] [value num|e<epoch num>]",                     "Remove a value or an epoch (prefixed with e) from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
+    {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAliasEpoch<T>},
     {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet<T>},
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
     {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdDiff<T>},

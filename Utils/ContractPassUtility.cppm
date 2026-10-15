@@ -869,6 +869,23 @@ export void setAliasGroupType(int idx, bool isAlias) {
         }
     }
 }
+// Epoch annotations of an alias group, in module order
+export std::vector<CallBase*> getAliasEpochs(int group) {
+    std::vector<CallBase*> res;
+    for (Function& F : *curM) {
+        for (Instruction& I : instructions(F)) {
+            if (CallBase* CB = dyn_cast<CallBase>(&I)) {
+                if (CB->getCalledOperand()->getName() != "CoVer_AnnotAliasEpoch") continue;
+                if (dyn_cast<ConstantInt>(CB->getArgOperand(0))->getSExtValue() == group) res.push_back(CB);
+            }
+        }
+    }
+    return res;
+}
+export void removeAliasEpoch(int group, int idx) {
+    getAliasEpochs(group)[idx]->eraseFromParent();
+}
+
 export void removeFromAliasGroup(int group, int idx) {
     Value* V = *std::next(aliasInfo[group].members.begin(), idx);
     aliasInfo[group].members.erase(V);
@@ -881,7 +898,18 @@ export void removeFromAliasGroup(int group, int idx) {
             break;
         }
     }
-    if (aliasInfo[group].members.empty()) aliasInfo.erase(group);
+    if (aliasInfo[group].members.empty()) {
+        // Group is gone, delete its epochs
+        for (CallBase* CB : getAliasEpochs(group)) CB->eraseFromParent();
+        aliasInfo.erase(group);
+    }
+}
+
+export void addAliasEpoch(int group, Instruction* before) {
+    if (isa<PHINode>(before)) before = &*before->getParent()->getFirstInsertionPt();
+    CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAliasEpoch"), {Basic_Types.getInt(group)});
+    CI->insertBefore(before->getIterator());
+    CI->setDebugLoc(before->getDebugLoc());
 }
 
 export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {

@@ -360,13 +360,13 @@ int main(int argc, const char** argv) {
     do {
         execSafe(DebuggerCoVerPlugin + " opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + target_file + " -o " + tmpfile + ".opt");
         target_file = "CoVer_Reanalyse.ll";
-    } while (std::filesystem::exists("CoVer_Reanalyse.ll"));
+    } while (InteractiveStatic && std::filesystem::exists("CoVer_Reanalyse.ll"));
     close(fd);
 
     // Finalize executable
     if(!NoBinary) {
         execSafe("llc -filetype=obj --relocation-model=pic " + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
-        execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o @COVER_INTRINSICS_LIB_PATH@ @COVER_ANNOT_VERIFIER_PATH@ " + dest_arg);
+        execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o @COVER_INTRINSICS_LIB_PATH@ @COVER_ANNOT_VERIFIER_PATH@ -lstdc++ " + dest_arg);
     }
     return 0;
 }

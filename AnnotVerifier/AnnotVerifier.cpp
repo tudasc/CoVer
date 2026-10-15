@@ -117,3 +117,6 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* pt
     }
     aliasinfo.push_back({group, ptr, __builtin_return_address(0)});
 }
+extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAliasEpoch(int group) {
+    std::erase_if(aliasinfo, [group](AliasGroupAbstr const& Agroup) { return Agroup.idx == group; });
+}

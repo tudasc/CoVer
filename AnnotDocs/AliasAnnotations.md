@@ -66,6 +66,19 @@ define i32 @main() #0 {
 | 2nd | Whether the group is an alias/no-alias annotation (`true`/`false`) |
 | 3rd | The group it belongs to |
 
+## `CoVer_AnnotAliasEpoch`
+
+`CoVer_AnnotAliasEpoch(int group)` starts a new epoch for an alias group.
+The runtime annotation verifier forgets all values of the group seen so far, so values from before the epoch are not compared against values after it.
+This is useful if the same memory is reused for different purposes over time, e.g. a request array that is reused for each round of communication after all requests have been completed:
+
+```llvm
+define void @comm_round() {
++ call void @CoVer_AnnotAliasEpoch(i32 0)
+  ...
+}
+```
+
 ## Constraints
 
 - All alias annotations **must** share the same type within a group (aliasing or not aliasing).

@@ -28,4 +28,5 @@ struct ContractValuePair {
     static ContractValuePair_t MACRO_CONCAT(ContractValueInfo_, __COUNTER__ ) __attribute__((used)) = {#x, (void*)y};
 
 void CoVer_AnnotAlias(void* ptr, bool shouldAlias, int group);
+void CoVer_AnnotAliasEpoch(int group);
 void CoVer_AnnotFP(void const* ptr, int num_targets, ...);
