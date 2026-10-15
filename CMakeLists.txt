@@ -56,6 +56,12 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Utils/ErrorMessage.cppm
 )
 
+# Helper library for IR patch application
+add_library(CoVerIRPatch STATIC)
+target_sources(CoVerIRPatch PUBLIC FILE_SET CXX_MODULES FILES Utils/IRPatch.cppm)
+set_target_properties(CoVerIRPatch PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(CoVerPlugin PRIVATE CoVerIRPatch)
+
 target_include_directories(CoVerPlugin
   PUBLIC
     Include/
@@ -201,7 +207,7 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   set(OPT_PASSLIST_PREFIX "${PASSLIST_PREFIX}")
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/CoVerWrapper.cpp" "${CMAKE_CURRENT_BINARY_DIR}/${WRAPPER_NAME}.cpp" @ONLY)
   add_executable(${WRAPPER_NAME} "${WRAPPER_NAME}.cpp")
-  target_link_libraries(${WRAPPER_NAME} LLVM)
+  target_link_libraries(${WRAPPER_NAME} LLVM CoVerIRPatch)
   install(TARGETS ${WRAPPER_NAME})
   configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Utils/bash-autocomplete.sh" "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/completions/${WRAPPER_NAME}" @ONLY)
   install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/" DESTINATION share/bash-completion)
