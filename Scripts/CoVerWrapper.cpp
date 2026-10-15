@@ -123,7 +123,7 @@ std::string opt_flags = "";
 std::string exec(std::string const& cmd, bool interactive = true) {
     if (interactive) {
         int rc = std::system(cmd.c_str());
-        if (rc) exit(rc);
+        if (rc) exit(EXIT_FAILURE);
         return "";
     }
     std::array<char, 128> buffer;
