@@ -20,6 +20,7 @@
 import LLVMModule;
 import ContractPassUtility;
 import TUIManager;
+import IRPatch;
 
 using namespace llvm;
 
@@ -219,8 +220,8 @@ CmdResult CmdPatch(std::vector<std::string>& args, CmdContext<T>& ctx) {
     if (!std::filesystem::exists(args[0])) {
         return {CmdResultCode::INVALID_INPUT, "File does not exist!"};
     }
-    int rc = std::system(std::format("patch CoVer_Reanalyse.ll < {}", args[0]).c_str());
-    if ((!WIFEXITED(rc) || WEXITSTATUS(rc))) return {CmdResultCode::INVALID_INPUT, std::format("Error, patch returned exit code {}", WEXITSTATUS(rc))};
+    std::string err = IRPatch::applyPatch("CoVer_Reanalyse.ll", args[0]);
+    if (!err.empty()) return {CmdResultCode::INVALID_INPUT, "Error, " + err};
     return {CmdResultCode::SUCCESS_REANALYSE, "Applied patch from " + args[0]};
 }
 

@@ -13,6 +13,8 @@
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/CommandLine.h>
 
+import IRPatch;
+
 #define SET_FROM_ENV(x,y) (std::getenv(y) ? std::getenv(y) : x)
 
 using namespace llvm;
@@ -327,7 +329,16 @@ int main(int argc, const char** argv) {
         execSafe("opt -S " + tmpfile + " --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes=\"instrumentIntrinsics\" -o " + tmpfile + "_ir.ll");
         tmpfile += "_ir.ll";
         for (std::string patch : PatchFiles) {
-            execSafe("patch " + tmpfile + " < " + patch);
+            if (ExecVerbose || ExecDryRun) {
+                std::cout << "Wrapper " << (ExecDryRun ? "would apply" : "is applying") << " patch " << patch << " to " << tmpfile << "\n";
+            }
+            if (!ExecDryRun) {
+                std::string err = IRPatch::applyPatch(tmpfile, patch);
+                if (!err.empty()) {
+                    std::cerr << "Failed to apply IR patch: " << err << "\n";
+                    exit(EXIT_FAILURE);
+                }
+            }
         }
     }
 
