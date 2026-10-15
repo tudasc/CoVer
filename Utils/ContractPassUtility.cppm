@@ -876,7 +876,7 @@ export void removeFromAliasGroup(int group, int idx) {
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand()->getName() != "CoVer_AnnotAlias") continue;
             if (CB->getArgOperand(0) != V) continue;
-            if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() != idx) continue;
+            if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() != group) continue;
             CB->eraseFromParent();
             break;
         }
