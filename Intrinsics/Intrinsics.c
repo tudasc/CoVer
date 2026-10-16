@@ -7,6 +7,7 @@
 void __attribute__((visibility("default"))) CoVer_AnnotFP(void* ptr, void* func);
 void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* ptr, bool shouldAlias, int group);
 void __attribute__((visibility("default"))) CoVer_AnnotAliasEpoch(int group);
+void __attribute__((visibility("default"))) CoVer_AnnotAlloc(void* ptr, size_t size);
 
 // Stack allocation intrinsics (i.e. for IR allocas)
 void __attribute__((visibility("default"))) CoVer_AllocStack(void const* ptr, size_t size) {};

@@ -38,6 +38,7 @@ module;
 #include <llvm/Transforms/Utils/BasicBlockUtils.h>
 #include <llvm/Transforms/Utils/ValueMapper.h>
 #include <llvm/Transforms/Utils/Cloning.h>
+#include <llvm/Transforms/Utils/Local.h>
 
 export module LLVMModule;
 
@@ -92,6 +93,7 @@ export namespace llvm {
     using llvm::DISubroutineType;
     using llvm::DISubprogram;
     using llvm::ReplaceInstWithInst;
+    using llvm::changeToCall;
     using llvm::GEPOperator;
     using llvm::BranchInst;
     using llvm::SwitchInst;

@@ -7,6 +7,11 @@
 #include <vector>
 #include <array>
 #include <optional>
+#include <algorithm>
+#include <setjmp.h>
+#include <csignal>
+#include <mutex>
+#include <unistd.h>
 
 namespace {
     std::string exec(std::string const& cmd) {
@@ -119,4 +124,66 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* pt
 }
 extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAliasEpoch(int group) {
     std::erase_if(aliasinfo, [group](AliasGroupAbstr const& Agroup) { return Agroup.idx == group; });
+}
+
+namespace {
+    std::mutex probe_mutex;
+    struct sigaction prev_segv, prev_bus;
+    thread_local sigjmp_buf probe_env;
+    thread_local volatile sig_atomic_t probing = 0;
+
+    void probeHandler(int, siginfo_t*, void*) {
+        if (probing) siglongjmp(probe_env, 1);
+        // Fault in another thread: Restore previous handlers, faulting instruction is re-executed on return
+        sigaction(SIGSEGV, &prev_segv, nullptr);
+        sigaction(SIGBUS, &prev_bus, nullptr);
+    }
+
+    // Dereferences ptr and each page start up to ptr+size, catching segfaults.
+    // Returns number of bytes accessible from ptr (page granularity, at most size). size 0 only checks ptr itself.
+    size_t probeAccessible(void const* ptr, size_t size) {
+        std::lock_guard lock(probe_mutex);
+        struct sigaction sa = {};
+        sa.sa_sigaction = probeHandler;
+        sa.sa_flags = SA_SIGINFO;
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGSEGV, &sa, &prev_segv);
+        sigaction(SIGBUS, &sa, &prev_bus);
+
+        uintptr_t const page_size = sysconf(_SC_PAGESIZE);
+        uintptr_t const begin = (uintptr_t)ptr;
+        uintptr_t const end = begin + std::min<size_t>(std::max<size_t>(size, 1), UINTPTR_MAX - begin);
+        volatile uintptr_t cur = begin;
+        size_t res;
+        probing = 1;
+        if (sigsetjmp(probe_env, 1) == 0) {
+            while (true) {
+                (void)*(char const volatile*)cur;
+                uintptr_t next = (cur & ~(page_size - 1)) + page_size;
+                if (next >= end || next < cur) break;
+                cur = next;
+            }
+            res = end - begin;
+        } else {
+            res = cur - begin;
+        }
+        probing = 0;
+
+        sigaction(SIGSEGV, &prev_segv, nullptr);
+        sigaction(SIGBUS, &prev_bus, nullptr);
+        return res;
+    }
+}
+
+extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlloc(void* ptr, size_t size) {
+    size_t accessible = probeAccessible(ptr, size);
+    if (accessible == 0) {
+        AnnotErr() << "Annotation verification failed!\n";
+        AnnotErr() << "Allocation annotation at " << getFileRefStr(__builtin_return_address(0)) << " references pointer " << ptr << ", which cannot be dereferenced!\n";
+        return;
+    }
+    if (size != 0 && accessible < size) {
+        AnnotErr() << "Annotation verification failed!\n";
+        AnnotErr() << "Allocation annotation at " << getFileRefStr(__builtin_return_address(0)) << " annotates pointer " << ptr << " with " << size << " bytes, but only " << accessible << " bytes are allocated!\n";
+    }
 }

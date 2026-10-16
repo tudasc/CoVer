@@ -115,6 +115,10 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     }
 
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
+        // Allocation annotation, treated like malloc
+        if (CB->getCalledOperand()->getName() == "CoVer_AnnotAlloc") {
+            cur.addAllocatedValue(CB->getArgOperand(0), ParamAccess::NORMAL);
+        }
         // Check for alloc/freefunc. Stack alloc better handled by isTriviallyAlloc.
         if (AllocFuncs.contains(CB->getCalledOperand()) && CB->getCalledOperand()->getName() != "CoVer_AllocStack" && CB->getCalledOperand()->getName() != "CoVer_RegisterGlobal") {
             for (const AllocOperation* alloc : AllocFuncs[CB->getCalledOperand()]) {

@@ -233,6 +233,21 @@ CmdResult CmdAliasGet(std::vector<std::string>&, CmdContext<T>&) {
 }
 
 template<typename T>
+CmdResult CmdAllocCreate(std::vector<std::string>& args, CmdContext<T>& ctx) {
+    std::string last_res;
+    std::optional<int> block = ParseBlock(args[0], ctx, last_res);
+    if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
+    Instruction* selected = ParseTraceInstr(args[1], *block, ctx, last_res);
+    if (!selected) return {CmdResultCode::INVALID_INPUT, last_res};
+    uint64_t size;
+    if (args[2].starts_with("-")) return {CmdResultCode::INVALID_INPUT, "Size argument must not be negative!"};
+    try { size = std::stoull(args[2]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Size argument is not a number!"}; }
+    std::string err = ContractPassUtility::setAllocAnnot(selected, size);
+    if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} at {}.{} is now annotated as allocated{}", selected->getNameOrAsOperand(), *block, args[1], size ? std::format(" with at least {} bytes", size) : "")};
+}
+
+template<typename T>
 CmdResult CmdDiff(std::vector<std::string>& args, CmdContext<T>& ctx) {
     Module* M = ctx.trace_by_blocks.begin()->first_entry->loc->getModule();
     std::ofstream difffile(args[0]);
@@ -346,6 +361,7 @@ std::vector<CmdInfo<T>> TraceCommands = {
     {"alias-rm",      "[group num] [value num|e<epoch num>]",                     "Remove a value or an epoch (prefixed with e) from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm<T>},
     {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAliasEpoch<T>},
     {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet<T>},
+    {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size)", 3, CmdAllocCreate<T>},
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse<T>},
     {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdDiff<T>},
     {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdPatch<T>},

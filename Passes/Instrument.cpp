@@ -624,12 +624,9 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
 void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I, Type* OrigRT) {
     if (!isRelevant(I) && (isa<LoadInst>(I) || isa<StoreInst>(I)) && ClInstrumentType.starts_with("filtered")) return;
     params.insert(params.begin(), Basic_Types.getBool(isRelevant(I)));
-    CallBase* callbackCB;
-    if (InvokeInst const* II = dyn_cast<InvokeInst>(I)) {
-        callbackCB = InvokeInst::Create(FC, II->getNormalDest(), II->getUnwindDest(), params);
-    } else {
-        callbackCB = CallInst::Create(FC, params);
-    }
+
+    if (InvokeInst* II = dyn_cast<InvokeInst>(I)) I = changeToCall(II);
+    CallInst* callbackCB = CallInst::Create(FC, params);
     callbackCB->setDebugLoc(I->getDebugLoc());
     if (CallBase* CB = dyn_cast<CallBase>(I)) {
         if (!OrigRT->isPointerTy() && !OrigRT->isVoidTy()) {

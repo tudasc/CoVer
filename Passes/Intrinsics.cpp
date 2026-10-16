@@ -63,6 +63,9 @@ void IntrinsicsPass::createCallees(Module& M) {
 
     FunctionType* FunctionAnnotAliasEpochType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Int_Type}, false);
     calleeHelper(M, "CoVer_AnnotAliasEpoch", FunctionAnnotAliasEpochType);
+
+    FunctionType* FunctionAnnotAllocType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int64_Type}, false);
+    calleeHelper(M, "CoVer_AnnotAlloc", FunctionAnnotAllocType);
 }
 
 void IntrinsicsPass::instrumentIntrinsics(Module& M) {

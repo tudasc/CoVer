@@ -30,3 +30,4 @@ struct ContractValuePair {
 void CoVer_AnnotAlias(void* ptr, bool shouldAlias, int group);
 void CoVer_AnnotAliasEpoch(int group);
 void CoVer_AnnotFP(void const* ptr, int num_targets, ...);
+void CoVer_AnnotAlloc(void* ptr, size_t size);

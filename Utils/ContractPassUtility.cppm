@@ -146,6 +146,12 @@ export std::set<Function*> getFPAnnots(CallBase const* CB) {
     return fp_targets;
 }
 
+// Instruction executed after I in the same function. For invokes, this is the start of the normal destination
+Instruction* getContinuation(Instruction* I) {
+    if (InvokeInst* II = dyn_cast<InvokeInst>(I)) return &II->getNormalDest()->front();
+    return I->getNextNode();
+}
+
 template<typename T>
 void updateJumpTrace(ContractPassUtility::TraceDB<T> const& trace, Instruction* cur, Instruction* prev, ContractPassUtility::TraceKind kind, T analysisInfo) {
     if (trace->contains(cur)) {
@@ -189,8 +195,8 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
 
     if (!transferFirst) {
         updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
-        todoList.push({Start->getNextNode(), init, {}});
-        updateJumpTrace(jumptraces, Start->getNextNode(), Start, TraceKind::LINEAR, init);
+        todoList.push({getContinuation(Start), init, {}});
+        updateJumpTrace(jumptraces, getContinuation(Start), Start, TraceKind::LINEAR, init);
     } else {
         todoList.push({Start, init, {}});
         updateJumpTrace(jumptraces, Start, nullptr, TraceKind::LINEAR, init);
@@ -216,7 +222,7 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
                 // Remove from worklist, or pop stack
                 Instruction* tmpNext = nullptr;
                 while (!tmpNext && !stack.empty()) {
-                    tmpNext = stack.top()->getNextNode();
+                    tmpNext = getContinuation(stack.top());
                     stack.pop();
                 }
                 // Either tmpNext is set, or null because tail-call stack end or stack was empty
@@ -230,25 +236,13 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
             prevInfo = postAccess[cur];
 
             // Check for branching / terminating instructions
-            // Missing because not sure if needed / relevant / used / too little info / lazy:
-            // CleanupReturnInst, CatchReturnInst, CatchSwitchInst, CallBrInst, ResumeInst, InvokeInst, IndirectBrInst
-            if (BranchInst* BR = dyn_cast<BranchInst>(cur)) {
-                for (BasicBlock* alt : BR->successors()) {
-                    updateJumpTrace(jumptraces, &alt->front(), cur, TraceKind::BRANCH, postAccess[cur]);
+            // Invokes are handled as calls below, continuing at the normal destination
+            if (cur->isTerminator() && !isa<CallBase>(cur)) {
+                TraceKind branchKind = isa<SwitchInst>(cur) ? TraceKind::SWITCH : TraceKind::BRANCH;
+                for (BasicBlock* alt : cur->successors()) {
+                    updateJumpTrace(jumptraces, &alt->front(), cur, branchKind, postAccess[cur]);
                     todoList.push( {&alt->front(), postAccess[cur], stack} );
                 }
-                break;
-            }
-            if (SwitchInst* SI = dyn_cast<SwitchInst>(cur)) {
-                for (unsigned i = 0; i < SI->getNumSuccessors(); i++) {
-                    BasicBlock* alt = SI->getSuccessor(i);
-                    updateJumpTrace(jumptraces, &alt->front(), cur, TraceKind::SWITCH, postAccess[cur]);
-                    todoList.push( {&alt->front(), postAccess[cur], stack} );
-                }
-                break;
-            }
-            if (isa<UnreachableInst>(cur)) {
-                break;
             }
 
             // Check if function call: If it is, jump to function body
@@ -288,14 +282,14 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
                 }
             }
             if (!next && !isa<ReturnInst>(cur)) {
-                next = cur->getNextNode();
+                next = getContinuation(cur);
                 if (next) next_trace_entry = TraceKind::LINEAR;
             }
 
             // Check if returning from function
             if (isa<ReturnInst>(cur) && !stack.empty()) {
                 // Forward to next from stack
-                next = stack.top()->getNextNode();
+                next = getContinuation(stack.top());
                 stack.pop();
                 next_trace_entry = TraceKind::FUNCEXIT;
             } else if (isa<ReturnInst>(cur)) {
@@ -305,7 +299,7 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
                     if (CallBase* CB = dyn_cast<CallBase>(U)) {
                         if (CB->getCalledOperand() != func) continue;
                         // Add callsite next to todoList
-                        todoList.push( {CB->getNextNode(), postAccess[cur], stack} );
+                        todoList.push( {getContinuation(CB), postAccess[cur], stack} );
                     }
                 }
             }
@@ -925,6 +919,35 @@ export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     }
     if (targets.empty()) indirect->getPrevNode()->eraseFromParent();
     else indirect->getPrevNode()->setDebugLoc(indirect->getDebugLoc());
+}
+
+// Annotate the pointer produced by I as allocated with at least size bytes (0: size unknown). Returns error message, empty on success
+export std::string setAllocAnnot(Instruction* I, uint64_t size) {
+    if (!I->getType()->isPointerTy()) return "Instruction does not produce a pointer value!";
+    Instruction* insertPt;
+    if (InvokeInst* II = dyn_cast<InvokeInst>(I)) {
+        // Result only available in normal destination
+        if (!II->getNormalDest()->getSinglePredecessor()) return "Normal destination of invoke has multiple predecessors, cannot place annotation!";
+        insertPt = &*II->getNormalDest()->getFirstInsertionPt();
+    } else if (I->isTerminator()) {
+        return "Cannot place annotation after a terminator instruction!";
+    } else if (isa<PHINode>(I)) {
+        insertPt = &*I->getParent()->getFirstInsertionPt();
+    } else {
+        insertPt = I->getNextNode();
+    }
+
+    ConstantInt* sizeConst = ConstantInt::get(Basic_Types.Int64_Type, size);
+    // Already annotated: Only update size
+    for (CallBase* CB = dyn_cast<CallBase>(insertPt); CB && CB->getCalledOperand()->getName() == "CoVer_AnnotAlloc"; CB = dyn_cast_or_null<CallBase>(CB->getNextNode())) {
+        if (CB->getArgOperand(0) != I) continue;
+        CB->setArgOperand(1, sizeConst);
+        return "";
+    }
+    CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlloc"), {I, sizeConst});
+    CI->insertBefore(insertPt->getIterator());
+    CI->setDebugLoc(I->getDebugLoc());
+    return "";
 }
 
 }
