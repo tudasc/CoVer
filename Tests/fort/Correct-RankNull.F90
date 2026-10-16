@@ -13,7 +13,6 @@ program main
     integer :: double_size
     integer :: integer_size
     integer :: logical_size
-    integer :: i ! Loop index used by some tests
     type(MPI_Win) :: mpi_win_0
     type(c_ptr) :: winbuf
     integer, pointer :: buf(:)

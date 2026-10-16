@@ -13,7 +13,6 @@ program main
     integer :: double_size
     integer :: integer_size
     integer :: logical_size
-    integer :: i ! Loop index used by some tests
     integer, pointer :: buf(:)
     integer, pointer :: recv_buf(:)
 
