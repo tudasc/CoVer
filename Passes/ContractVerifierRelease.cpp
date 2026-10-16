@@ -161,9 +161,7 @@ std::pair<ContractVerifierReleasePass::ReleaseStatus,bool> ContractVerifierRelea
         IterTypeRelease* Data = static_cast<IterTypeRelease*>(data);
         Data->dbg.push_back("[ContractVerifierRelease] NOTE: Successful fulfillment (by release) was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
     }
-
-    // Should continue if newStat is worse than prev
-    return { newStat, newStat > prev};
+    return { newStat, newStat > cur};
 }
 
 ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRelease(ContractTree::ReleaseOperation const& relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression& Expr, const Module& M, std::string& error) {

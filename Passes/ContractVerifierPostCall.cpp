@@ -110,7 +110,7 @@ std::pair<ContractVerifierPostCallPass::CallStatus,bool> ContractVerifierPostCal
         IterTypePostCall* Data = static_cast<IterTypePostCall*>(data);
         Data->dbg.push_back("[ContractVerifierPostCall] NOTE: Successful fulfillment was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
     }
-    return { cs, cs > prev };
+    return { cs, cs > cur };
 }
 
 ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error) {
