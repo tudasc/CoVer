@@ -102,7 +102,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
                 cur.CurVal = CallStatusVal::ERROR;
                 return cur;
             }
-            for (CallParam param : Data->reqParams) {
+            for (CallParam const& param : Data->reqParams) {
                 for (const CallBase* Candidate : cur.candidate) {
                     if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags, MAM)) {
                         // Success!
@@ -121,20 +121,11 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
     return cur;
 }
 
-std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallPass::mergePreCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data) {
-    // Intersection of candidates
-    std::set<const CallBase*> intersect;
-    std::set_intersection(prev.candidate.begin(), prev.candidate.end(), cur.candidate.begin(), cur.candidate.end(),
-                 std::inserter(intersect, intersect.begin()));
+std::pair<ContractVerifierPreCallPass::CallStatus,bool> ContractVerifierPreCallPass::mergePreCallStat(CallStatus const& prev, CallStatus const& cur, const Instruction* I, void* data) {
     CallStatus cs;
     cs.candidate = prev.candidate;
     cs.candidate.insert(cur.candidate.begin(), cur.candidate.end());
     cs.CurVal = std::max(prev.CurVal, cur.CurVal);
-    if ((prev.CurVal == CallStatusVal::CALLED || cur.CurVal == CallStatusVal::CALLED) &&
-         cs.CurVal != CallStatusVal::CALLED) {
-        IterTypePreCall* Data = static_cast<IterTypePreCall*>(data);
-        Data->dbg.push_back("[ContractVerifierPreCall] NOTE: Successful fulfillment was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
-    }
     return { cs, cs.CurVal > cur.CurVal };
 }
 

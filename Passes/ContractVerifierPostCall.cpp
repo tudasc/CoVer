@@ -89,7 +89,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::transferP
             }
             // Target function was called, need to check the parameters
             // Paramcheck is resolved once target found
-            for (CallParam P : Data->reqParams) {
+            for (CallParam const& P : Data->reqParams) {
                 if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->Target, P, Data->Tags, MAM)) {
                     // Success!
                     return CallStatus::CALLED;
@@ -105,11 +105,6 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::transferP
 
 std::pair<ContractVerifierPostCallPass::CallStatus,bool> ContractVerifierPostCallPass::mergePostCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data) {
     CallStatus cs = std::max(prev, cur);
-    if ((prev == CallStatus::CALLED || cur == CallStatus::CALLED) &&
-         cs != CallStatus::CALLED) {
-        IterTypePostCall* Data = static_cast<IterTypePostCall*>(data);
-        Data->dbg.push_back("[ContractVerifierPostCall] NOTE: Successful fulfillment was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
-    }
     return { cs, cs > cur };
 }
 

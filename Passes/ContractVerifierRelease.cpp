@@ -106,7 +106,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
         if (ContractPassUtility::checkCalledApplies(CB, Data->releaseFunc, Data->isTagRel, Data->Tags)) {
             if (Data->releaseParam.empty()) return ReleaseStatus::FULFILLED;
-            for (CallParam P : Data->releaseParam) {
+            for (CallParam const& P : Data->releaseParam) {
                 if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags, MAM))
                     return cur == ReleaseStatus::ERROR_UNFULFILLED ? ReleaseStatus::ERROR : ReleaseStatus::FULFILLED;
             }
@@ -121,12 +121,12 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
             if (const CallBase* CB = dyn_cast<CallBase>(I)) {
                 if (ContractPassUtility::checkCalledApplies(CB, std::any_cast<std::string>(Data->param[0]), Data->forbiddenType == ContractTree::FormulaType::CALLTAG, Data->Tags)) {
                     // Found forbidden function. Current status is unknown, if we find forbidden parameter (and one is specified) this is an error
-                    const std::vector<CallParam> forbidParams = std::any_cast<const std::vector<CallParam>>(Data->param[1]);
+                    std::vector<CallParam> const& forbidParams = *std::any_cast<std::vector<CallParam>>(&Data->param[1]);
                     if (forbidParams.empty()) {
                         appendDebugStr(Data->err, CB, Data->callsite);
                         return ReleaseStatus::ERROR_UNFULFILLED;
                     }
-                    for (CallParam forbidParam : forbidParams) {
+                    for (CallParam const& forbidParam : forbidParams) {
                         if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags, MAM)) {
                             appendDebugStr(Data->err, CB, Data->callsite);
                             return ReleaseStatus::ERROR_UNFULFILLED;
@@ -156,11 +156,6 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
 
 std::pair<ContractVerifierReleasePass::ReleaseStatus,bool> ContractVerifierReleasePass::mergeRelease(ReleaseStatus prev, ReleaseStatus cur, const Instruction* I, void* data) {
     ReleaseStatus newStat = std::max(prev, cur);
-    if ((prev == ReleaseStatus::FULFILLED || cur == ReleaseStatus::FULFILLED) &&
-         newStat != ReleaseStatus::FULFILLED) {
-        IterTypeRelease* Data = static_cast<IterTypeRelease*>(data);
-        Data->dbg.push_back("[ContractVerifierRelease] NOTE: Successful fulfillment (by release) was lost at " + ContractPassUtility::getInstrLocStr(I) + " due to merging of different branches.");
-    }
     return { newStat, newStat > cur};
 }
 
@@ -205,7 +200,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());
                 data.err.clear();
-                for (std::pair<const Instruction *, ReleaseStatus> x : WLRes.AnalysisInfo) {
+                for (auto const& x : WLRes.AnalysisInfo) {
                     if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) {
                         ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, C);
                         WLRes.handleDebug = handleDebug_inst;

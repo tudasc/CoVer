@@ -68,7 +68,7 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
                         if (!hasAllocInfo(Candidate.first)) candidate_set[Candidate.first] = Candidate.second;
                     }
                 }
-                AllocStatus intersect(AllocStatus const& other) {
+                AllocStatus intersect(AllocStatus const& other) const {
                     std::map<Value const*, AllocInfo> candidate_intersect;
                     for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : this->candidates()) {
                         if (other.hasAllocInfo(Candidate.first)) {
@@ -96,7 +96,7 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
         std::map<const Value*, std::set<const FreeOperation*>> FreeFuncs;
 
         AllocStatus transferAllocStat(AllocStatus s, const Instruction* I, void* data);
-        std::pair<AllocStatus,bool> mergeAllocStat(AllocStatus prev, AllocStatus cur, const Instruction* I, void* data);
+        std::pair<AllocStatus,bool> mergeAllocStat(AllocStatus const& prev, AllocStatus const& cur, const Instruction* I, void* data);
         AllocStatus callReturnAllocStat(AllocStatus caller, AllocStatus callee, const CallBase* CB, void* data);
 
         AllocStatusVal checkAllocReq(const AllocOperation* AllocOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, Module const& M, const Function* F, std::string& err);

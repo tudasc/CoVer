@@ -25,7 +25,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
         static void appendDebugStr(std::string Target, bool isTag, const CallBase* Provider, const std::set<const CallBase *> candidates, std::vector<ErrorMessage>& err);
 
     private:
-        std::pair<CallStatus,bool> mergePreCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data);
+        std::pair<CallStatus,bool> mergePreCallStat(CallStatus const& prev, CallStatus const& cur, const Instruction* I, void* data);
         CallStatus transferPreCallStat(CallStatus cur, const Instruction* I, void* data);
         CallStatusVal checkPreCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
         ContractManagerAnalysis::ContractDatabase* DB;
@@ -42,7 +42,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
 
         static bool handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
             ContractPassUtility::JumpTraceEntry<CallStatus>* startloc;
-            for (std::pair<Instruction*, CallStatus> AI : WLRes.AnalysisInfo) {
+            for (auto const& AI : WLRes.AnalysisInfo) {
                 if (CallBase* CB = dyn_cast<CallBase>(AI.first)) {
                     if (CB->getCalledFunction() == C.F) {
                         if (AI.second.CurVal == CallStatusVal::ERROR) {

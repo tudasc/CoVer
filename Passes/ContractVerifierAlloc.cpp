@@ -176,7 +176,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     return cur;
 }
 
-std::pair<ContractVerifierAllocPass::AllocStatus,bool> ContractVerifierAllocPass::mergeAllocStat(AllocStatus prev, AllocStatus cur, const Instruction* I, void* data) {
+std::pair<ContractVerifierAllocPass::AllocStatus,bool> ContractVerifierAllocPass::mergeAllocStat(AllocStatus const& prev, AllocStatus const& cur, const Instruction* I, void* data) {
     AllocStatus intersect = cur.intersect(prev);
     if (intersect.CurVal > cur.CurVal) return {intersect, true};
     // Stored info is post-transfer: Values the transfer of I adds are not lost, as they are added again
@@ -218,7 +218,7 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     // Take max over all analysis info
     // Correct usage will not contain error
     AllocStatusVal res = AllocStatusVal::ALLOC;
-    for (std::pair<const Instruction*, AllocStatus> AI : WLRes.AnalysisInfo) {
+    for (auto const& AI : WLRes.AnalysisInfo) {
         if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
             if (CB->getCalledFunction() == F) {
                 res = std::max(AI.second.CurVal, res);

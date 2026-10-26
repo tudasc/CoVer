@@ -57,7 +57,7 @@ namespace ContractPassUtility {
 export template<typename T>
 using TransferFunction = std::function<T(T,const Instruction*,void*)>;
 export template<typename T>
-using MergeFunction = std::function<std::pair<T,bool>(T,T,const Instruction*,void*)>;
+using MergeFunction = std::function<std::pair<T,bool>(T const&,T const&,const Instruction*,void*)>;
 export template<typename T>
 using CallReturnFunction = std::function<T(T,T,const CallBase*,void*)>;
 
@@ -98,7 +98,8 @@ std::map<int, ContractPassUtility::AliasGroup> aliasInfo;
 
 #define DEBUG_ENV "COVER_LLVM_DEBUG"
 export bool isDebug() {
-    return getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1;
+    static const bool debug = getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1;
+    return debug;
 }
 
 export const Value* betterGetPointerOperand(const Value* V) {
@@ -160,7 +161,7 @@ Instruction* getContinuation(Instruction* I) {
 }
 
 template<typename T>
-void updateJumpTrace(ContractPassUtility::TraceDB<T> const& trace, Instruction* cur, Instruction* prev, ContractPassUtility::TraceKind kind, T analysisInfo) {
+void updateJumpTrace(ContractPassUtility::TraceDB<T> const& trace, Instruction* cur, Instruction* prev, ContractPassUtility::TraceKind kind, T const& analysisInfo) {
     if (trace->contains(cur)) {
         if (std::find(trace[cur]->predecessors.begin(), trace[cur]->predecessors.end(), trace[prev]) == trace[cur]->predecessors.end())
             trace[cur]->predecessors.push_back(trace[prev]);
@@ -803,7 +804,7 @@ export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTre
     // Check for alias annotations
     // First, check if both are in alias group
     if (source && target) {
-        for (std::pair<int, AliasGroup> AG : aliasInfo) {
+        for (std::pair<const int, AliasGroup> const& AG : aliasInfo) {
             if ((AG.second.members.contains(source) || AG.second.members.contains(betterGetPointerOperand(source)))
             && (AG.second.members.contains(target) || AG.second.members.contains(betterGetPointerOperand(target)))) {
                 return AG.second.areAliasing;
