@@ -58,6 +58,8 @@ export template<typename T>
 using TransferFunction = std::function<T(T,const Instruction*,void*)>;
 export template<typename T>
 using MergeFunction = std::function<std::pair<T,bool>(T,T,const Instruction*,void*)>;
+export template<typename T>
+using CallReturnFunction = std::function<T(T,T,const CallBase*,void*)>;
 
 export enum struct TraceKind { LINEAR, BRANCH, SWITCH, FUNCENTRY, FUNCEXIT };
 export template<typename T>
@@ -146,6 +148,11 @@ export std::set<Function*> getFPAnnots(CallBase const* CB) {
     return fp_targets;
 }
 
+// Called function, also if called through an alias (e.g. C++ complete object constructor aliasing the base object one)
+Function* getCalleeThroughAlias(CallBase const* CB) {
+    return dyn_cast<Function>(CB->getCalledOperand()->stripPointerCastsAndAliases());
+}
+
 // Instruction executed after I in the same function. For invokes, this is the start of the normal destination
 Instruction* getContinuation(Instruction* I) {
     if (InvokeInst* II = dyn_cast<InvokeInst>(I)) return &II->getNormalDest()->front();
@@ -168,16 +175,14 @@ void updateJumpTrace(ContractPassUtility::TraceDB<T> const& trace, Instruction* 
 template <typename T>
 std::pair<T, bool> getMergeResult(DenseMap<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> const& trace, T prevInfo, ContractPassUtility::MergeFunction<T> const& merge, Instruction* cur, void* data) {
     bool resume = true;
-    T info;
     auto it = AI.find(cur);
     if (it == AI.end()) {
-        info = prevInfo;
+        it = AI.insert({cur, std::move(prevInfo)}).first;
     } else {
-        std::tie(info, resume) = merge(prevInfo, it->second, cur, data);
+        std::tie(it->second, resume) = merge(std::move(prevInfo), it->second, cur, data);
     }
-    AI[cur] = info;
-    if (trace->contains(cur)) trace[cur]->analysisInfo = info;
-    return {info, resume};
+    if (trace->contains(cur)) trace[cur]->analysisInfo = it->second;
+    return {it->second, resume};
 }
 
 /*
@@ -185,7 +190,7 @@ std::pair<T, bool> getMergeResult(DenseMap<Instruction*, T>& AI, ContractPassUti
  * Need Start param to make sure that the initialization of parameters does not count as operation
  */
 export template <typename T>
-ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool transferFirst, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init) {
+ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool transferFirst, TransferFunction<T> transfer, MergeFunction<T> merge, void* data, T init, CallReturnFunction<T> callReturn = nullptr) {
     // Jumptrace
     TraceDB<T> jumptraces;
     // Analysis Info mapping
@@ -216,23 +221,40 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
             // 1. In any case, prevInfo MUST have the corresponding access
             // 2. Either: It is a "may" analysis, "next" was until now unreachable, or it was reached before and already contains the access
             // If those apply, add that access. Otherwise, remove it if present (=> "must" analysis, node reached with info, jumped here without)
-            std::pair<T, bool> mergeRes = getMergeResult(postAccess, jumptraces, prevInfo, merge, cur, data);
+            std::pair<T, bool> mergeRes = getMergeResult(postAccess, jumptraces, std::move(prevInfo), merge, cur, data);
             if (!mergeRes.second) {
                 // Already visited and analysis does not wish to pursue further.
                 // Remove from worklist, or pop stack
                 Instruction* tmpNext = nullptr;
+                CallBase* tmpCall = nullptr;
                 while (!tmpNext && !stack.empty()) {
-                    tmpNext = getContinuation(stack.top());
+                    tmpCall = stack.top();
+                    tmpNext = getContinuation(tmpCall);
                     stack.pop();
                 }
                 // Either tmpNext is set, or null because tail-call stack end or stack was empty
-                if (tmpNext) {
-                    cur = tmpNext;
-                } else break;
+                if (!tmpNext) break;
+                cur = tmpNext;
+                if (callReturn) {
+                    // Callee info is shared by all callsites. Continue with the info of this callsite instead,
+                    // combined with the callee info at its returns (or here, if no return was reached yet)
+                    T calleeInfo = mergeRes.first;
+                    bool foundRet = false;
+                    if (Function* Callee = getCalleeThroughAlias(tmpCall)) {
+                        for (BasicBlock& BB : *Callee) {
+                            auto it = postAccess.find(BB.getTerminator());
+                            if (!isa<ReturnInst>(BB.getTerminator()) || it == postAccess.end()) continue;
+                            calleeInfo = foundRet ? merge(it->second, calleeInfo, it->first, data).first : it->second;
+                            foundRet = true;
+                        }
+                    }
+                    prevInfo = callReturn(postAccess[tmpCall], calleeInfo, tmpCall, data);
+                    continue;
+                }
             }
 
             // Call transfer function
-            postAccess[cur] = transfer(postAccess[cur], cur, data);
+            postAccess[cur] = transfer(std::move(postAccess[cur]), cur, data);
             prevInfo = postAccess[cur];
 
             // Check for branching / terminating instructions
@@ -250,13 +272,14 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
             Instruction* next = nullptr;
             TraceKind next_trace_entry;
             if (CallBase* CB = dyn_cast<CallBase>(cur)) {
-                if (CB->getCalledFunction() && (OMPNames.contains(CB->getCalledFunction()->getName()) || !CB->getCalledFunction()->isDeclaration())) {
+                Function* Callee = getCalleeThroughAlias(CB);
+                if (Callee && (OMPNames.contains(Callee->getName()) || !Callee->isDeclaration())) {
                     stack.push(CB);
-                    if (!OMPNames.contains(CB->getCalledFunction()->getName())) {
-                        next = &CB->getCalledFunction()->getEntryBlock().front();
+                    if (!OMPNames.contains(Callee->getName())) {
+                        next = &Callee->getEntryBlock().front();
                         next_trace_entry = TraceKind::FUNCENTRY;
                     } else {
-                        if (Function* ompFunc = dyn_cast<Function>(CB->getArgOperand(OMPNames.at(CB->getCalledFunction()->getName())))) {
+                        if (Function* ompFunc = dyn_cast<Function>(CB->getArgOperand(OMPNames.at(Callee->getName())))) {
                             if (!ompFunc->isDeclaration())
                                 next = &ompFunc->getEntryBlock().front();
                         }
@@ -289,15 +312,22 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
             // Check if returning from function
             if (isa<ReturnInst>(cur) && !stack.empty()) {
                 // Forward to next from stack
+                // Callee info is shared by all callsites, so combine it with the info of this callsite
+                if (callReturn) prevInfo = callReturn(postAccess[stack.top()], postAccess[cur], stack.top(), data);
                 next = getContinuation(stack.top());
                 stack.pop();
                 next_trace_entry = TraceKind::FUNCEXIT;
             } else if (isa<ReturnInst>(cur)) {
                 // Stack is empty. But if we started inside a function, context includes all callsites
                 Function* func = cur->getFunction();
+                std::vector<User*> callers(func->user_begin(), func->user_end());
+                // Add aliases of function as potential callers as well
                 for (User* U : func->users()) {
+                    if (GlobalAlias* GA = dyn_cast<GlobalAlias>(U)) callers.insert(callers.end(), GA->user_begin(), GA->user_end());
+                }
+                for (User* U : callers) {
                     if (CallBase* CB = dyn_cast<CallBase>(U)) {
-                        if (CB->getCalledOperand() != func) continue;
+                        if (getCalleeThroughAlias(CB) != func) continue;
                         // Add callsite next to todoList
                         todoList.push( {getContinuation(CB), postAccess[cur], stack} );
                     }
@@ -329,8 +359,9 @@ Function const* getParentFunction(Value const* V) {
 std::set<int> getAliasGroups(Value const* V) {
     std::set<int> res;
     if (Instruction const* I = dyn_cast<Instruction>(V)) {
-        Instruction const* cur = I->getNextNode();
-        for (int i = 0; i < 5; i++) {
+        // Result of an invoke is only available in the normal destination
+        Instruction const* cur = isa<InvokeInst>(I) ? &dyn_cast<InvokeInst>(I)->getNormalDest()->front() : I->getNextNode();
+        for (int i = 0; i < 5 && cur; i++) {
             if (CallBase const* CB = dyn_cast<CallBase>(cur)) {
                 if (CB->getCalledOperand()->getName() == "CoVer_AnnotAlias") {
                     if (sameOriginCheck(CB->getArgOperand(0), V)) res.insert(dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue());
@@ -359,27 +390,41 @@ std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int
     if (const Argument* Arg = dyn_cast<Argument>(I)) {
         args.insert(Arg);
     }
+    std::set<std::pair<const Value*, int>> candidates;
     if (const AllocaInst* AI = dyn_cast<AllocaInst>(I)) {
         // Pre-sroa: Possibly a function parameter, check args against storeinst users
         const Function* tmp = AI->getFunction();
+        std::vector<const StoreInst*> stores;
         for (const User* UA : AI->users() ) {
-            if (!isa<StoreInst>(UA)) continue;
-            Value const* potentialArg = dyn_cast<StoreInst>(UA)->getValueOperand();
+            if (const StoreInst* SI = dyn_cast<StoreInst>(UA); SI && SI->getPointerOperand() == AI) stores.push_back(SI);
+        }
+        for (const StoreInst* SI : stores) {
+            Value const* potentialArg = SI->getValueOperand();
             if (Argument const* Arg = dyn_cast<Argument>(potentialArg)) {
                 args.insert(Arg);
                 curSteps--;
                 break;
             }
         }
+        // Local variable holding a single value (e.g. ptr = malloc(...)): Continue with the stored value
+        if (args.empty() && stores.size() == 1) {
+            if (const Instruction* stored = dyn_cast<Instruction>(stores[0]->getValueOperand()); stored && !candidatesConsidered.contains(stored)) {
+                candidates.insert({stored, curSteps - 1});
+            }
+        }
     }
 
     // Second step: extract callsites and add to candidate list
-    std::set<std::pair<const Value*, int>> candidates;
     for (Argument const* Arg : args) {
-        Function const* F = Arg->getParent(); 
+        Function const* F = Arg->getParent();
+        // Resolve func aliases
+        std::vector<const User*> callers(F->user_begin(), F->user_end());
         for (const User* U : F->users()) {
+            if (const GlobalAlias* GA = dyn_cast<GlobalAlias>(U)) callers.insert(callers.end(), GA->user_begin(), GA->user_end());
+        }
+        for (const User* U : callers) {
             if (const CallBase* CB = dyn_cast<CallBase>(U)) {
-                if (CB->getCalledOperand() != F) continue;
+                if (getCalleeThroughAlias(CB) != F) continue;
                 // Callsite with correct argument
                 int offset = 0;
                 if (CB->getCalledFunction() && CB->getCalledFunction()->getName() == "__kmpc_fork_call")

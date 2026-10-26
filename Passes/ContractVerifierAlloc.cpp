@@ -61,11 +61,12 @@ struct IterTypeAlloc {
     std::vector<std::string> dbg;
     int param;
     const Function* F;
+    std::set<const CallBase*> reported;
 };
 
 ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocStat(AllocStatus cur, const Instruction* I, void* data) {
-    if (cur.CurVal == AllocStatusVal::ERROR) return cur;
-    if (cur.CurVal == AllocStatusVal::ALLOC) return cur;
+    // Keep tracking even after a verified or failed call: Info at merges is intersected,
+    // so a path that stopped tracking would drop values of all other paths
 
     IterTypeAlloc* Data = static_cast<IterTypeAlloc*>(data);
 
@@ -73,6 +74,13 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     if (StoreInst const* SI = dyn_cast<StoreInst>(I)) {
         if (cur.hasAllocInfo(SI->getValueOperand())) {
             cur.addCopy(SI->getPointerOperand(), SI->getValueOperand(), ParamAccess::NORMAL);
+        } else if (SI->getValueOperand()->getType()->isPointerTy()) {
+            for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : cur.candidates()) {
+                if (ContractPassUtility::checkParamMatch(Candidate.first, SI->getValueOperand(), Candidate.second.acc, MAM)) {
+                    cur.addCopy(SI->getPointerOperand(), Candidate.first, ParamAccess::NORMAL);
+                    break;
+                }
+            }
         }
     }
 
@@ -89,6 +97,14 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
     if (LoadInst const* LI = dyn_cast<LoadInst>(I)) {
         if (cur.hasAllocInfo(LI->getPointerOperand())) {
             cur.addCopy(LI, LI->getPointerOperand(), cur.getAllocInfo(LI->getPointerOperand()).acc);
+        } else if (LI->getType()->isPointerTy() && !isa<AllocaInst>(LI->getPointerOperand())) {
+            // Location may have been stored to elsewhere, e.g. a struct field set in another function
+            for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : cur.candidates()) {
+                if (ContractPassUtility::checkParamMatch(Candidate.first, LI->getPointerOperand(), Candidate.second.acc, MAM)) {
+                    cur.addCopy(LI, Candidate.first, Candidate.second.acc);
+                    break;
+                }
+            }
         }
     }
     if (GetElementPtrInst const* GEP = dyn_cast<GetElementPtrInst>(I)) {
@@ -137,20 +153,17 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
         }
         if (CB->getCalledFunction() == Data->F) {
             // Found contract supplier. Check if param is allocated
-            if (ContractPassUtility::isTrivialAlloc(CB->getArgOperand(Data->param))) {
-                cur.CurVal = AllocStatusVal::ALLOC;
-                return cur;
-            }
+            if (ContractPassUtility::isTrivialAlloc(CB->getArgOperand(Data->param))) return cur;
             // Not trivial, check if explicitly allocated
-            for (std::pair<Value const*, AllocStatus::AllocInfo> Candidate : cur.candidates()) {
+            for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : cur.candidates()) {
                 if (ContractPassUtility::checkParamMatch(Candidate.first, CB->getArgOperand(Data->param), Candidate.second.acc, MAM)) {
                     // Success!
-                    cur.CurVal = AllocStatusVal::ALLOC;
                     return cur;
                 }
             }
             // Any required parameter not used by any candidate
             cur.CurVal = AllocStatusVal::ERROR;
+            if (!Data->reported.insert(CB).second) return cur;
             Data->err.push_back({
                 .error_id = "Alloc",
                 .text = std::format("Value in argument index {} of {} in {} is not allocated!", Data->param, Data->F->getName().str(), ContractPassUtility::getInstrLocStr(CB)),
@@ -165,7 +178,23 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
 
 std::pair<ContractVerifierAllocPass::AllocStatus,bool> ContractVerifierAllocPass::mergeAllocStat(AllocStatus prev, AllocStatus cur, const Instruction* I, void* data) {
     AllocStatus intersect = cur.intersect(prev);
-    return {intersect, intersect.CurVal > cur.CurVal};
+    if (intersect.CurVal > cur.CurVal) return {intersect, true};
+    // Stored info is post-transfer: Values the transfer of I adds are not lost, as they are added again
+    for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : cur.candidates()) {
+        if (intersect.hasAllocInfo(Candidate.first) || Candidate.first == I) continue;
+        if (StoreInst const* SI = dyn_cast<StoreInst>(I); SI && SI->getPointerOperand() == Candidate.first) continue;
+        if (CallBase const* CB = dyn_cast<CallBase>(I); CB && std::any_of(CB->arg_begin(), CB->arg_end(), [&](Use const& U) { return U.get() == Candidate.first; })) continue;
+        return {intersect, true};
+    }
+    return {intersect, false};
+}
+
+ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::callReturnAllocStat(AllocStatus caller, AllocStatus callee, const CallBase* CB, void* data) {
+    // Callee info is the intersection over all callsites, which drops values only known to this caller.
+    // Keep the info at this callsite, and add what the callee allocated
+    caller.addCandidates(callee);
+    caller.CurVal = std::max(caller.CurVal, callee.CurVal);
+    return caller;
 }
 
 ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocReq(const AllocOperation* AllocOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, Module const& M, const Function* F, std::string& err) {
@@ -180,7 +209,8 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     IterTypeAlloc data = { {}, {}, AllocOp->contrP, F };
     auto bound_transfer = std::bind(&ContractVerifierAllocPass::transferAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     auto bound_merge = std::bind(&ContractVerifierAllocPass::mergeAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    ContractPassUtility::WorklistResult<AllocStatus> WLRes = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, true, bound_transfer, bound_merge, &data, init);
+    auto bound_callreturn = std::bind(&ContractVerifierAllocPass::callReturnAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    ContractPassUtility::WorklistResult<AllocStatus> WLRes = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, true, bound_transfer, bound_merge, &data, init, bound_callreturn);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());

@@ -32,6 +32,7 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
                 AllocStatusVal CurVal = AllocStatusVal::UNDEF;
                 AllocInfo const& getAllocInfo(Value const* V) const { return candidate_set.at(V); }
                 bool hasAllocInfo(Value const* V) const { return candidate_set.contains(V); }
+                size_t size() const { return candidate_set.size(); }
                 auto candidates() const {
                     return std::ranges::subrange(candidate_set.cbegin(), candidate_set.cend());
                 }
@@ -61,20 +62,26 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
                         to_erase.erase(V);
                     }
                 }
+                // Add candidates of other not yet present
+                void addCandidates(AllocStatus const& other) {
+                    for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : other.candidates()) {
+                        if (!hasAllocInfo(Candidate.first)) candidate_set[Candidate.first] = Candidate.second;
+                    }
+                }
                 AllocStatus intersect(AllocStatus const& other) {
                     std::map<Value const*, AllocInfo> candidate_intersect;
-                    for (std::pair<Value const*, AllocStatus::AllocInfo> Candidate : this->candidates()) {
+                    for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : this->candidates()) {
                         if (other.hasAllocInfo(Candidate.first)) {
                             AllocInfo AIres;
                             AIres.acc = Candidate.second.acc;
-                            AllocInfo AI = other.getAllocInfo(Candidate.first);
+                            AllocInfo const& AI = other.getAllocInfo(Candidate.first);
                             std::set_intersection(AI.children.begin(), AI.children.end(), Candidate.second.children.begin(), Candidate.second.children.end(), std::inserter(AIres.children, AIres.children.end()));
                             std::set_intersection(AI.parents.begin(), AI.parents.end(), Candidate.second.parents.begin(), Candidate.second.parents.end(), std::inserter(AIres.parents, AIres.parents.end()));
-                            candidate_intersect[Candidate.first] = AIres;
+                            candidate_intersect.emplace_hint(candidate_intersect.end(), Candidate.first, std::move(AIres));
                         }
                     }
                     AllocStatus res;
-                    res.candidate_set = candidate_intersect;
+                    res.candidate_set = std::move(candidate_intersect);
                     res.CurVal = std::max(this->CurVal, other.CurVal);
                     return res;
                 }
@@ -90,6 +97,7 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
 
         AllocStatus transferAllocStat(AllocStatus s, const Instruction* I, void* data);
         std::pair<AllocStatus,bool> mergeAllocStat(AllocStatus prev, AllocStatus cur, const Instruction* I, void* data);
+        AllocStatus callReturnAllocStat(AllocStatus caller, AllocStatus callee, const CallBase* CB, void* data);
 
         AllocStatusVal checkAllocReq(const AllocOperation* AllocOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, Module const& M, const Function* F, std::string& err);
 
