@@ -380,7 +380,7 @@ std::set<int> getAliasGroups(Value const* V) {
     return res;
 }
 
-std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int curSteps, std::map<const Value*,int> candidatesConsidered) {
+std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int curSteps, std::map<const Value*,int> const& candidatesConsidered) {
     // First step: Collect the arguments represented by the value
     std::set<Argument const*> args;
     if (const Argument* Arg = dyn_cast<Argument>(I)) {
