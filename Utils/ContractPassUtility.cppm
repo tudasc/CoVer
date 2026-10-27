@@ -445,7 +445,7 @@ std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int
     return candidates;
 }
 
-std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
+std::map<const Value*,int> getFunctionParentInstrCandidatesUncached(const Value* Ip) {
     if (!isa<Instruction>(Ip) && !isa<Argument>(Ip)) return {};
     std::set<std::pair<const Value*,int>> candidates = {{Ip, 0}};
     std::map<const Value*,int> candidatesConsidered;
@@ -469,11 +469,19 @@ std::map<const Value*,int> getFunctionParentInstrCandidates(const Value* Ip) {
     return candidatesConsidered;
 }
 
+static DenseMap<const Value*, std::shared_ptr<const std::map<const Value*,int>>> parentInstrCandidatesCache;
+
+std::shared_ptr<const std::map<const Value*,int>> getFunctionParentInstrCandidates(const Value* Ip) {
+    std::shared_ptr<const std::map<const Value*,int>>& entry = parentInstrCandidatesCache[Ip];
+    if (!entry) entry = std::make_shared<const std::map<const Value*,int>>(getFunctionParentInstrCandidatesUncached(Ip));
+    return entry;
+}
+
 int resolveFunctionDifference(const Value** A, const Value** B) {
-    std::map<const Value*,int> CandidatesA = getFunctionParentInstrCandidates(*A);
-    std::map<const Value*,int> CandidatesB = getFunctionParentInstrCandidates(*B);
-    for (std::pair<const Value*, int> Av : CandidatesA) {
-        for (std::pair<const Value*, int> Bv : CandidatesB) {
+    std::shared_ptr<const std::map<const Value*,int>> CandidatesA = getFunctionParentInstrCandidates(*A);
+    std::shared_ptr<const std::map<const Value*,int>> CandidatesB = getFunctionParentInstrCandidates(*B);
+    for (std::pair<const Value* const, int> const& Av : *CandidatesA) {
+        for (std::pair<const Value* const, int> const& Bv : *CandidatesB) {
             if (Av.first == Bv.first) {
                 *A = Av.first;
                 *B = Bv.first;
@@ -583,6 +591,8 @@ export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
 
     isFort = M.getFunction("_QQmain");
     curM = &M;
+
+    parentInstrCandidatesCache.clear();
 
     outputIR = _outputIR;
 
