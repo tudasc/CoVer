@@ -293,7 +293,6 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
                         if (F->isDeclaration()) continue;
                         std::stack<CallBase*> new_stack = stack;
                         new_stack.push(CB);
-                        AnnotFuncReverse[F].insert(CB);
                         updateJumpTrace(jumptraces, &F->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, prevInfo);
                         todoList.push( {&F->getEntryBlock().front(), prevInfo, std::move(new_stack)} );
                         foundnext = true;
@@ -599,6 +598,18 @@ export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
                 aliasInfo[groupIdx].areAliasing = dyn_cast<ConstantInt>(CB->getArgOperand(1))->getZExtValue();
                 #warning TODO need to get actual value here maybe
                 aliasInfo[groupIdx].members.insert(CB->getArgOperand(0));
+            }
+        }
+    }
+
+    // Collect the annotated targets of all indirect calls, so call chains through them can be resolved independent of analysis order
+    AnnotFuncReverse.clear();
+    for (Function& F : M) {
+        for (Instruction& I : instructions(F)) {
+            CallBase* CB = dyn_cast<CallBase>(&I);
+            if (!CB || !CB->isIndirectCall()) continue;
+            for (Function* Target : getFPAnnots(CB)) {
+                if (Target && !Target->isDeclaration()) AnnotFuncReverse[Target].insert(CB);
             }
         }
     }

@@ -20,6 +20,7 @@ add_cover_test_c(Correct-WinAlloc)
 add_cover_test_c(Correct-P2POffset)
 add_cover_test_c(Correct-RankNull)
 add_cover_test_c(Correct-SharedCallee)
+add_cover_test_c(Correct-AnnotFP)
 
 add_cover_test_c(PostCall-MissingFinalize)
 add_cover_test_c(PreCall-MissingInit)
