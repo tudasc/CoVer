@@ -198,6 +198,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 data.callsite = CB;
                 ContractPassUtility::WorklistResult<ReleaseStatus> WLRes = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB, false, transfer, merge, &data, ReleaseStatus::FORBIDDEN);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
+                data.dbg.clear();
                 DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());
                 data.err.clear();
                 for (auto const& x : WLRes.AnalysisInfo) {
