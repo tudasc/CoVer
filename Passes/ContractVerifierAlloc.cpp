@@ -75,8 +75,8 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
         if (cur.hasAllocInfo(SI->getValueOperand())) {
             cur.addCopy(SI->getPointerOperand(), SI->getValueOperand(), ParamAccess::NORMAL);
         } else if (SI->getValueOperand()->getType()->isPointerTy()) {
-            for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : cur.candidates()) {
-                if (ContractPassUtility::checkParamMatch(Candidate.first, SI->getValueOperand(), Candidate.second.acc, MAM)) {
+            for (auto const& Candidate : cur.candidates()) {
+                if (ContractPassUtility::checkParamMatch(Candidate.first, SI->getValueOperand(), Candidate.second->acc, MAM)) {
                     cur.addCopy(SI->getPointerOperand(), Candidate.first, ParamAccess::NORMAL);
                     break;
                 }
@@ -99,9 +99,9 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
             cur.addCopy(LI, LI->getPointerOperand(), cur.getAllocInfo(LI->getPointerOperand()).acc);
         } else if (LI->getType()->isPointerTy() && !isa<AllocaInst>(LI->getPointerOperand())) {
             // Location may have been stored to elsewhere, e.g. a struct field set in another function
-            for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : cur.candidates()) {
-                if (ContractPassUtility::checkParamMatch(Candidate.first, LI->getPointerOperand(), Candidate.second.acc, MAM)) {
-                    cur.addCopy(LI, Candidate.first, Candidate.second.acc);
+            for (auto const& Candidate : cur.candidates()) {
+                if (ContractPassUtility::checkParamMatch(Candidate.first, LI->getPointerOperand(), Candidate.second->acc, MAM)) {
+                    cur.addCopy(LI, Candidate.first, Candidate.second->acc);
                     break;
                 }
             }
@@ -155,8 +155,8 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
             // Found contract supplier. Check if param is allocated
             if (ContractPassUtility::isTrivialAlloc(CB->getArgOperand(Data->param))) return cur;
             // Not trivial, check if explicitly allocated
-            for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : cur.candidates()) {
-                if (ContractPassUtility::checkParamMatch(Candidate.first, CB->getArgOperand(Data->param), Candidate.second.acc, MAM)) {
+            for (auto const& Candidate : cur.candidates()) {
+                if (ContractPassUtility::checkParamMatch(Candidate.first, CB->getArgOperand(Data->param), Candidate.second->acc, MAM)) {
                     // Success!
                     return cur;
                 }
@@ -179,8 +179,9 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
 std::pair<ContractVerifierAllocPass::AllocStatus,bool> ContractVerifierAllocPass::mergeAllocStat(AllocStatus const& prev, AllocStatus const& cur, const Instruction* I, void* data) {
     AllocStatus intersect = cur.intersect(prev);
     if (intersect.CurVal > cur.CurVal) return {intersect, true};
+    if (intersect.sameCandidates(cur)) return {intersect, false}; // Nothing lost
     // Stored info is post-transfer: Values the transfer of I adds are not lost, as they are added again
-    for (std::pair<Value const* const, AllocStatus::AllocInfo> const& Candidate : cur.candidates()) {
+    for (auto const& Candidate : cur.candidates()) {
         if (intersect.hasAllocInfo(Candidate.first) || Candidate.first == I) continue;
         if (StoreInst const* SI = dyn_cast<StoreInst>(I); SI && SI->getPointerOperand() == Candidate.first) continue;
         if (CallBase const* CB = dyn_cast<CallBase>(I); CB && std::any_of(CB->arg_begin(), CB->arg_end(), [&](Use const& U) { return U.get() == Candidate.first; })) continue;
