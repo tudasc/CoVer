@@ -123,6 +123,7 @@ void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::strin
 
 export template<typename T>
 bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
+    if (!trace) return false;
     std::vector<std::pair<std::string, CmdResult>> input_history;
     if (std::filesystem::exists("CoVer_HistoryCache")) {
         std::string line;

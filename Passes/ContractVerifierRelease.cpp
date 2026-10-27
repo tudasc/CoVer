@@ -63,7 +63,13 @@ struct IterTypeRelease {
     const CallBase* callsite;
     std::map<Function*, std::vector<TagUnit>> Tags;
     const bool isTagRel;
+    const Instruction* forbidden = nullptr; // First forbidden operation found for current callsite
 };
+
+static void reportForbidden(IterTypeRelease* Data, const Instruction* Forbidden) {
+    ContractVerifierReleasePass::appendDebugStr(Data->err, Forbidden, Data->callsite);
+    if (!Data->forbidden) Data->forbidden = Forbidden;
+}
 
 void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err, const Instruction* Forbidden, const CallBase* CB) {
     std::stringstream str;
@@ -92,7 +98,7 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err,
     const ParamAccess accType = std::any_cast<const ParamAccess>(Data->param[1]); \
     const Value* contrP = Data->callsite->getArgOperand(forbidParam); \
     if (ContractPassUtility::checkParamMatch(contrP, instr, accType, MAM)) { \
-        appendDebugStr(Data->err, instr, Data->callsite); \
+        reportForbidden(Data, instr); \
         return ReleaseStatus::ERROR_UNFULFILLED; \
     } \
     return cur;
@@ -123,12 +129,12 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
                     // Found forbidden function. Current status is unknown, if we find forbidden parameter (and one is specified) this is an error
                     std::vector<CallParam> const& forbidParams = *std::any_cast<std::vector<CallParam>>(&Data->param[1]);
                     if (forbidParams.empty()) {
-                        appendDebugStr(Data->err, CB, Data->callsite);
+                        reportForbidden(Data, CB);
                         return ReleaseStatus::ERROR_UNFULFILLED;
                     }
                     for (CallParam const& forbidParam : forbidParams) {
                         if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags, MAM)) {
-                            appendDebugStr(Data->err, CB, Data->callsite);
+                            reportForbidden(Data, CB);
                             return ReleaseStatus::ERROR_UNFULFILLED;
                         }
                     }
@@ -201,13 +207,12 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 data.dbg.clear();
                 DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());
                 data.err.clear();
-                for (auto const& x : WLRes.AnalysisInfo) {
-                    if (x.second >= ReleaseStatus::ERROR_UNFULFILLED) {
-                        ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, C);
-                        WLRes.handleDebug = handleDebug_inst;
-                        Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<ReleaseStatus>>(WLRes);
-                        return ReleaseStatus::ERROR;
-                    }
+                // Error states only arise from a forbidden operation
+                if (data.forbidden) {
+                    ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, const_cast<Instruction*>(data.forbidden));
+                    WLRes.handleDebug = handleDebug_inst;
+                    Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<ReleaseStatus>>(WLRes);
+                    return ReleaseStatus::ERROR;
                 }
             }
         }

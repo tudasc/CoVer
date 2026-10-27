@@ -66,9 +66,9 @@ export template<typename T>
 struct JumpTraceEntry {
     JumpTraceEntry<T>() {}
     JumpTraceEntry<T>(T ai, Instruction* I, TraceKind k, std::vector<JumpTraceEntry<T>*> preds) : analysisInfo{ai}, loc{I}, kind{k}, predecessors{preds} {}
-    T analysisInfo;
-    Instruction* loc;
-    TraceKind kind;
+    T analysisInfo{};
+    Instruction* loc = nullptr;
+    TraceKind kind = TraceKind::LINEAR;
     std::vector<JumpTraceEntry<T>*> predecessors;
     bool operator<(const JumpTraceEntry<T> other) const { return loc < other.loc; };
 };
@@ -158,6 +158,14 @@ Function* getCalleeThroughAlias(CallBase const* CB) {
 Instruction* getContinuation(Instruction* I) {
     if (InvokeInst* II = dyn_cast<InvokeInst>(I)) return &II->getNormalDest()->front();
     return I->getNextNode();
+}
+
+// Trace entry holding the info after I, i.e. that of its continuation. Falls back to I itself if the continuation was not traced, null if neither was
+export template<typename T>
+JumpTraceEntry<T>* getTraceAfter(TraceDB<T> const& trace, Instruction* I) {
+    if (Instruction* next = getContinuation(I); next && trace->contains(next)) return trace[next];
+    if (trace->contains(I)) return trace[I];
+    return nullptr;
 }
 
 template<typename T>

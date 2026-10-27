@@ -34,16 +34,9 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
             }
         }
 
-        static bool handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
-            ContractPassUtility::JumpTraceEntry<ReleaseStatus>* startloc = nullptr;
-            for (auto const& AI : WLRes.AnalysisInfo) {
-                if (AI.second >= ReleaseStatus::ERROR_UNFULFILLED) {
-                    // nextnondbg exists, forb will always be mem or call not ret instr
-                    startloc = WLRes.JumpTraces[AI.first->getNextNode()];
-                    break;
-                }
-            }
-            return TUITrace::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, startloc, releaseStatusToStr);
+        static bool handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, Instruction* Forbidden) {
+            // Start trace right after the first forbidden operation found
+            return TUITrace::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, ContractPassUtility::getTraceAfter(WLRes.JumpTraces, Forbidden), releaseStatusToStr);
         }
 };
 
