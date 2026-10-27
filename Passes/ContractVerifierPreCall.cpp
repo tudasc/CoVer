@@ -149,7 +149,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
     // Take max over all analysis info
     // Correct usage will not contain error
     CallStatusVal res = CallStatusVal::CALLED;
-    for (std::pair<const Instruction*, CallStatus> AI : WLRes.AnalysisInfo) {
+    for (auto const& AI : WLRes.AnalysisInfo) {
         if (const CallBase* CB = dyn_cast<CallBase>(AI.first)) {
             if (CB->getCalledOperand() == C.F) {
                 res = std::max(AI.second.CurVal, res);

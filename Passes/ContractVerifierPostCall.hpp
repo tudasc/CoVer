@@ -35,7 +35,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
 
         static bool handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C) {
             ContractPassUtility::JumpTraceEntry<CallStatus>* startloc = nullptr;
-            for (std::pair<Instruction*, CallStatus> x : WLRes.AnalysisInfo) {
+            for (auto const& x : WLRes.AnalysisInfo) {
                 if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
                     startloc = WLRes.JumpTraces[x.first];
                     break;

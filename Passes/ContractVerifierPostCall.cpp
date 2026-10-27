@@ -120,7 +120,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
                 data.callsite = CB;
                 ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(CB, false, transfer, merge, &data, CallStatus::NOTCALLED);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
-                for (std::pair<const Instruction *, CallStatus> x : WLRes.AnalysisInfo) {
+                for (auto const& x : WLRes.AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
                         appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, DB->reports[&Expr], x.first);
                         ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierPostCallPass::handleDebug, WLRes, C);
