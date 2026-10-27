@@ -174,16 +174,14 @@ void updateJumpTrace(ContractPassUtility::TraceDB<T> const& trace, Instruction* 
 }
 
 template <typename T>
-std::pair<T, bool> getMergeResult(DenseMap<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> const& trace, T prevInfo, ContractPassUtility::MergeFunction<T> const& merge, Instruction* cur, void* data) {
+bool getMergeResult(DenseMap<Instruction*, T>& AI, ContractPassUtility::TraceDB<T> const& trace, T&& prevInfo, ContractPassUtility::MergeFunction<T> const& merge, Instruction* cur, void* data) {
     bool resume = true;
-    auto it = AI.find(cur);
-    if (it == AI.end()) {
-        it = AI.insert({cur, std::move(prevInfo)}).first;
-    } else {
-        std::tie(it->second, resume) = merge(std::move(prevInfo), it->second, cur, data);
+    auto [it, inserted] = AI.try_emplace(cur, std::move(prevInfo));
+    if (!inserted) {
+        std::tie(it->second, resume) = merge(prevInfo, it->second, cur, data);
     }
     if (trace->contains(cur)) trace[cur]->analysisInfo = it->second;
-    return {it->second, resume};
+    return resume;
 }
 
 /*
@@ -213,19 +211,17 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
 
     // Start of worklist algorithm
     while (!todoList.empty()) {
-        Instruction* cur = todoList.front().start;
-        T prevInfo = todoList.front().initial;
-        std::stack<CallBase*> stack = todoList.front().stack;
+        auto [cur, prevInfo, stack] = std::move(todoList.front());
 
         while (cur != nullptr) {
             // Add previous info depending on following conditions:
             // 1. In any case, prevInfo MUST have the corresponding access
             // 2. Either: It is a "may" analysis, "next" was until now unreachable, or it was reached before and already contains the access
             // If those apply, add that access. Otherwise, remove it if present (=> "must" analysis, node reached with info, jumped here without)
-            std::pair<T, bool> mergeRes = getMergeResult(postAccess, jumptraces, std::move(prevInfo), merge, cur, data);
-            if (!mergeRes.second) {
+            if (!getMergeResult(postAccess, jumptraces, std::move(prevInfo), merge, cur, data)) {
                 // Already visited and analysis does not wish to pursue further.
                 // Remove from worklist, or pop stack
+                Instruction* stopped = cur;
                 Instruction* tmpNext = nullptr;
                 CallBase* tmpCall = nullptr;
                 while (!tmpNext && !stack.empty()) {
@@ -239,7 +235,7 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
                 if (callReturn) {
                     // Callee info is shared by all callsites. Continue with the info of this callsite instead,
                     // combined with the callee info at its returns (or here, if no return was reached yet)
-                    T calleeInfo = mergeRes.first;
+                    T calleeInfo = postAccess[stopped];
                     bool foundRet = false;
                     if (Function* Callee = getCalleeThroughAlias(tmpCall)) {
                         for (BasicBlock& BB : *Callee) {
@@ -263,8 +259,8 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
             if (cur->isTerminator() && !isa<CallBase>(cur)) {
                 TraceKind branchKind = isa<SwitchInst>(cur) ? TraceKind::SWITCH : TraceKind::BRANCH;
                 for (BasicBlock* alt : cur->successors()) {
-                    updateJumpTrace(jumptraces, &alt->front(), cur, branchKind, postAccess[cur]);
-                    todoList.push( {&alt->front(), postAccess[cur], stack} );
+                    updateJumpTrace(jumptraces, &alt->front(), cur, branchKind, prevInfo);
+                    todoList.push( {&alt->front(), prevInfo, stack} );
                 }
             }
 
@@ -298,8 +294,8 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
                         std::stack<CallBase*> new_stack = stack;
                         new_stack.push(CB);
                         AnnotFuncReverse[F].insert(CB);
-                        updateJumpTrace(jumptraces, &F->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, postAccess[cur]);
-                        todoList.push( {&F->getEntryBlock().front(), postAccess[cur], new_stack} );
+                        updateJumpTrace(jumptraces, &F->getEntryBlock().front(), cur, TraceKind::FUNCENTRY, prevInfo);
+                        todoList.push( {&F->getEntryBlock().front(), prevInfo, std::move(new_stack)} );
                         foundnext = true;
                     }
                     if (foundnext) goto next_iter;
@@ -314,7 +310,7 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
             if (isa<ReturnInst>(cur) && !stack.empty()) {
                 // Forward to next from stack
                 // Callee info is shared by all callsites, so combine it with the info of this callsite
-                if (callReturn) prevInfo = callReturn(postAccess[stack.top()], postAccess[cur], stack.top(), data);
+                if (callReturn) prevInfo = callReturn(postAccess[stack.top()], prevInfo, stack.top(), data);
                 next = getContinuation(stack.top());
                 stack.pop();
                 next_trace_entry = TraceKind::FUNCEXIT;
@@ -330,7 +326,7 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
                     if (CallBase* CB = dyn_cast<CallBase>(U)) {
                         if (getCalleeThroughAlias(CB) != func) continue;
                         // Add callsite next to todoList
-                        todoList.push( {getContinuation(CB), postAccess[cur], stack} );
+                        todoList.push( {getContinuation(CB), prevInfo, stack} );
                     }
                 }
             }
