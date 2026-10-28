@@ -18,7 +18,7 @@ using namespace ContractTree;
 
 PreservedAnalyses ContractVerifierParamPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
-    ContractManagerAnalysis::ContractDatabase DB = AM.getResult<ContractManagerAnalysis>(M);
+    ContractManagerAnalysis::ContractDatabase& DB = AM.getResult<ContractManagerAnalysis>(M);
     MAM = &AM;
     Basic_Types = MAM->getResult<BasicTypesAnalysis>(M);
 
