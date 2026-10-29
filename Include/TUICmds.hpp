@@ -5,9 +5,6 @@
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <ftxui/component/component_base.hpp>
-#include <ftxui/dom/elements.hpp>
-#include <ftxui/screen/color.hpp>
 #include <iterator>
 #include <optional>
 #include <set>
@@ -19,7 +16,6 @@
 
 import LLVMModule;
 import ContractPassUtility;
-import TUIManager;
 import IRPatch;
 
 using namespace llvm;
@@ -105,7 +101,8 @@ CmdResult CmdView(std::vector<std::string>& args, CmdContext<T>& ctx) {
     std::string last_res;
     std::optional<int> block = ParseBlock(args[1], ctx, last_res);
     if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
-    ShowBlock(ctx.trace_by_blocks[*block], args[0] == "source", ctx.infoToStr);
+    bool transToSource = args[0] == "source";
+    ctx.frontend.showLines(getBlockLines(ctx.trace_by_blocks[*block], transToSource, ctx.infoToStr), std::string("Block Preview") + (transToSource ? ", Source Approx." : ", LLVM IR"));
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
@@ -127,7 +124,7 @@ CmdResult CmdFpTarget(std::vector<std::string>& args, CmdContext<T>& ctx) {
     std::set<Function*> selected_func = ContractPassUtility::getFPAnnots(dyn_cast<CallBase>(selected));
     std::set<std::string> previously_selected;
     std::transform(selected_func.begin(), selected_func.end(), std::inserter(previously_selected, previously_selected.end()), [](Function* F){ return F->getName().str(); });
-    std::vector<std::string> sel_func_str = TUIManager::RenderMultiMenu(funcs, "Select Function Target", previously_selected);
+    std::vector<std::string> sel_func_str = ctx.frontend.selectMultiple(funcs, "Select Function Target", previously_selected);
     selected_func.clear();
     std::transform(sel_func_str.begin(), sel_func_str.end(), std::inserter(selected_func, selected_func.end()), [&](std::string Fstr){ return M->getFunction(Fstr); });
     ContractPassUtility::setFPTarget(dyn_cast<CallBase>(selected), selected_func);
@@ -210,25 +207,25 @@ CmdResult CmdAliasEpoch(std::vector<std::string>& args, CmdContext<T>& ctx) {
 }
 
 template<typename T>
-CmdResult CmdAliasGet(std::vector<std::string>&, CmdContext<T>&) {
+CmdResult CmdAliasGet(std::vector<std::string>&, CmdContext<T>& ctx) {
     std::map<int, ContractPassUtility::AliasGroup> const AGs = ContractPassUtility::getAliasAnnots();
-    std::vector<ftxui::Element> group_lines;
+    std::vector<std::string> group_lines;
     for (std::pair<int, ContractPassUtility::AliasGroup> const& G : AGs) {
-        group_lines.push_back(ftxui::text(std::format("Group {}, {}", G.first, G.second.areAliasing ? "should alias" : "should not alias")));
+        group_lines.push_back(std::format("Group {}, {}", G.first, G.second.areAliasing ? "should alias" : "should not alias"));
         int num = 0;
         for (Value const* V : G.second.members) {
             std::string out;
             raw_string_ostream strstream(out);
             V->print(strstream);
-            group_lines.push_back(ftxui::text(std::format("{}.{:0>3} | {}", G.first, num++, out)));
+            group_lines.push_back(std::format("{}.{:0>3} | {}", G.first, num++, out));
         }
         // Epoch nums
         num = 0;
         for (CallBase const* CB : ContractPassUtility::getAliasEpochs(G.first)) {
-            group_lines.push_back(ftxui::text(std::format("{}.e{:0>2} | epoch in {} at {}", G.first, num++, CB->getFunction()->getName().str(), ContractPassUtility::getInstrLocStr(CB))));
+            group_lines.push_back(std::format("{}.e{:0>2} | epoch in {} at {}", G.first, num++, CB->getFunction()->getName().str(), ContractPassUtility::getInstrLocStr(CB)));
         }
     }
-    TUIManager::ShowLines(group_lines, "Current Alias Groups");
+    ctx.frontend.showLines(group_lines, "Current Alias Groups");
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
@@ -284,42 +281,7 @@ CmdResult CmdDump(std::vector<std::string>& args, CmdContext<T>& ctx) {
 
 template<typename T>
 CmdResult CmdHistory(std::vector<std::string>&, CmdContext<T>& ctx) {
-    int constexpr res_size = 17;
-    std::vector<ftxui::Element> lines;
-    lines.push_back(ftxui::hbox({
-        ftxui::text("#"),
-        ftxui::separator(),
-        ftxui::text("Return Code") | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, res_size),
-        ftxui::separator(),
-        ftxui::text("Command")
-    }));
-    lines.push_back(ftxui::separator());
-    for (int i = 0; i < ctx.history.size(); i++) {
-        ftxui::Element result_str;
-        switch (ctx.history[i].second.code) {
-            case CmdResultCode::INVALID_INPUT:
-                result_str = ftxui::text("Invalid Input") | ftxui::bgcolor(ftxui::Color::Yellow);
-                break;
-            case CmdResultCode::INVALID_SYNTAX:
-                result_str = ftxui::text("Invalid Syntax") | ftxui::bgcolor(ftxui::Color::Yellow);
-                break;
-            case CmdResultCode::UNKNOWN_COMMAND:
-                result_str = ftxui::text("Unknown Command") | ftxui::bgcolor(ftxui::Color::Red);
-                break;
-            default:
-                result_str = ftxui::text("Success");
-                break;
-        }
-        result_str |= ftxui::size(ftxui::WIDTH, ftxui::EQUAL, res_size);
-        lines.push_back(ftxui::hbox({
-            ftxui::text(std::to_string(i)),
-            ftxui::separator(),
-            result_str,
-            ftxui::separator(),
-            ftxui::text(ctx.history[i].first)
-        }));
-    }
-    TUIManager::ShowLines(lines, "Command History");
+    ctx.frontend.showHistory(ctx.history);
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
@@ -334,17 +296,17 @@ CmdResult CmdExit(std::vector<std::string>&, CmdContext<T>&) {
 }
 
 template<typename T>
-CmdResult CmdHelp(std::vector<std::string>&, CmdContext<T>&) {
-    std::vector<ftxui::Element> lines = {
-        ftxui::text("Trace debug menu"),
-        ftxui::text(""),
-        ftxui::text("Commands:"),
+CmdResult CmdHelp(std::vector<std::string>&, CmdContext<T>& ctx) {
+    std::vector<std::string> lines = {
+        "Trace debug menu",
+        "",
+        "Commands:",
     };
     for (CmdInfo<T> const& cmd : TraceCommands<T>) {
-        lines.push_back(ftxui::text(std::format("    {} {}", cmd.name, cmd.usage)));
-        lines.push_back(ftxui::text(std::format("        {}", cmd.helptext)));
+        lines.push_back(std::format("    {} {}", cmd.name, cmd.usage));
+        lines.push_back(std::format("        {}", cmd.helptext));
     }
-    TUIManager::ShowLines(lines, "Worklist Trace Help Menu");
+    ctx.frontend.showLines(lines, "Worklist Trace Help Menu");
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 

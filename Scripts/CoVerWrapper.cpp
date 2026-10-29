@@ -41,8 +41,15 @@ static cl::opt<bool> PredefinedContracts("predefined-contracts",
     cl::desc("Automatically include the predefined contract definitions using the -include flag"),
     cl::cat(WrapperCategory));
 
-static cl::opt<bool> InteractiveStatic("interactive",
-    cl::desc("Run the CoVer TUI for static analysis"),
+enum struct InteractMode { NONE, TUI, GUI };
+static cl::opt<InteractMode> InteractiveStatic("interactive",
+    cl::desc("Run the CoVer interactive mode for static analysis"),
+    cl::ValueOptional,
+    cl::init(InteractMode::NONE),
+    cl::values(
+        clEnumValN(InteractMode::TUI, "", "Terminal UI (same as tui)"),
+        clEnumValN(InteractMode::TUI, "tui", "Terminal UI"),
+        clEnumValN(InteractMode::GUI, "gui", "Graphical UI")),
     cl::cat(WrapperCategory));
 
 static cl::opt<bool> AllowMultiReports("allow-multireports",
@@ -162,7 +169,7 @@ std::pair<std::string,std::string> parseWrapperParams(std::pair<std::string,std:
     std::string& rem_args_compile = rem_args.second; // Second result, only for compiling
 
     if (AllowMultiReports) opt_flags += " --cover-allow-multireports=1";
-    if (InteractiveStatic) opt_flags += " --cover-interactive-analysis=1";
+    if (InteractiveStatic != InteractMode::NONE) opt_flags += std::string(" --cover-interact-mode=") + (InteractiveStatic == InteractMode::GUI ? "gui" : "tui");
     if (IROutput) opt_flags += " --cover-ir-output=1";
     if (!KeepIR.empty()) opt_flags += " --cover-keep-ir=" + KeepIR;
 
@@ -360,7 +367,7 @@ int main(int argc, const char** argv) {
     do {
         execSafe(DebuggerCoVerPlugin + " opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + target_file + " -o " + tmpfile + ".opt");
         target_file = "CoVer_Reanalyse.ll";
-    } while (InteractiveStatic && std::filesystem::exists("CoVer_Reanalyse.ll"));
+    } while (InteractiveStatic != InteractMode::NONE && std::filesystem::exists("CoVer_Reanalyse.ll"));
     close(fd);
 
     // Finalize executable

@@ -20,7 +20,7 @@ jobs:
           submodules: 'recursive'
       - name: Install Dependencies
         run: |
-          sudo apt update && sudo apt install default-jre libdw-dev wget ccache
+          sudo apt update && sudo apt install default-jre libdw-dev wget ccache qt6-base-dev
       - name: Install LLVM
         run: |
           wget https://apt.llvm.org/llvm.sh && chmod +x llvm.sh && sudo ./llvm.sh ${{ env.LLVM_VER }} all

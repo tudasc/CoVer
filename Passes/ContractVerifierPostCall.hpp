@@ -6,7 +6,7 @@
 
 import LLVMModule;
 import ContractPassUtility;
-import TUITrace;
+import InteractiveUI;
 import ErrorMessage;
 
 namespace llvm {
@@ -41,7 +41,7 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
                     break;
                 }
             }
-            return TUITrace::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
+            return InteractiveUI::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, postCallStatusToStr);
         }
 };
 

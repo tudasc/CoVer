@@ -16,6 +16,7 @@ class Cover(CMakePackage):
     version("master", branch="master", submodules=True)
 
     variant("bundled_jsoncpp", default=True, description="Use the vendored jsoncpp submodule")
+    variant("gui", default=False, description="Build the Qt-based GUI for the interactive mode")
 
     # C++20 modules require CMake >= 3.28 + Ninja
     generator("ninja")
@@ -34,6 +35,7 @@ class Cover(CMakePackage):
     depends_on("libffi")
     depends_on("mpi")
     depends_on("jsoncpp", when="~bundled_jsoncpp")
+    depends_on("qt-base +gui +widgets", when="+gui")
 
     # GCC trips over TU-local entities in LLVM headers inside C++20 module fragments
     conflicts("%cxx=gcc", msg="CoVer must be built with clang (C++20 modules + LLVM headers)")
@@ -41,6 +43,7 @@ class Cover(CMakePackage):
     def cmake_args(self):
         args = [
             self.define_from_variant("BUNDLED_JSONCPP", "bundled_jsoncpp"),
+            self.define_from_variant("ENABLE_GUI", "gui"),
             self.define("MPI_APIS_JSON", self.spec["py-pympistandard"].package.apis_json),
         ]
         # clang-scan-deps is invoked with Spack's compiler wrapper as argv[0], so it

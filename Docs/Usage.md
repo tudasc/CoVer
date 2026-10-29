@@ -46,6 +46,28 @@ See the predefined contract sources for examples.
 The predefined contracts can be included simply using the compile wrappers' `--predefined-contracts` option,
 with some limitations. See [language support](LanguageSupport.md) for details.
 
+## Interactive Mode
+
+The static analysis results can be inspected interactively by passing `--interactive` to the compile wrappers.
+Two frontends are available:
+- `--interactive` (or `--interactive=tui`): Terminal UI
+- `--interactive=gui`: Graphical UI.
+  This requires CoVer to be built with Qt6,
+  which CMake enables automatically if Qt is found.
+  If no display is available, the TUI is used instead.
+
+Both frontends provide the same workflow: Inspecting the contracts before the analysis, browsing the reported errors with references into the source code, and debugging the worklist analysis trace of a violated contract.
+The trace debugger allows adding annotations (function pointer targets, alias groups, allocations), rerunning the analysis using them (`reanalyse`),
+and write them to a patch file (`diff`) to apply later using `--ir-patches`.
+Type `help` in the trace debugger for a list of all commands.
+
+The GUI additionally shows the trace as a graph.
+Block 0 is where the trace starts, edges lead to the blocks executed before it.
+If a block can be reached from multiple predecessors ("children"), the alternatives not currently followed are shown as dashed sibling nodes, double-click one to follow it instead.
+Loops are shown as dotted edges to the repeated block.
+Nodes can be dragged with the mouse, double-clicking a block shows its instructions, and right-clicking offers the annotation actions.
+All GUI actions are issued as trace commands, so they appear in the command history and patch files just as in the TUI, and the command line is available in the GUI as well.
+
 ## Runtime Analysis
 
 Runtime analysis depends on the `addr2line` utility.

@@ -6,6 +6,8 @@ module;
 #include <format>
 #include <filesystem>
 #include <fstream>
+#include <ftxui/dom/elements.hpp>
+#include <ftxui/screen/color.hpp>
 #include "TUITraceTypes.hpp"
 #include "TUICmds.hpp"
 
@@ -21,7 +23,7 @@ using ContractPassUtility::JumpTraceEntry;
 using ContractPassUtility::TraceDB;
 using ContractPassUtility::TraceKind;
 
-std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
+export std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
     switch (kind) {
         case ContractPassUtility::TraceKind::LINEAR: return "LINEAR";
         case ContractPassUtility::TraceKind::BRANCH: return "BRANCH";
@@ -56,7 +58,7 @@ JumpTraceEntry<T>* getLinearTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, 
     return cur_trace;
 }
 
-template<typename T>
+export template<typename T>
 std::vector<TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, std::map<JumpTraceEntry<T>*,int> preds_select) {
     std::vector<TraceBlock<T>> trace_by_blocks;
     std::map<JumpTraceEntry<T>*,int> trace_to_block;
@@ -74,16 +76,18 @@ std::vector<TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* t
         else
             end_loc = ContractPassUtility::getInstrLocStr(last_entry->loc, false);
         std::string full_line;
+        std::optional<int> jump_to;
         if (trace_to_block.contains(cur_trace)) {
             // There is a loop or goto to earlier block
             full_line = std::format("From {} to {} then jump to block {}", start_loc, end_loc, trace_to_block[cur_trace]);
+            jump_to = trace_to_block[cur_trace];
             preds = 0;
         } else {
             // Linear execution
             full_line = std::format("From {} to {}", start_loc, end_loc); // The same for all
             if (preds != 0) full_line += std::format(" then {}", traceKindToStr(last_entry->kind)) + (preds > 1 ? std::format(" [Viewing Child {}/{}]", preds_select[last_entry], preds-1) : "");
         }
-        trace_by_blocks.push_back({full_line, cur_trace, last_entry});
+        trace_by_blocks.push_back({full_line, cur_trace, last_entry, start_loc, end_loc, jump_to});
         trace_to_block.insert({cur_trace, trace_by_blocks.size()-1});
         if (preds >= 1) {
             if (!preds_select.contains(last_entry)) preds_select[last_entry] = 0;
@@ -93,7 +97,7 @@ std::vector<TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* t
     return trace_by_blocks;
 }
 
-template<typename T>
+export template<typename T>
 std::vector<std::string> getBlockLines(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
     std::vector<std::string> lines;
     std::string last;
@@ -110,20 +114,57 @@ std::vector<std::string> getBlockLines(TraceBlock<T> block, bool transToSource, 
     return lines;
 }
 
-template<typename T>
-void ShowBlock(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
-    std::vector<std::string> lines = getBlockLines(block, transToSource, infoToStr);
-    std::vector<ftxui::Element> elems;
-    for (std::string line : lines) elems.push_back(ftxui::text(line));
-    std::string title = "Block Preview";
-    if (transToSource) title += ", Source Approx.";
-    else title += ", LLVM IR";
-    TUIManager::ShowLines(elems, title);
+void ShowHistory(std::vector<std::pair<std::string, CmdResult>> const& history) {
+    int constexpr res_size = 17;
+    std::vector<ftxui::Element> lines;
+    lines.push_back(ftxui::hbox({
+        ftxui::text("#"),
+        ftxui::separator(),
+        ftxui::text("Return Code") | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, res_size),
+        ftxui::separator(),
+        ftxui::text("Command")
+    }));
+    lines.push_back(ftxui::separator());
+    for (int i = 0; i < history.size(); i++) {
+        ftxui::Element result_str;
+        switch (history[i].second.code) {
+            case CmdResultCode::INVALID_INPUT:
+                result_str = ftxui::text("Invalid Input") | ftxui::bgcolor(ftxui::Color::Yellow);
+                break;
+            case CmdResultCode::INVALID_SYNTAX:
+                result_str = ftxui::text("Invalid Syntax") | ftxui::bgcolor(ftxui::Color::Yellow);
+                break;
+            case CmdResultCode::UNKNOWN_COMMAND:
+                result_str = ftxui::text("Unknown Command") | ftxui::bgcolor(ftxui::Color::Red);
+                break;
+            default:
+                result_str = ftxui::text("Success");
+                break;
+        }
+        result_str |= ftxui::size(ftxui::WIDTH, ftxui::EQUAL, res_size);
+        lines.push_back(ftxui::hbox({
+            ftxui::text(std::to_string(i)),
+            ftxui::separator(),
+            result_str,
+            ftxui::separator(),
+            ftxui::text(history[i].first)
+        }));
+    }
+    TUIManager::ShowLines(lines, "Command History");
 }
 
-export template<typename T>
-bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
-    if (!trace) return false;
+CmdFrontend const TUIFrontend = {
+    .showLines = [](std::vector<std::string> const& lines, std::string const& title) {
+        std::vector<ftxui::Element> elems;
+        for (std::string const& line : lines) elems.push_back(ftxui::text(line));
+        TUIManager::ShowLines(elems, title);
+    },
+    .selectMultiple = TUIManager::RenderMultiMenu,
+    .showHistory = ShowHistory,
+};
+
+// Command history of a previous run, if this is a reanalysis
+export std::vector<std::pair<std::string, CmdResult>> LoadHistoryCache() {
     std::vector<std::pair<std::string, CmdResult>> input_history;
     if (std::filesystem::exists("CoVer_HistoryCache")) {
         std::string line;
@@ -136,6 +177,29 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
         }
         std::filesystem::remove("CoVer_HistoryCache");
     }
+    return input_history;
+}
+
+export void SaveHistoryCache(std::vector<std::pair<std::string, CmdResult>> const& history) {
+    std::ofstream difffile("CoVer_HistoryCache");
+    difffile << "|| DIFF HISTORY BEGIN ||\n";
+    for (std::pair<std::string, CmdResult> const& x : history) {
+        difffile << (int)x.second.code << "|" << x.first << "\n";
+    }
+    difffile << "|| DIFF HISTORY END ||\n---\n";
+}
+
+// Print current module, used as input for reanalysis and diffing
+export void WriteReanalyseModule(const llvm::Module* M) {
+    std::error_code rc;
+    llvm::raw_fd_stream reanalyse_file("CoVer_Reanalyse.ll", rc);
+    M->print(reanalyse_file, nullptr);
+}
+
+export template<typename T>
+bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
+    if (!trace) return false;
+    std::vector<std::pair<std::string, CmdResult>> input_history = LoadHistoryCache();
     std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::map<JumpTraceEntry<T>*,bool> expand_select;
     std::string last_res = "";
@@ -155,30 +219,24 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             }
         }
 
-        // Print current module
-        const llvm::Module* M = trace->loc->getModule();
-        std::error_code rc;
-        llvm::raw_fd_stream reanalyse_file("CoVer_Reanalyse.ll", rc);
-        M->print(reanalyse_file, nullptr);
+        WriteReanalyseModule(trace->loc->getModule());
 
         std::string input_command = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
 
-        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, input_history, infoToStr};
+        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, input_history, infoToStr, TUIFrontend};
         CmdResult res = ExecuteTUICommand(input_command, ctx);
         last_res = res.res;
 
         if (res.code == CmdResultCode::SUCCESS_EXIT) return false;
         if (res.code == CmdResultCode::SUCCESS_REANALYSE) {
-            std::ofstream difffile("CoVer_HistoryCache");
-            difffile << "|| DIFF HISTORY BEGIN ||\n";
-            for (std::pair<std::string, CmdResult> x : ctx.history) {
-                difffile << (int)x.second.code << "|" << x.first << "\n";
-            }
-            difffile << "|| DIFF HISTORY END ||\n---\n";
-            return true;   
+            SaveHistoryCache(ctx.history);
+            return true;
         }
     }
 }
+
+export template<typename T>
+std::vector<CmdInfo<T>> const& GetTraceCommands() { return TraceCommands<T>; }
 
 export bool verifyInputArgs(std::string_view const& usage, std::string_view const& input, std::vector<std::string>& args, int const& num_inputs) {
     std::istringstream iss(std::string(input), std::ios_base::in);
@@ -194,7 +252,7 @@ export bool verifyInputArgs(std::string_view const& usage, std::string_view cons
     return true;
 }
 
-template<typename T>
+export template<typename T>
 CmdResult ExecuteTUICommand(std::string input_command, CmdContext<T> ctx) {
     CmdResult result;
     std::vector<std::string> args;

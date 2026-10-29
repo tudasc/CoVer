@@ -52,6 +52,7 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Utils/ContractPassUtility.cppm
   Utils/TUITrace.cppm
   Utils/TUIManager.cppm
+  Utils/InteractiveUI.cppm
   Utils/LLVMModule.cppm
   Utils/ErrorMessage.cppm
 )
@@ -75,6 +76,23 @@ target_compile_options (CoVerPlugin PUBLIC -fexceptions)
 ##
 
 target_link_libraries(CoVerPlugin PRIVATE CoVerLang ftxui::screen ftxui::dom ftxui::component)
+
+# Optional Qt GUI for the interactive mode
+option(ENABLE_GUI "Build the Qt-based GUI for the interactive mode, if Qt6 is found" ON)
+if (ENABLE_GUI)
+  find_package(Qt6 COMPONENTS Widgets)
+  if (Qt6Widgets_FOUND)
+    message("Found Qt ${Qt6Widgets_VERSION}, the GUI for the interactive mode will be built.")
+    target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
+      Utils/GUIManager.cppm
+      Utils/GUITrace.cppm
+    )
+    target_link_libraries(CoVerPlugin PRIVATE Qt6::Widgets)
+    target_compile_definitions(CoVerPlugin PRIVATE COVER_HAS_GUI QT_NO_KEYWORDS)
+  else()
+    message("Qt6 not found, the GUI for the interactive mode will not be built.")
+  endif(Qt6Widgets_FOUND)
+endif(ENABLE_GUI)
 
 # Attempt finding system version of JsonCpp
 find_package(PkgConfig)

@@ -1,8 +1,9 @@
 #pragma once
 
-#include <ftxui/component/component.hpp>
-#include <ftxui/dom/elements.hpp>
+#include <functional>
 #include <map>
+#include <optional>
+#include <set>
 #include <string>
 #include <utility>
 #include <vector>
@@ -20,6 +21,9 @@ struct TraceBlock {
     std::string trace_list;
     JumpTraceEntry<T>* first_entry;
     JumpTraceEntry<T>* last_entry;
+    std::string start_loc;
+    std::string end_loc;
+    std::optional<int> jump_to; // Set if the block is a repetition of an earlier block (loop or goto)
 };
 
 enum struct CmdResultCode {
@@ -35,6 +39,13 @@ struct CmdResult {
     std::string res;
 };
 
+// Display hooks for commands that present something to the user, implemented by the TUI and GUI respectively
+struct CmdFrontend {
+    std::function<void(std::vector<std::string> const& lines, std::string const& title)> showLines;
+    std::function<std::vector<std::string>(std::vector<std::string> const& choices, std::string const& title, std::set<std::string> const& preselected)> selectMultiple;
+    std::function<void(std::vector<std::pair<std::string, CmdResult>> const& history)> showHistory;
+};
+
 template<typename T>
 struct CmdContext {
     std::vector<TraceBlock<T>>& trace_by_blocks;
@@ -42,6 +53,7 @@ struct CmdContext {
     std::map<JumpTraceEntry<T>*,bool>& expand_select;
     std::vector<std::pair<std::string, CmdResult>>& history;
     std::function<std::string(T)> infoToStr;
+    CmdFrontend frontend;
 };
 
 template<typename T>

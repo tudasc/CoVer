@@ -255,7 +255,7 @@ bool ShowContractDetails(Contract C) {
 }
 
 // Duration in seconds, as milliseconds below one second
-std::string formatDuration(double seconds) {
+export std::string formatDuration(double seconds) {
     return seconds < 1 ? std::format("{:.1f}ms", seconds * 1000) : std::format("{:.2f}s", seconds);
 }
 

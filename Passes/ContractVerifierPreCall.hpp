@@ -8,7 +8,7 @@
 
 import LLVMModule;
 import ContractPassUtility;
-import TUITrace;
+import InteractiveUI;
 
 namespace llvm {
 
@@ -52,7 +52,7 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
                     }
                 }
             }
-            return TUITrace::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
+            return InteractiveUI::ShowTrace<CallStatus>(WLRes.JumpTraces, startloc, preCallStatusToStr);
         }
 };
 

@@ -5,12 +5,13 @@
 #include <string>
 #include <system_error>
 #include <vector>
+#include <llvm/Support/CommandLine.h>
 #include "ContractTree.hpp"
 
 import LLVMModule;
 import ContractDataExtractor;
 import ContractPassUtility;
-import TUIManager;
+import InteractiveUI;
 
 using namespace llvm;
 
@@ -18,9 +19,13 @@ static cl::opt<bool> ClMultiReports(
     "cover-allow-multireports", cl::init(false),
     cl::desc("Allow multiple error reports of the same contract"),
     cl::Hidden);
-static cl::opt<bool> ClIsInteractive(
-    "cover-interactive-analysis", cl::init(false),
-    cl::desc("Run in interactive mode"),
+static cl::opt<InteractiveUI::InteractMode> ClInteractMode(
+    "cover-interact-mode", cl::init(InteractiveUI::InteractMode::NONE),
+    cl::desc("Interactive mode frontend"),
+    cl::values(
+        clEnumValN(InteractiveUI::InteractMode::NONE, "none", "Not interactive"),
+        clEnumValN(InteractiveUI::InteractMode::TUI, "tui", "Terminal UI"),
+        clEnumValN(InteractiveUI::InteractMode::GUI, "gui", "Graphical UI")),
     cl::Hidden);
 static cl::opt<bool> ClIROutput(
     "cover-ir-output", cl::init(false),
@@ -45,7 +50,7 @@ static std::optional<std::string> getFuncName(CallBase* FuncCall) {
 ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M, ModuleAnalysisManager &AM) {
     curDatabase.start_time = std::chrono::system_clock::now();
     curDatabase.allowMultiReports = ClMultiReports;
-    curDatabase.isInteractive = ClIsInteractive;
+    curDatabase.isInteractive = ClInteractMode != InteractiveUI::InteractMode::NONE;
 
     errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
     ContractPassUtility::Initialize(M, AM, ClIROutput);
@@ -72,7 +77,8 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     errs() << std::format("CoVer: Parsed contracts after {}s\n", parse_time);
 
     if (curDatabase.isInteractive) {
-        TUIManager::StartMenu(curDatabase, parse_time);
+        InteractiveUI::SetMode(ClInteractMode);
+        InteractiveUI::StartMenu(curDatabase, parse_time);
         if (M.getName() != "CoVer_Reanalyse.ll") {
             // Write original module
             std::error_code rc;

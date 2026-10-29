@@ -18,6 +18,7 @@ Optionally:
 - MPI (for premade headers)
     - If OpenMPI with OpenSHMEM support is used, premade OpenSHMEM headers are generated as well.
 - Python (for premade headers)
+- Qt6 (for the graphical interactive mode)
 
 ## Building
 

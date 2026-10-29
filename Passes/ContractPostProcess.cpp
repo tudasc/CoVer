@@ -16,7 +16,7 @@
 
 import LLVMModule;
 import ContractPassUtility;
-import TUIManager;
+import InteractiveUI;
 import ErrorMessage;
 
 using namespace llvm;
@@ -167,7 +167,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     printMsg() << s.str();
 
     if (isInteractive) {
-        bool reanalyse = TUIManager::ResultsScreen(ViolatedContracts, DB->reports, runtime);
+        bool reanalyse = InteractiveUI::ResultsScreen(ViolatedContracts, DB->reports, runtime);
         if (!reanalyse) {
             std::filesystem::remove("CoVer_InteractStart.ll");
             std::filesystem::remove("CoVer_Reanalyse.ll");

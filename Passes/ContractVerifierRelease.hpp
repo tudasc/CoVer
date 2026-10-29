@@ -5,7 +5,7 @@
 
 import LLVMModule;
 import ContractPassUtility;
-import TUITrace;
+import InteractiveUI;
 import ErrorMessage;
 
 namespace llvm {
@@ -36,7 +36,7 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
 
         static bool handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, Instruction* Forbidden) {
             // Start trace right after the first forbidden operation found
-            return TUITrace::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, ContractPassUtility::getTraceAfter(WLRes.JumpTraces, Forbidden), releaseStatusToStr);
+            return InteractiveUI::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, ContractPassUtility::getTraceAfter(WLRes.JumpTraces, Forbidden), releaseStatusToStr);
         }
 };
 
