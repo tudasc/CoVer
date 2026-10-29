@@ -19,30 +19,19 @@ module;
 #include <string>
 #include <vector>
 
-#include "../Passes/ContractManager.hpp"
+#include "../../Passes/ContractManager.hpp"
 #include "ContractTree.hpp"
 
 export module TUIManager;
 import LLVMModule;
 import ErrorMessage;
+import InteractiveUtils;
 
 using namespace llvm;
 
 namespace TUIManager {
 
 using Contract = llvm::ContractManagerAnalysis::Contract;
-
-export constexpr int UI_ANALYSISINFO_PAD_SIZE = 15;
-
-export std::string getSpecificLine(std::string file, int line) {
-    std::ifstream filestream(file);
-    std::string out;
-    int cur_line = 0;
-    for (int i = 0; i < line; i++) {
-        std::getline(filestream, out);
-    }
-    return out;
-}
 
 ftxui::Decorator FulfillmentColor(Fulfillment f) {
     switch (f) {
@@ -254,11 +243,6 @@ bool ShowContractDetails(Contract C) {
     return ShowContractFormula(violated_formulas[*menu_options.selected-1], "Inspecting Contract Subformula for Function: " + C.F->getName().str());
 }
 
-// Duration in seconds, as milliseconds below one second
-export std::string formatDuration(double seconds) {
-    return seconds < 1 ? std::format("{:.1f}ms", seconds * 1000) : std::format("{:.2f}s", seconds);
-}
-
 export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double parse_time) {
     std::vector<std::string> contr_funcs;
     contr_funcs.push_back("Start Analysis");
@@ -268,7 +252,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
 
     int choice;
     do {
-        choice = RenderMenu(contr_funcs, std::format("Start Menu ({} contracts to be analysed, parsed in {})", DB.Contracts.size(), formatDuration(parse_time)));
+        choice = RenderMenu(contr_funcs, std::format("Start Menu ({} contracts to be analysed, parsed in {})", DB.Contracts.size(), InteractiveUtils::formatDuration(parse_time)));
         // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
         if (choice != 0) ShowContractDetails(DB.Contracts[choice-1]);
     } while (choice != 0);
@@ -383,7 +367,7 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
         }
     }
     // size of viol at least one for exit tool prompt
-    std::string title = std::format("{} (analysed in {})", violations.size() == 1 ? "No reported errors!" : "Reported Errors", formatDuration(runtime));
+    std::string title = std::format("{} (analysed in {})", violations.size() == 1 ? "No reported errors!" : "Reported Errors", InteractiveUtils::formatDuration(runtime));
     int choice = 0;
     do {
         choice = RenderMenu(violations, title);

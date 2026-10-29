@@ -44,13 +44,13 @@ module;
 #include <utility>
 #include <vector>
 
-#include "../Passes/ContractManager.hpp"
+#include "../../Passes/ContractManager.hpp"
 #include "ContractTree.hpp"
 
 export module GUIManager;
 import LLVMModule;
 import ErrorMessage;
-import TUIManager;
+import InteractiveUtils;
 
 using namespace llvm;
 
@@ -637,7 +637,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
         if (row >= 0) details->SetContract(DB.Contracts[row]);
     });
 
-    PageRun run(page, std::format("Start Menu ({} contracts to be analysed, parsed in {})", DB.Contracts.size(), TUIManager::formatDuration(parse_time)));
+    PageRun run(page, std::format("Start Menu ({} contracts to be analysed, parsed in {})", DB.Contracts.size(), InteractiveUtils::formatDuration(parse_time)));
     QObject::connect(start, &QPushButton::clicked, page, [&] { run.Finish(); });
     start->setFocus();
     run.Exec();
@@ -740,7 +740,7 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
         contract->SetContract(formulas[row].second, form.get());
     });
 
-    run.emplace(page, std::format("{} (analysed in {})", formulas.empty() ? "No reported errors!" : "Reported Errors", TUIManager::formatDuration(runtime)));
+    run.emplace(page, std::format("{} (analysed in {})", formulas.empty() ? "No reported errors!" : "Reported Errors", InteractiveUtils::formatDuration(runtime)));
     QObject::connect(exit, &QPushButton::clicked, page, [&] { run->Finish(); });
     if (!formulas.empty()) violations->setCurrentRow(0);
     run->Exec();

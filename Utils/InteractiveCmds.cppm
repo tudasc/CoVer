@@ -1,26 +1,102 @@
-#pragma once
+module;
 
 #include <algorithm>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
 #include <fstream>
+#include <functional>
 #include <iterator>
+#include <limits>
+#include <map>
 #include <optional>
 #include <set>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
-#include "TUITraceTypes.hpp"
 
+export module InteractiveCmds;
 import LLVMModule;
 import ContractPassUtility;
 import IRPatch;
+import InteractiveUtils;
 
 using namespace llvm;
 
-namespace TUITrace {
+// Trace debugger commands, shared by the TUI and GUI
+namespace InteractiveCmds {
+
+using ContractPassUtility::JumpTraceEntry;
+using InteractiveUtils::TraceBlock;
+
+export enum struct CmdResultCode {
+    UNKNOWN_COMMAND,
+    INVALID_SYNTAX,
+    INVALID_INPUT,
+    SUCCESS_CONTINUE,
+    SUCCESS_REANALYSE,
+    SUCCESS_EXIT
+};
+export struct CmdResult {
+    CmdResultCode code;
+    std::string res;
+};
+
+// Display hooks for commands that present something to the user, implemented by the TUI and GUI respectively
+export struct CmdFrontend {
+    std::function<void(std::vector<std::string> const& lines, std::string const& title)> showLines;
+    std::function<std::vector<std::string>(std::vector<std::string> const& choices, std::string const& title, std::set<std::string> const& preselected)> selectMultiple;
+    std::function<void(std::vector<std::pair<std::string, CmdResult>> const& history)> showHistory;
+};
+
+export template<typename T>
+struct CmdContext {
+    std::vector<TraceBlock<T>>& trace_by_blocks;
+    std::map<JumpTraceEntry<T>*,int>& sibling_select;
+    std::map<JumpTraceEntry<T>*,bool>& expand_select;
+    std::vector<std::pair<std::string, CmdResult>>& history;
+    std::function<std::string(T)> infoToStr;
+    CmdFrontend frontend;
+};
+
+export template<typename T>
+struct CmdInfo {
+    std::string_view name;
+    std::string_view usage;
+    std::string_view helptext;
+    int num_params;
+    std::function<CmdResult(std::vector<std::string>&, CmdContext<T>&)> handler;
+};
+
+// Command history of a previous run, if this is a reanalysis
+export std::vector<std::pair<std::string, CmdResult>> LoadHistoryCache() {
+    std::vector<std::pair<std::string, CmdResult>> input_history;
+    if (std::filesystem::exists("CoVer_HistoryCache")) {
+        std::string line;
+        std::ifstream historyfile("CoVer_HistoryCache");
+        std::getline(historyfile, line);
+        while (std::getline(historyfile, line)) {
+            if (line == "|| DIFF HISTORY END ||") break;
+            CmdResultCode code = (CmdResultCode)std::atoi(line.substr(0, line.find_first_of("|")).c_str());
+            input_history.push_back({line.substr(line.find_first_of("|") + 1), {code, ""}});
+        }
+        std::filesystem::remove("CoVer_HistoryCache");
+    }
+    return input_history;
+}
+
+export void SaveHistoryCache(std::vector<std::pair<std::string, CmdResult>> const& history) {
+    std::ofstream difffile("CoVer_HistoryCache");
+    difffile << "|| DIFF HISTORY BEGIN ||\n";
+    for (std::pair<std::string, CmdResult> const& x : history) {
+        difffile << (int)x.second.code << "|" << x.first << "\n";
+    }
+    difffile << "|| DIFF HISTORY END ||\n---\n";
+}
 
 template<typename T>
 extern std::vector<CmdInfo<T>> TraceCommands;
@@ -102,7 +178,7 @@ CmdResult CmdView(std::vector<std::string>& args, CmdContext<T>& ctx) {
     std::optional<int> block = ParseBlock(args[1], ctx, last_res);
     if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
     bool transToSource = args[0] == "source";
-    ctx.frontend.showLines(getBlockLines(ctx.trace_by_blocks[*block], transToSource, ctx.infoToStr), std::string("Block Preview") + (transToSource ? ", Source Approx." : ", LLVM IR"));
+    ctx.frontend.showLines(InteractiveUtils::getBlockLines(ctx.trace_by_blocks[*block], transToSource, ctx.infoToStr), std::string("Block Preview") + (transToSource ? ", Source Approx." : ", LLVM IR"));
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
@@ -292,7 +368,7 @@ CmdResult CmdReanalyse(std::vector<std::string>&, CmdContext<T>&) {
 
 template<typename T>
 CmdResult CmdExit(std::vector<std::string>&, CmdContext<T>&) {
-    return {CmdResultCode::SUCCESS_EXIT, "Exiting TUI..."};
+    return {CmdResultCode::SUCCESS_EXIT, "Exiting debugger..."};
 }
 
 template<typename T>
@@ -334,4 +410,47 @@ std::vector<CmdInfo<T>> TraceCommands = {
     {"help",          "",                                                         "Show this help text", 0, CmdHelp<T>},
 };
 
-} // namespace TUITrace
+export template<typename T>
+std::vector<CmdInfo<T>> const& GetTraceCommands() { return TraceCommands<T>; }
+
+export bool verifyInputArgs(std::string_view const& usage, std::string_view const& input, std::vector<std::string>& args, int const& num_inputs) {
+    std::istringstream iss(std::string(input), std::ios_base::in);
+    // Throw away first input, which is the command itself
+    iss.ignore(std::numeric_limits<std::streamsize>::max(), ' ');
+    while (iss && args.size() <= num_inputs) {
+        std::string x;
+        iss >> x;
+        if (!iss) break;
+        args.push_back(x);
+    }
+    if (args.size() != num_inputs)  return false;
+    return true;
+}
+
+export template<typename T>
+CmdResult ExecuteCommand(std::string input_command, CmdContext<T> ctx) {
+    CmdResult result;
+    std::vector<std::string> args;
+
+    // Get command and verify input sizing
+    auto used_cmd = std::find_if(TraceCommands<T>.begin(), TraceCommands<T>.end(), [&](CmdInfo<T> const& cmd){
+        return input_command == cmd.name || input_command.starts_with(std::format("{} ", cmd.name));
+    });
+    if (used_cmd == TraceCommands<T>.end()) {
+        result = {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
+        goto return_result;
+    }
+    if (!verifyInputArgs(used_cmd->name, input_command, args, used_cmd->num_params)) {
+        result = {CmdResultCode::INVALID_SYNTAX, std::format("Invalid syntax. Usage: {} {}", used_cmd->name, used_cmd->usage)};
+        goto return_result;
+    }
+
+    // Run command
+    result = used_cmd->handler(args, ctx);
+
+return_result:
+    ctx.history.push_back({input_command, result});
+    return result;
+}
+
+} // namespace InteractiveCmds

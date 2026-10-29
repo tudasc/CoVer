@@ -50,9 +50,11 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Passes/AnalysisCleanup.cppm
   Passes/BasicTypes.cppm
   Utils/ContractPassUtility.cppm
-  Utils/TUITrace.cppm
-  Utils/TUIManager.cppm
   Utils/InteractiveUI.cppm
+  Utils/InteractiveUtils.cppm
+  Utils/InteractiveCmds.cppm
+  Utils/TUI/TUITrace.cppm
+  Utils/TUI/TUIManager.cppm
   Utils/LLVMModule.cppm
   Utils/ErrorMessage.cppm
 )
@@ -84,8 +86,8 @@ if (ENABLE_GUI)
   if (Qt6Widgets_FOUND)
     message("Found Qt ${Qt6Widgets_VERSION}, the GUI for the interactive mode will be built.")
     target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
-      Utils/GUIManager.cppm
-      Utils/GUITrace.cppm
+      Utils/GUI/GUIManager.cppm
+      Utils/GUI/GUITrace.cppm
     )
     target_link_libraries(CoVerPlugin PRIVATE Qt6::Widgets)
     target_compile_definitions(CoVerPlugin PRIVATE COVER_HAS_GUI QT_NO_KEYWORDS)

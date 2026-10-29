@@ -46,24 +46,24 @@ module;
 #include <vector>
 
 #include "ContractTree.hpp"
-#include "TUITraceTypes.hpp"
 
 export module GUITrace;
 import LLVMModule;
 import ContractPassUtility;
-import TUITrace;
+import InteractiveUtils;
+import InteractiveCmds;
 import GUIManager;
 
 using namespace llvm;
 
 namespace GUITrace {
 
-using TUITrace::CmdContext;
-using TUITrace::CmdFrontend;
-using TUITrace::CmdInfo;
-using TUITrace::CmdResult;
-using TUITrace::CmdResultCode;
-using TUITrace::TraceBlock;
+using InteractiveCmds::CmdContext;
+using InteractiveCmds::CmdFrontend;
+using InteractiveCmds::CmdInfo;
+using InteractiveCmds::CmdResult;
+using InteractiveCmds::CmdResultCode;
+using InteractiveUtils::TraceBlock;
 using GUIManager::qstr;
 using ContractTree::Fulfillment;
 
@@ -1188,14 +1188,14 @@ export template<typename T>
 bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
     using ContractPassUtility::JumpTraceEntry;
     if (!trace) return false;
-    History history = TUITrace::LoadHistoryCache();
+    History history = InteractiveCmds::LoadHistoryCache();
     std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::map<JumpTraceEntry<T>*,bool> expand_select;
     std::vector<TraceBlock<T>> trace_by_blocks;
 
     auto refresh = [&] {
-        trace_by_blocks = TUITrace::GetTraceList(traceDB, trace, infoToStr, sibling_select);
-        TUITrace::WriteReanalyseModule(trace->loc->getModule());
+        trace_by_blocks = InteractiveUtils::GetTraceList(traceDB, trace, infoToStr, sibling_select);
+        InteractiveUtils::WriteReanalyseModule(trace->loc->getModule());
         std::vector<TraceBlockView> blocks;
         for (int i = 0; i < trace_by_blocks.size(); i++) {
             TraceBlock<T> const& block = trace_by_blocks[i];
@@ -1211,7 +1211,7 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
                 .expanded = expand_select.contains(block.last_entry) && expand_select[block.last_entry],
             };
             if (!block.jump_to) {
-                view.kind = TUITrace::traceKindToStr(block.last_entry->kind);
+                view.kind = InteractiveUtils::traceKindToStr(block.last_entry->kind);
                 view.selected_child = sibling_select.contains(block.last_entry) ? sibling_select[block.last_entry] : 0;
                 for (int k = 0; k < block.last_entry->predecessors.size(); k++) {
                     JumpTraceEntry<T>* child = block.last_entry->predecessors[k];
@@ -1254,17 +1254,17 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
 
     auto execute = [&](std::string const& cmd, CmdFrontend const& frontend) {
         CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, history, infoToStr, frontend};
-        return TUITrace::ExecuteTUICommand(cmd, ctx);
+        return InteractiveCmds::ExecuteCommand(cmd, ctx);
     };
 
-    auto source_lines = [&](int b) { return TUITrace::getBlockLines(trace_by_blocks[b], true, infoToStr); };
+    auto source_lines = [&](int b) { return InteractiveUtils::getBlockLines(trace_by_blocks[b], true, infoToStr); };
 
     std::vector<CommandDoc> commands;
-    for (CmdInfo<T> const& cmd : TUITrace::GetTraceCommands<T>())
+    for (CmdInfo<T> const& cmd : InteractiveCmds::GetTraceCommands<T>())
         commands.push_back({std::string(cmd.name), std::string(cmd.usage), std::string(cmd.helptext)});
 
     bool reanalyse = RunTraceDebugger(refresh, instructions, execute, source_lines, history, commands);
-    if (reanalyse) TUITrace::SaveHistoryCache(history);
+    if (reanalyse) InteractiveCmds::SaveHistoryCache(history);
     return reanalyse;
 }
 
