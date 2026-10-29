@@ -254,7 +254,12 @@ bool ShowContractDetails(Contract C) {
     return ShowContractFormula(violated_formulas[*menu_options.selected-1], "Inspecting Contract Subformula for Function: " + C.F->getName().str());
 }
 
-export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB) {
+// Duration in seconds, as milliseconds below one second
+std::string formatDuration(double seconds) {
+    return seconds < 1 ? std::format("{:.1f}ms", seconds * 1000) : std::format("{:.2f}s", seconds);
+}
+
+export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double parse_time) {
     std::vector<std::string> contr_funcs;
     contr_funcs.push_back("Start Analysis");
     for (llvm::ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
@@ -263,7 +268,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB) {
 
     int choice;
     do {
-        choice = RenderMenu(contr_funcs, "Start Menu (" + std::to_string(DB.Contracts.size()) + " contracts to be analysed)");
+        choice = RenderMenu(contr_funcs, std::format("Start Menu ({} contracts to be analysed, parsed in {})", DB.Contracts.size(), formatDuration(parse_time)));
         // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
         if (choice != 0) ShowContractDetails(DB.Contracts[choice-1]);
     } while (choice != 0);
@@ -359,7 +364,7 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, Contract
     return choice == 1; // Debug or no debug
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports) {
+export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, double runtime) {
     std::vector<std::string> violations;
     std::vector<std::pair<std::shared_ptr<ContractFormula>, Contract>> formulas;
     violations.push_back("Exit Tool");
@@ -377,9 +382,11 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
             }
         }
     }
+    // size of viol at least one for exit tool prompt
+    std::string title = std::format("{} (analysed in {})", violations.size() == 1 ? "No reported errors!" : "Reported Errors", formatDuration(runtime));
     int choice = 0;
     do {
-        choice = RenderMenu(violations, violations.size() == 1 ? "No reported errors!" : "Reported Errors"); // size of viol at least one for exit tool prompt
+        choice = RenderMenu(violations, title);
         if (choice != 0) {
             bool debug = ShowViolationDetails(formulas[choice-1].first, reports);
             if (debug) {

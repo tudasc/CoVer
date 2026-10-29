@@ -68,17 +68,19 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
         }
     }
 
-    std::string timestr = std::format("CoVer: Parsed contracts after {}s\n", std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count());
-    errs() << timestr;
+    double parse_time = std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count();
+    errs() << std::format("CoVer: Parsed contracts after {}s\n", parse_time);
 
     if (curDatabase.isInteractive) {
-        TUIManager::StartMenu(curDatabase);
+        TUIManager::StartMenu(curDatabase, parse_time);
         if (M.getName() != "CoVer_Reanalyse.ll") {
             // Write original module
             std::error_code rc;
             llvm::raw_fd_stream orig_file("CoVer_InteractStart.ll", rc);
             M.print(orig_file, nullptr);
         }
+        // Do not count time spent in the start menu for analysis when in interactive mode
+        curDatabase.start_time = std::chrono::system_clock::now();
     }
 
     if (!ClKeepIR.empty()) {

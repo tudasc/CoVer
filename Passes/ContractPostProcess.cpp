@@ -161,12 +161,13 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
         }
     }
 
+    double runtime = std::chrono::duration<double>(std::chrono::system_clock::now() - DB->start_time).count();
     std::stringstream s;
-    s << "CoVer: Total Tool Runtime " << std::fixed << std::chrono::duration<double>(std::chrono::system_clock::now() - DB->start_time).count() << "s\n\n";
+    s << "CoVer: Total Tool Runtime " << std::fixed << runtime << "s\n\n";
     printMsg() << s.str();
 
     if (isInteractive) {
-        bool reanalyse = TUIManager::ResultsScreen(ViolatedContracts, DB->reports);
+        bool reanalyse = TUIManager::ResultsScreen(ViolatedContracts, DB->reports, runtime);
         if (!reanalyse) {
             std::filesystem::remove("CoVer_InteractStart.ll");
             std::filesystem::remove("CoVer_Reanalyse.ll");
