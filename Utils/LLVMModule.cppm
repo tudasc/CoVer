@@ -47,6 +47,7 @@ export namespace llvm {
     using llvm::Module;
     using llvm::Function;
     using llvm::Instruction;
+    using llvm::Argument;
     using llvm::BasicBlock;
     using llvm::CallBase;
     using llvm::StringRef;

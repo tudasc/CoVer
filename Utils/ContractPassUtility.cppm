@@ -375,7 +375,8 @@ std::set<int> getAliasGroups(Value const* V) {
             cur = cur->getNextNode();
         }
     } else {
-        Function* F = curM->getFunction("main");
+        // Annotations of arguments are at the entry of their function, others at the entry of main
+        Function* F = isa<Argument>(V) ? const_cast<Function*>(dyn_cast<Argument>(V)->getParent()) : curM->getFunction("main");
         for (Instruction& I : instructions(F)) {
             if (isa<AllocaInst>(&I)) continue;
             if (CallBase* CB = dyn_cast<CallBase>(&I)) {
@@ -893,7 +894,13 @@ export Value* getValueByName(std::string name, Function* F) {
     if (name.empty()) return nullptr;
     if (name.starts_with("%")) {
         if (F && !F->isDeclaration()) {
-            // Try instructions first
+            // Try arguments
+            for (Argument& A : F->args()) {
+                if (A.getNameOrAsOperand() == name || "%" + A.getNameOrAsOperand() == name) {
+                    return &A;
+                }
+            }
+            // Then instructions
             for (BasicBlock& BB : *F) {
                 for (Instruction& I : BB) {
                     if (I.getNameOrAsOperand() == name || "%" + I.getNameOrAsOperand() == name) {
@@ -914,6 +921,8 @@ export void addToAliasGroup(int idx, Value* V) {
     if (Instruction* I = dyn_cast<Instruction>(V)) {
         CI->insertAfter(I);
         CI->setDebugLoc(I->getDebugLoc());
+    } else if (Argument* A = dyn_cast<Argument>(V)) {
+        CI->insertBefore(A->getParent()->getEntryBlock().getFirstInsertionPt());
     } else {
         CI->insertBefore(curM->getFunction("main")->getEntryBlock().getFirstInsertionPt());
     }

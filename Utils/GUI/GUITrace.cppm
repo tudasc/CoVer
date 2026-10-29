@@ -78,6 +78,7 @@ export struct TraceInstrView {
     std::string value; // Name usable in alias commands, empty if the instruction is no pointer value
     bool indirect_call;
     std::string source; // Source code approximation, empty without debug info
+    std::vector<std::string> operands; // Pointer values referenced by the instruction, usable in alias commands
 };
 
 export struct TraceChildView {
@@ -828,6 +829,11 @@ class TraceDebugger {
                         for (TraceInstrView const& in : Instrs(std::stoi(block))) {
                             if (!in.value.empty() && seen.insert(in.value).second) choices.push_back({in.value, in.value});
                         }
+                        // Values defined outside of the block, but referenced in it
+                        for (TraceInstrView const& in : Instrs(std::stoi(block))) {
+                            for (std::string const& op : in.operands)
+                                if (seen.insert(op).second) choices.push_back({op, op});
+                        }
                         return choices;
                     }};
         }
@@ -932,10 +938,19 @@ class TraceDebugger {
                 QObject::connect(menu->addAction("Annotate function pointer targets..."), &QAction::triggered, [=, this] { Execute(std::format("fp-target {} {}", block, in.index)); });
             QObject::connect(menu->addAction("Annotate as allocated..."), &QAction::triggered, [=, this] { AllocDialog(block, in.index); });
             QObject::connect(menu->addAction("Start alias epoch before this instruction..."), &QAction::triggered, [=, this] { AliasEpochDialog(block, in.index); });
-            if (!in.value.empty()) {
-                std::string value = in.value;
+            std::vector<std::string> values = in.operands;
+            if (!in.value.empty()) values.insert(values.begin(), in.value);
+            if (values.size() == 1) {
+                std::string value = values[0];
                 QObject::connect(menu->addAction(qstr("Create alias group with " + value + "...")), &QAction::triggered, [=, this] { AliasCreateDialog(block, value); });
                 QObject::connect(menu->addAction(qstr("Add " + value + " to alias group...")), &QAction::triggered, [=, this] { AliasAddDialog(block, value); });
+            } else if (values.size() > 1) {
+                QMenu* create = menu->addMenu("Create alias group with");
+                QMenu* add = menu->addMenu("Add to alias group");
+                for (std::string const& value : values) {
+                    QObject::connect(create->addAction(qstr(value + "...")), &QAction::triggered, [=, this] { AliasCreateDialog(block, value); });
+                    QObject::connect(add->addAction(qstr(value + "...")), &QAction::triggered, [=, this] { AliasAddDialog(block, value); });
+                }
             }
             std::string ir = in.ir;
             QObject::connect(menu->addAction("Copy instruction"), &QAction::triggered, [ir] { QApplication::clipboard()->setText(qstr(ir)); });
@@ -1012,8 +1027,9 @@ class TraceDebugger {
                 {"", nullptr},
                 {"Center selected block", [this] { view->centerOn(graph->Node(selected)); }},
                 {"Reset graph layout", [this] { graph->ResetLayout(); Refresh(); }},
+                {"", nullptr},
+                {"Toggle Block IR/Source", [this] { Execute("toggle-view"); }},
             });
-            QObject::connect(toolbar->addAction("History"), &QAction::triggered, [this] { Execute("history"); });
             QObject::connect(toolbar->addAction("Help"), &QAction::triggered, [this] { Execute("help"); });
             QWidget* spacer = new QWidget;
             spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
@@ -1234,6 +1250,16 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
         ModuleSlotTracker MST(block.first_entry->loc->getModule(), false);
         Function const* cur_func = nullptr;
         int index = 0;
+        // Name of a pointer value as resolved by the alias commands (instructions and arguments of the function or named globals), empty if not resolvable
+        auto valueName = [&](Value const* V) -> std::string {
+            if (!V->getType()->isPointerTy()) return "";
+            if (isa<Instruction>(V) || isa<Argument>(V)) {
+                if (V->hasName()) return "%" + V->getName().str();
+                if (MST.getLocalSlot(V) >= 0) return std::format("%{}", MST.getLocalSlot(V));
+            }
+            if (isa<GlobalVariable>(V) && V->hasName()) return "@" + V->getName().str();
+            return "";
+        };
         for (JumpTraceEntry<T>* entry = block.first_entry;; entry = entry->predecessors[0]) {
             Instruction* I = entry->loc;
             if (I->getFunction() != cur_func) {
@@ -1244,13 +1270,15 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
             raw_string_ostream strstream(ir);
             I->print(strstream, MST);
             ir.erase(0, ir.find_first_not_of(' '));
-            std::string value;
-            if (I->getType()->isPointerTy()) {
-                if (I->hasName()) value = "%" + I->getName().str();
-                else if (MST.getLocalSlot(I) >= 0) value = std::format("%{}", MST.getLocalSlot(I));
+            std::string value = valueName(I);
+            std::vector<std::string> operands;
+            for (Use const& U : I->operands()) {
+                std::string op = valueName(U.get());
+                if (!op.empty() && op != value && std::find(operands.begin(), operands.end(), op) == operands.end()) operands.push_back(op);
             }
             CallBase const* CB = dyn_cast<CallBase>(I);
-            instrs.push_back({index++, infoToStr(entry->analysisInfo), ir, ContractPassUtility::getInstrLocStr(I, false), value, CB && CB->isIndirectCall(), expand_as_source ? InteractiveUtils::getSourceLine(entry, true, infoToStr) : ""});
+            instrs.push_back({index++, infoToStr(entry->analysisInfo), ir, ContractPassUtility::getInstrLocStr(I, false), value, CB && CB->isIndirectCall(),
+                              expand_as_source ? InteractiveUtils::getSourceLine(entry, true, infoToStr) : "", operands});
             if (entry == block.last_entry) break;
         }
         return instrs;
