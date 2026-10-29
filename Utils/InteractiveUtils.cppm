@@ -61,7 +61,7 @@ export std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
     }
 }
 
-template<typename T>
+export template<typename T>
 std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::function<std::string(T)> infoToStr) {
     if (translate) {
         if (!trace->loc->getDebugLoc()) return "";

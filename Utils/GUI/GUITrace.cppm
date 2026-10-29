@@ -77,6 +77,7 @@ export struct TraceInstrView {
     std::string location;
     std::string value; // Name usable in alias commands, empty if the instruction is no pointer value
     bool indirect_call;
+    std::string source; // Source code approximation, empty without debug info
 };
 
 export struct TraceChildView {
@@ -100,6 +101,7 @@ export struct TraceBlockView {
     std::string kind; // How the last entry is reached from its children (predecessors)
     std::vector<TraceChildView> children;
     int selected_child = 0;
+    bool expand_as_source = false; // Show instructions of expanded block as source code approximation, see toggle-view
 };
 
 export struct CommandDoc {
@@ -356,7 +358,7 @@ class BlockNode : public NodeItem {
             size_t info_width = 0;
             for (TraceInstrView const& instr : this->instrs) info_width = std::max(info_width, instr.info.size());
             for (TraceInstrView const& instr : this->instrs)
-                instr_lines << qstr(std::format("{:0>3} {:<{}} {}", instr.index, instr.info, info_width, instr.ir));
+                instr_lines << qstr(std::format("{:0>3} {:<{}} {}", instr.index, instr.info, info_width, block.expand_as_source ? instr.source : instr.ir));
 
             qreal width = fm.horizontalAdvance(QString("Block %1").arg(block.index)) + fm.horizontalAdvance(qstr(block.info)) + fm.horizontalAdvance(qstr(block.function)) + 70;
             for (QString const& line : lines) width = std::max(width, fm.horizontalAdvance(line));
@@ -944,8 +946,8 @@ class TraceDebugger {
             TraceBlockView const& b = blocks[block];
             menu->addSection(QString("Block %1").arg(block));
             QObject::connect(menu->addAction(b.expanded ? "Collapse" : "Expand"), &QAction::triggered, [=, this] { Execute(std::format("{} {}", b.expanded ? "collapse" : "expand", block)); });
-            QObject::connect(menu->addAction("View IR"), &QAction::triggered, [=, this] { Execute(std::format("view ir {}", block)); });
-            QObject::connect(menu->addAction("View source approximation"), &QAction::triggered, [=, this] { Execute(std::format("view source {}", block)); });
+            QObject::connect(menu->addAction("View IR"), &QAction::triggered, [=, this] { Execute(std::format("show ir {}", block)); });
+            QObject::connect(menu->addAction("View source approximation"), &QAction::triggered, [=, this] { Execute(std::format("show source {}", block)); });
             if (b.children.size() > 1) {
                 QMenu* children = menu->addMenu("Show child");
                 for (TraceChildView const& child : b.children) {
@@ -1060,9 +1062,9 @@ class TraceDebugger {
             expand_button = new QPushButton;
             QObject::connect(expand_button, &QPushButton::clicked, page, [this] { Execute(std::format("{} {}", blocks[selected].expanded ? "collapse" : "expand", selected)); });
             QPushButton* view_ir = new QPushButton("View IR");
-            QObject::connect(view_ir, &QPushButton::clicked, page, [this] { Execute(std::format("view ir {}", selected)); });
+            QObject::connect(view_ir, &QPushButton::clicked, page, [this] { Execute(std::format("show ir {}", selected)); });
             QPushButton* view_source = new QPushButton("View Source");
-            QObject::connect(view_source, &QPushButton::clicked, page, [this] { Execute(std::format("view source {}", selected)); });
+            QObject::connect(view_source, &QPushButton::clicked, page, [this] { Execute(std::format("show source {}", selected)); });
             QHBoxLayout* block_buttons = new QHBoxLayout;
             block_buttons->addWidget(new QLabel("Child:"));
             block_buttons->addWidget(child_select, 1);
@@ -1191,7 +1193,7 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
     History history = InteractiveCmds::LoadHistoryCache();
     std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::map<JumpTraceEntry<T>*,bool> expand_select;
-    bool expand_as_source = false; // Unused, expanded blocks are shown as instruction table
+    bool expand_as_source = false;
     std::vector<TraceBlock<T>> trace_by_blocks;
 
     auto refresh = [&] {
@@ -1219,6 +1221,7 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
                     view.children.push_back({k, child, infoToStr(child->analysisInfo), ContractPassUtility::getInstrLocStr(child->loc, false), child->loc->getFunction()->getName().str()});
                 }
             }
+            view.expand_as_source = expand_as_source;
             blocks.push_back(view);
         }
         return blocks;
@@ -1247,7 +1250,7 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
                 else if (MST.getLocalSlot(I) >= 0) value = std::format("%{}", MST.getLocalSlot(I));
             }
             CallBase const* CB = dyn_cast<CallBase>(I);
-            instrs.push_back({index++, infoToStr(entry->analysisInfo), ir, ContractPassUtility::getInstrLocStr(I, false), value, CB && CB->isIndirectCall()});
+            instrs.push_back({index++, infoToStr(entry->analysisInfo), ir, ContractPassUtility::getInstrLocStr(I, false), value, CB && CB->isIndirectCall(), expand_as_source ? InteractiveUtils::getSourceLine(entry, true, infoToStr) : ""});
             if (entry == block.last_entry) break;
         }
         return instrs;
