@@ -1191,6 +1191,7 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
     History history = InteractiveCmds::LoadHistoryCache();
     std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::map<JumpTraceEntry<T>*,bool> expand_select;
+    bool expand_as_source = false; // Unused, expanded blocks are shown as instruction table
     std::vector<TraceBlock<T>> trace_by_blocks;
 
     auto refresh = [&] {
@@ -1253,7 +1254,7 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
     };
 
     auto execute = [&](std::string const& cmd, CmdFrontend const& frontend) {
-        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, history, infoToStr, frontend};
+        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, expand_as_source, history, infoToStr, frontend};
         return InteractiveCmds::ExecuteCommand(cmd, ctx);
     };
 

@@ -81,6 +81,7 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
     std::vector<std::pair<std::string, CmdResult>> input_history = InteractiveCmds::LoadHistoryCache();
     std::map<JumpTraceEntry<T>*,int> sibling_select;
     std::map<JumpTraceEntry<T>*,bool> expand_select;
+    bool expand_as_source = false;
     std::string last_res = "";
     while (true) {
         std::vector<TraceBlock<T>> trace_by_blocks = InteractiveUtils::GetTraceList(traceDB, trace, infoToStr, sibling_select);
@@ -89,7 +90,7 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             std::string trace_block_str = std::format("{:>3}: {:^{}} - {}", i, infoToStr(trace_by_blocks[i].first_entry->analysisInfo), InteractiveUtils::UI_ANALYSISINFO_PAD_SIZE, trace_by_blocks[i].trace_list);
             full_trace.push_back(ftxui::text(trace_block_str));
             if (expand_select.contains(trace_by_blocks[i].last_entry) && expand_select[trace_by_blocks[i].last_entry]) {
-                std::vector<std::string> block_lines = InteractiveUtils::getBlockLines(trace_by_blocks[i], false, infoToStr);
+                std::vector<std::string> block_lines = InteractiveUtils::getBlockLines(trace_by_blocks[i], expand_as_source, infoToStr);
                 std::vector<ftxui::Element> formatted_lines;
                 for (std::string block_line : block_lines) {
                     formatted_lines.push_back(ftxui::text(std::format("{:>3}.{:0>3}", i, formatted_lines.size()) + block_line));
@@ -102,7 +103,7 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
 
         std::string input_command = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
 
-        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, input_history, infoToStr, TUIFrontend};
+        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, expand_as_source, input_history, infoToStr, TUIFrontend};
         CmdResult res = InteractiveCmds::ExecuteCommand(input_command, ctx);
         last_res = res.res;
 

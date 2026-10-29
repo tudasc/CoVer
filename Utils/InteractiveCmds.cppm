@@ -58,6 +58,7 @@ struct CmdContext {
     std::vector<TraceBlock<T>>& trace_by_blocks;
     std::map<JumpTraceEntry<T>*,int>& sibling_select;
     std::map<JumpTraceEntry<T>*,bool>& expand_select;
+    bool& expand_as_source;
     std::vector<std::pair<std::string, CmdResult>>& history;
     std::function<std::string(T)> infoToStr;
     CmdFrontend frontend;
@@ -170,7 +171,7 @@ CmdResult CmdChild(std::vector<std::string>& args, CmdContext<T>& ctx) {
 }
 
 template<typename T>
-CmdResult CmdView(std::vector<std::string>& args, CmdContext<T>& ctx) {
+CmdResult CmdShow(std::vector<std::string>& args, CmdContext<T>& ctx) {
     if (args[0] != "source" && args[0] != "ir") {
         return {CmdResultCode::INVALID_INPUT, "Unknown source representation: " + args[0]};
     }
@@ -180,6 +181,12 @@ CmdResult CmdView(std::vector<std::string>& args, CmdContext<T>& ctx) {
     bool transToSource = args[0] == "source";
     ctx.frontend.showLines(InteractiveUtils::getBlockLines(ctx.trace_by_blocks[*block], transToSource, ctx.infoToStr), std::string("Block Preview") + (transToSource ? ", Source Approx." : ", LLVM IR"));
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
+}
+
+template<typename T>
+CmdResult CmdToggleView(std::vector<std::string>&, CmdContext<T>& ctx) {
+    ctx.expand_as_source = !ctx.expand_as_source;
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Expanded blocks are now shown as {}", ctx.expand_as_source ? "source code approximation" : "LLVM IR")};
 }
 
 template<typename T>
@@ -391,7 +398,8 @@ std::vector<CmdInfo<T>> TraceCommands = {
     {"collapse",      "[block num]",                                              "Hide IR for block, making it unavailable for annotation", 1, CmdCollapse<T>},
     {"expand",        "[block num]",                                              "Show IR for block, and make available for annotation", 1, CmdExpand<T>},
     {"child",         "[block num] [child num]",                                  "Show different predecessor blocks", 2, CmdChild<T>},
-    {"view",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdView<T>},
+    {"show",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdShow<T>},
+    {"toggle-view",   "",                                                         "Toggle whether expanded blocks are shown as IR or a source code approximation", 0, CmdToggleView<T>},
     {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdFpTarget<T>},
     {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAliasCreate<T>},
     {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAliasAdd<T>},
