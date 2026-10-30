@@ -1,8 +1,6 @@
 module;
 
 #include <format>
-#include <functional>
-#include <map>
 #include <string>
 #include <utility>
 #include <vector>
@@ -10,23 +8,19 @@ module;
 #include <ftxui/screen/color.hpp>
 
 export module TUITrace;
-import LLVMModule;
-import ContractPassUtility;
 import InteractiveUtils;
 import InteractiveCmds;
+import InteractiveSession;
 import TUIManager;
 
 namespace TUITrace {
 
-using ContractPassUtility::JumpTraceEntry;
-using ContractPassUtility::TraceDB;
-using InteractiveCmds::CmdContext;
 using InteractiveCmds::CmdFrontend;
-using InteractiveCmds::CmdResult;
-using InteractiveCmds::CmdResultCode;
-using InteractiveUtils::TraceBlock;
+using InteractiveSession::CmdResult;
+using InteractiveSession::CmdResultCode;
+using InteractiveSession::History;
 
-void ShowHistory(std::vector<std::pair<std::string, CmdResult>> const& history) {
+void ShowHistory(History const& history) {
     int constexpr res_size = 17;
     std::vector<ftxui::Element> lines;
     lines.push_back(ftxui::hbox({
@@ -75,40 +69,25 @@ CmdFrontend const TUIFrontend = {
     .showHistory = ShowHistory,
 };
 
-export template<typename T>
-bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
-    if (!trace) return false;
-    std::vector<std::pair<std::string, CmdResult>> input_history = InteractiveCmds::LoadHistoryCache();
-    std::map<JumpTraceEntry<T>*,int> sibling_select;
-    std::map<JumpTraceEntry<T>*,bool> expand_select;
-    bool expand_as_source = false;
+export bool ShowTrace(InteractiveSession::TraceSession& session) {
     std::string last_res = "";
     while (true) {
-        std::vector<TraceBlock<T>> trace_by_blocks = InteractiveUtils::GetTraceList(traceDB, trace, infoToStr, sibling_select);
         std::vector<ftxui::Element> full_trace;
-        for (int i = 0; i < trace_by_blocks.size(); i++) {
-            std::string trace_block_str = std::format("{:>3}: {:^{}} - {}", i, infoToStr(trace_by_blocks[i].first_entry->analysisInfo), InteractiveUtils::UI_ANALYSISINFO_PAD_SIZE, trace_by_blocks[i].trace_list);
-            full_trace.push_back(ftxui::text(trace_block_str));
-            if (expand_select.contains(trace_by_blocks[i].last_entry) && expand_select[trace_by_blocks[i].last_entry]) {
-                for (InteractiveUtils::BlockLine const& line : InteractiveUtils::getBlockLines(trace_by_blocks[i], expand_as_source, infoToStr)) {
-                    full_trace.push_back(ftxui::text(std::format("{:>3}.{:0>3}{}", i, line.instr, line.text)));
-                }
+        for (InteractiveSession::TraceBlockView const& block : session.Blocks()) {
+            full_trace.push_back(ftxui::text(std::format("{:>3}: {:^{}} - {}", block.index, block.info, InteractiveUtils::UI_ANALYSISINFO_PAD_SIZE, block.description)));
+            if (!block.expanded) continue;
+            for (InteractiveUtils::BlockLine const& line : session.BlockLines(block.index, session.ExpandAsSource())) {
+                full_trace.push_back(ftxui::text(std::format("{:>3}.{:0>3}{}", block.index, line.instr, line.text)));
             }
         }
 
-        InteractiveUtils::WriteReanalyseModule(trace->loc->getModule());
-
         std::string input_command = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
 
-        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, expand_as_source, input_history, infoToStr, TUIFrontend};
-        CmdResult res = InteractiveCmds::ExecuteCommand(input_command, ctx);
+        CmdResult res = InteractiveCmds::ExecuteCommand(session, input_command, TUIFrontend);
         last_res = res.res;
 
         if (res.code == CmdResultCode::SUCCESS_EXIT) return false;
-        if (res.code == CmdResultCode::SUCCESS_REANALYSE) {
-            InteractiveCmds::SaveHistoryCache(ctx.history);
-            return true;
-        }
+        if (res.code == CmdResultCode::SUCCESS_REANALYSE) return true;
     }
 }
 

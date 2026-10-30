@@ -40,7 +40,6 @@ module;
 #include <functional>
 #include <map>
 #include <optional>
-#include <ranges>
 #include <set>
 #include <string>
 #include <utility>
@@ -53,66 +52,24 @@ import LLVMModule;
 import ContractPassUtility;
 import InteractiveUtils;
 import InteractiveCmds;
+import InteractiveSession;
 import GUIManager;
 
 using namespace llvm;
 
 namespace GUITrace {
 
-using InteractiveCmds::CmdContext;
 using InteractiveCmds::CmdFrontend;
 using InteractiveCmds::CmdInfo;
-using InteractiveCmds::CmdResult;
-using InteractiveCmds::CmdResultCode;
-using InteractiveUtils::TraceBlock;
+using InteractiveSession::CmdResult;
+using InteractiveSession::CmdResultCode;
+using InteractiveSession::History;
+using InteractiveSession::TraceBlockView;
+using InteractiveSession::TraceChildView;
+using InteractiveSession::TraceInstrView;
+using InteractiveSession::TraceSession;
 using GUIManager::qstr;
 using ContractTree::Fulfillment;
-
-using History = std::vector<std::pair<std::string, CmdResult>>;
-
-// Frontend independent view of the trace, built from the trace blocks after every command
-export struct TraceInstrView {
-    int index;
-    std::string info;
-    std::string ir;
-    std::string location;
-    std::string value; // Name usable in alias commands, empty if the instruction is no pointer value
-    bool indirect_call;
-    std::string source; // Source code approximation, empty without debug info
-    std::vector<std::string> operands; // Pointer values referenced by the instruction, usable in alias commands
-};
-
-export struct TraceChildView {
-    int child;
-    void const* entry;
-    std::string info;
-    std::string location;
-    std::string function;
-};
-
-export struct TraceBlockView {
-    int index;
-    void const* entry; // Identifies the block across refreshes
-    std::string info;
-    std::string function;
-    std::string description;
-    std::string start_loc;
-    std::string end_loc;
-    std::optional<int> jump_to;
-    bool expanded;
-    std::string kind; // How the last entry is reached from its children (predecessors)
-    std::vector<TraceChildView> children;
-    int selected_child = 0;
-    bool expand_as_source = false; // Show instructions of expanded block as source code approximation, see toggle-view
-};
-
-export struct CommandDoc {
-    std::string name;
-    std::string usage;
-    std::string help;
-};
-
-using InstrFn = std::function<std::vector<TraceInstrView>(int)>;
 
 constexpr qreal NODE_MIN_WIDTH = 280;
 constexpr qreal NODE_MAX_WIDTH = 760;
@@ -298,7 +255,7 @@ class TraceGraph {
 
         QGraphicsScene* Scene() { return scene; }
 
-        void Rebuild(std::vector<TraceBlockView> const& blocks, InstrFn const& instructions);
+        void Rebuild(TraceSession& session);
 
         void Select(int block) {
             if (block < 0 || block >= block_nodes.size()) return;
@@ -348,7 +305,7 @@ void NodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* e) {
 
 class BlockNode : public NodeItem {
     public:
-        BlockNode(TraceGraph* graph, TraceBlockView const& block, std::vector<TraceInstrView> instrs)
+        BlockNode(TraceGraph* graph, TraceBlockView const& block, std::vector<TraceInstrView> instrs, bool as_source)
             : NodeItem(graph, {block.entry, block.jump_to ? 1 : 0}), block{block}, instrs{std::move(instrs)} {
             QFontMetricsF fm(QApplication::font());
             QFontMetricsF mono_fm(GUIManager::MonoFont());
@@ -360,7 +317,7 @@ class BlockNode : public NodeItem {
             size_t info_width = 0;
             for (TraceInstrView const& instr : this->instrs) info_width = std::max(info_width, instr.info.size());
             for (TraceInstrView const& instr : this->instrs)
-                instr_lines << qstr(std::format("{:0>3} {:<{}} {}", instr.index, instr.info, info_width, block.expand_as_source ? instr.source : instr.ir));
+                instr_lines << qstr(std::format("{:0>3} {:<{}} {}", instr.index, instr.info, info_width, as_source ? instr.source : instr.ir));
 
             qreal width = fm.horizontalAdvance(QString("Block %1").arg(block.index)) + fm.horizontalAdvance(qstr(block.info)) + fm.horizontalAdvance(qstr(block.function)) + 70;
             for (QString const& line : lines) width = std::max(width, fm.horizontalAdvance(line));
@@ -525,7 +482,8 @@ void TraceGraph::SelectionChanged() {
     }
 }
 
-void TraceGraph::Rebuild(std::vector<TraceBlockView> const& blocks, InstrFn const& instructions) {
+void TraceGraph::Rebuild(TraceSession& session) {
+    std::vector<TraceBlockView> const& blocks = session.Blocks();
     updating = true;
     scene->clear();
     block_nodes.clear();
@@ -533,7 +491,7 @@ void TraceGraph::Rebuild(std::vector<TraceBlockView> const& blocks, InstrFn cons
     // Trace blocks form a chain, each block followed by its selected child
     qreal y = 0;
     for (TraceBlockView const& block : blocks) {
-        BlockNode* node = new BlockNode(this, block, block.expanded ? instructions(block.index) : std::vector<TraceInstrView>{});
+        BlockNode* node = new BlockNode(this, block, block.expanded ? session.Instructions(block.index) : std::vector<TraceInstrView>{}, session.ExpandAsSource());
         scene->addItem(node);
         node->setPos(manual_pos.contains(node->key) ? manual_pos[node->key] : QPointF(-node->Width() / 2, y));
         y += node->Height() + ROW_GAP;
@@ -639,9 +597,7 @@ QColor ResultColor(CmdResultCode code) {
 
 class TraceDebugger {
     public:
-        TraceDebugger(std::function<std::vector<TraceBlockView>()> refresh, InstrFn instructions, std::function<CmdResult(std::string const&, CmdFrontend const&)> execute,
-                      std::function<std::vector<std::string>(int)> source_lines, History const& history, std::vector<CommandDoc> commands)
-            : refresh{refresh}, instructions{instructions}, execute{execute}, source_lines{source_lines}, history{history}, commands{commands} {
+        TraceDebugger(TraceSession& session) : session{session}, blocks{session.Blocks()}, history{session.GetHistory()}, commands{InteractiveCmds::GetTraceCommands()} {
             frontend = {
                 .showLines = GUIManager::ShowLines,
                 .selectMultiple = GUIManager::SelectMultiple,
@@ -670,16 +626,12 @@ class TraceDebugger {
         }
 
     private:
-        std::function<std::vector<TraceBlockView>()> refresh;
-        InstrFn instructions;
-        std::function<CmdResult(std::string const&, CmdFrontend const&)> execute;
-        std::function<std::vector<std::string>(int)> source_lines;
+        TraceSession& session;
+        std::vector<TraceBlockView> const& blocks;
         History const& history;
-        std::vector<CommandDoc> commands;
+        std::vector<CmdInfo> const& commands;
         CmdFrontend frontend;
 
-        std::vector<TraceBlockView> blocks;
-        std::map<int, std::vector<TraceInstrView>> instr_cache;
         int selected = 0;
         bool reanalyse = false;
         GUIManager::PageRun* run = nullptr;
@@ -700,18 +652,13 @@ class TraceDebugger {
         CommandLine* console;
         QLabel* last_result;
 
-        std::vector<TraceInstrView> const& Instrs(int block) {
-            if (!instr_cache.contains(block)) instr_cache[block] = instructions(block);
-            return instr_cache[block];
-        }
-
         void Execute(std::string const& cmd) {
             QTimer::singleShot(0, page, [this, cmd] { RunCommand(cmd); });
         }
 
         void RunCommand(std::string const& cmd) {
             if (!run) return;
-            CmdResult res = execute(cmd, frontend);
+            CmdResult res = InteractiveCmds::ExecuteCommand(session, cmd, frontend);
             QString line = "<b>&gt;&gt;&gt; " + qstr(cmd).toHtmlEscaped() + "</b>";
             if (!res.res.empty()) {
                 QColor color = ResultColor(res.code);
@@ -731,8 +678,6 @@ class TraceDebugger {
         }
 
         void Refresh() {
-            blocks = refresh();
-            instr_cache.clear();
             selected = std::clamp(selected, 0, (int)blocks.size() - 1);
             QSignalBlocker blocker(block_list);
             block_list->clear();
@@ -741,7 +686,7 @@ class TraceDebugger {
                 item->setIcon(1, GUIManager::StatusIcon(InfoColor(block.info)));
                 item->setToolTip(2, qstr(block.description));
             }
-            graph->Rebuild(blocks, [this](int block) { return Instrs(block); });
+            graph->Rebuild(session);
             SelectBlock(selected, false);
             view->ensureVisible(graph->Node(selected), 40, 40);
         }
@@ -771,7 +716,7 @@ class TraceDebugger {
                 child_select->setCurrentIndex(block.selected_child);
                 child_select->setEnabled(block.children.size() > 1);
             }
-            std::vector<TraceInstrView> const& instrs = Instrs(selected);
+            std::vector<TraceInstrView> const& instrs = session.Instructions(selected);
             instr_table->setRowCount(instrs.size());
             for (int i = 0; i < instrs.size(); i++) {
                 std::vector<QString> cells = {QString::number(instrs[i].index), qstr(instrs[i].info), qstr(instrs[i].ir), qstr(instrs[i].location)};
@@ -784,7 +729,7 @@ class TraceDebugger {
                 instr_table->item(i, 1)->setIcon(GUIManager::StatusIcon(InfoColor(instrs[i].info)));
             }
             QStringList lines;
-            for (std::string const& line : source_lines(selected)) lines << qstr(line);
+            for (InteractiveUtils::BlockLine const& line : session.BlockLines(selected, true)) lines << qstr(line.text);
             source_text->setPlainText(lines.join('\n'));
         }
 
@@ -804,7 +749,7 @@ class TraceDebugger {
 
         int SelectedInstr() {
             int row = instr_table->currentRow();
-            return row >= 0 && row < Instrs(selected).size() ? Instrs(selected)[row].index : 0;
+            return row >= 0 && row < session.Instructions(selected).size() ? session.Instructions(selected)[row].index : 0;
         }
 
         // Form helpers for the annotation commands
@@ -816,7 +761,7 @@ class TraceDebugger {
             return {.label = "Instruction", .kind = GUIManager::FormField::Kind::CHOICE, .value = std::to_string(instr), .depends_on = block_field,
                     .update_choices = [this](std::string const& block) {
                         std::vector<std::pair<std::string, std::string>> choices;
-                        for (TraceInstrView const& in : Instrs(std::stoi(block)))
+                        for (TraceInstrView const& in : session.Instructions(std::stoi(block)))
                             choices.push_back({std::to_string(in.index), std::format("{:0>3}: {}{}", in.index, in.indirect_call ? "[indirect call] " : "", in.ir)});
                         return choices;
                     }};
@@ -827,11 +772,11 @@ class TraceDebugger {
                     .update_choices = [this](std::string const& block) {
                         std::vector<std::pair<std::string, std::string>> choices;
                         std::set<std::string> seen;
-                        for (TraceInstrView const& in : Instrs(std::stoi(block))) {
+                        for (TraceInstrView const& in : session.Instructions(std::stoi(block))) {
                             if (!in.value.empty() && seen.insert(in.value).second) choices.push_back({in.value, in.value});
                         }
                         // Values defined outside of the block, but referenced in it
-                        for (TraceInstrView const& in : Instrs(std::stoi(block))) {
+                        for (TraceInstrView const& in : session.Instructions(std::stoi(block))) {
                             for (std::string const& op : in.operands)
                                 if (seen.insert(op).second) choices.push_back({op, op});
                         }
@@ -933,7 +878,7 @@ class TraceDebugger {
         }
 
         void FillInstrMenu(QMenu* menu, int block, int instr) {
-            TraceInstrView const& in = Instrs(block)[instr];
+            TraceInstrView const& in = session.Instructions(block)[instr];
             menu->addSection(qstr(std::format("Instruction {}.{:0>3}", block, in.index)));
             if (in.indirect_call)
                 QObject::connect(menu->addAction("Annotate function pointer targets..."), &QAction::triggered, [=, this] { Execute(std::format("fp-target {} {}", block, in.index)); });
@@ -1158,7 +1103,7 @@ class TraceDebugger {
             console->setPlaceholderText("Type \"help\" for help");
             console->setFont(GUIManager::MonoFont());
             QStringList names;
-            for (CommandDoc const& cmd : commands) names << qstr(cmd.name);
+            for (CmdInfo const& cmd : commands) names << qstr(std::string(cmd.name));
             QCompleter* completer = new QCompleter(names, console);
             completer->setCompletionMode(QCompleter::InlineCompletion);
             console->setCompleter(completer);
@@ -1167,8 +1112,8 @@ class TraceDebugger {
             QLabel* usage = new QLabel;
             QObject::connect(console, &QLineEdit::textChanged, page, [this, usage](QString const& text) {
                 std::string name = text.section(' ', 0, 0).toStdString();
-                auto it = std::find_if(commands.begin(), commands.end(), [&](CommandDoc const& cmd) { return cmd.name == name; });
-                usage->setText(it == commands.end() ? "" : qstr(std::format("Usage: {} {} - {}", it->name, it->usage, it->help)));
+                std::vector<CmdInfo>::const_iterator it = std::ranges::find_if(commands, [&](CmdInfo const& cmd) { return cmd.name == name; });
+                usage->setText(it == commands.end() ? "" : qstr(std::format("Usage: {} {} - {}", it->name, it->usage, it->helptext)));
             });
             QObject::connect(console, &QLineEdit::returnPressed, page, [this] {
                 std::string cmd = console->text().toStdString();
@@ -1196,111 +1141,10 @@ class TraceDebugger {
         }
 };
 
-export bool RunTraceDebugger(std::function<std::vector<TraceBlockView>()> refresh, InstrFn instructions, std::function<CmdResult(std::string const&, CmdFrontend const&)> execute,
-                             std::function<std::vector<std::string>(int)> source_lines, History const& history, std::vector<CommandDoc> commands) {
+export bool ShowTrace(TraceSession& session) {
     GUIManager::Window(); // Sets up the application
-    TraceDebugger debugger(refresh, instructions, execute, source_lines, history, commands);
+    TraceDebugger debugger(session);
     return debugger.Exec();
-}
-
-export template<typename T>
-bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
-    using ContractPassUtility::JumpTraceEntry;
-    if (!trace) return false;
-    History history = InteractiveCmds::LoadHistoryCache();
-    std::map<JumpTraceEntry<T>*,int> sibling_select;
-    std::map<JumpTraceEntry<T>*,bool> expand_select;
-    bool expand_as_source = false;
-    std::vector<TraceBlock<T>> trace_by_blocks;
-
-    auto refresh = [&] {
-        trace_by_blocks = InteractiveUtils::GetTraceList(traceDB, trace, infoToStr, sibling_select);
-        InteractiveUtils::WriteReanalyseModule(trace->loc->getModule());
-        std::vector<TraceBlockView> blocks;
-        for (int i = 0; i < trace_by_blocks.size(); i++) {
-            TraceBlock<T> const& block = trace_by_blocks[i];
-            TraceBlockView view = {
-                .index = i,
-                .entry = block.first_entry,
-                .info = infoToStr(block.first_entry->analysisInfo),
-                .function = block.first_entry->loc->getFunction()->getName().str(),
-                .description = block.trace_list,
-                .start_loc = block.start_loc,
-                .end_loc = block.end_loc,
-                .jump_to = block.jump_to,
-                .expanded = expand_select.contains(block.last_entry) && expand_select[block.last_entry],
-            };
-            if (!block.jump_to) {
-                view.kind = InteractiveUtils::traceKindToStr(block.last_entry->kind);
-                view.selected_child = sibling_select.contains(block.last_entry) ? sibling_select[block.last_entry] : 0;
-                for (int k = 0; k < block.last_entry->predecessors.size(); k++) {
-                    JumpTraceEntry<T>* child = block.last_entry->predecessors[k];
-                    view.children.push_back({k, child, infoToStr(child->analysisInfo), ContractPassUtility::getInstrLocStr(child->loc, false), child->loc->getFunction()->getName().str()});
-                }
-            }
-            view.expand_as_source = expand_as_source;
-            blocks.push_back(view);
-        }
-        return blocks;
-    };
-
-    // Instructions of a block, numbered like the instruction arguments of the trace commands
-    auto instructions = [&](int b) {
-        std::vector<TraceInstrView> instrs;
-        TraceBlock<T> const& block = trace_by_blocks[b];
-        ModuleSlotTracker MST(block.first_entry->loc->getModule(), false);
-        Function const* cur_func = nullptr;
-        int index = 0;
-        // Name of a pointer value as resolved by the alias commands (instructions and arguments of the function or named globals), empty if not resolvable
-        auto valueName = [&](Value const* V) -> std::string {
-            if (!V->getType()->isPointerTy()) return "";
-            if (isa<Instruction>(V) || isa<Argument>(V)) {
-                if (V->hasName()) return "%" + V->getName().str();
-                if (MST.getLocalSlot(V) >= 0) return std::format("%{}", MST.getLocalSlot(V));
-            }
-            if (isa<GlobalVariable>(V) && V->hasName()) return "@" + V->getName().str();
-            return "";
-        };
-        for (JumpTraceEntry<T>* entry = block.first_entry;; entry = entry->predecessors[0]) {
-            Instruction* I = entry->loc;
-            if (I->getFunction() != cur_func) {
-                cur_func = I->getFunction();
-                MST.incorporateFunction(*cur_func);
-            }
-            std::string ir;
-            raw_string_ostream strstream(ir);
-            I->print(strstream, MST);
-            ir.erase(0, ir.find_first_not_of(' '));
-            std::string value = valueName(I);
-            std::vector<std::string> operands;
-            for (Use const& U : I->operands()) {
-                std::string op = valueName(U.get());
-                if (!op.empty() && op != value && std::find(operands.begin(), operands.end(), op) == operands.end()) operands.push_back(op);
-            }
-            CallBase const* CB = dyn_cast<CallBase>(I);
-            instrs.push_back({index++, infoToStr(entry->analysisInfo), ir, ContractPassUtility::getInstrLocStr(I, false), value, CB && CB->isIndirectCall(),
-                              expand_as_source ? InteractiveUtils::getSourceLine(entry, true, infoToStr) : "", operands});
-            if (entry == block.last_entry) break;
-        }
-        return instrs;
-    };
-
-    auto execute = [&](std::string const& cmd, CmdFrontend const& frontend) {
-        CmdContext<T> ctx{trace_by_blocks, sibling_select, expand_select, expand_as_source, history, infoToStr, frontend};
-        return InteractiveCmds::ExecuteCommand(cmd, ctx);
-    };
-
-    auto source_lines = [&](int b) {
-        return InteractiveUtils::getBlockLines(trace_by_blocks[b], true, infoToStr) | std::views::transform(&InteractiveUtils::BlockLine::text) | std::ranges::to<std::vector>();
-    };
-
-    std::vector<CommandDoc> commands;
-    for (CmdInfo<T> const& cmd : InteractiveCmds::GetTraceCommands<T>())
-        commands.push_back({std::string(cmd.name), std::string(cmd.usage), std::string(cmd.helptext)});
-
-    bool reanalyse = RunTraceDebugger(refresh, instructions, execute, source_lines, history, commands);
-    if (reanalyse) InteractiveCmds::SaveHistoryCache(history);
-    return reanalyse;
 }
 
 } // namespace GUITrace

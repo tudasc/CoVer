@@ -9,6 +9,7 @@ module;
 export module InteractiveUI;
 import LLVMModule;
 import ContractPassUtility;
+import InteractiveSession;
 import TUIManager;
 import TUITrace;
 #ifdef COVER_HAS_GUI
@@ -58,12 +59,20 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
     return TUIManager::ResultsScreen(ViolatedContracts, reports, runtime);
 }
 
+bool ShowTrace(InteractiveSession::TraceSession& session) {
+#ifdef COVER_HAS_GUI
+    if (mode == InteractMode::GUI) return GUITrace::ShowTrace(session);
+#endif
+    return TUITrace::ShowTrace(session);
+}
+
 export template<typename T>
 bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
-#ifdef COVER_HAS_GUI
-    if (GetMode() == InteractMode::GUI) return GUITrace::ShowTrace<T>(traceDB, trace, infoToStr);
-#endif
-    return TUITrace::ShowTrace<T>(traceDB, trace, infoToStr);
+    if (!trace) return false;
+    InteractiveSession::TraceSessionImpl<T> session(traceDB, trace, infoToStr);
+    bool reanalyse = ShowTrace(session);
+    if (reanalyse) session.SaveHistory();
+    return reanalyse;
 }
 
 } // namespace InteractiveUI
