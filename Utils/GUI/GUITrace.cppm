@@ -649,6 +649,18 @@ QColor ResultColor(CmdResultCode code) {
     }
 }
 
+// Fills a row of an instruction table: index, state, code, then the extra cells
+void SetInstrRow(QTableWidget* table, int row, TraceInstrView const& instr, QString const& code, QStringList const& extra = {}) {
+    QStringList cells = QStringList{QString::number(instr.index), qstr(instr.info), code} + extra;
+    for (int col = 0; col < cells.size(); col++) {
+        QTableWidgetItem* item = new QTableWidgetItem(cells[col]);
+        item->setToolTip(cells[col]);
+        if (col == 2) item->setFont(GUIManager::MonoFont());
+        table->setItem(row, col, item);
+    }
+    table->item(row, 1)->setIcon(GUIManager::StatusIcon(InfoColor(instr.info)));
+}
+
 class TraceDebugger {
     public:
         TraceDebugger(TraceSession& session) : session{session}, blocks{session.Blocks()}, history{session.GetHistory()}, commands{InteractiveCmds::GetTraceCommands()} {
@@ -700,7 +712,8 @@ class TraceDebugger {
         QComboBox* child_select;
         QPushButton* expand_button;
         QTableWidget* instr_table;
-        QPlainTextEdit* source_text;
+        QTableWidget* source_table;
+        std::vector<InteractiveSession::BlockLine> source_lines; // Rows of source_table
         QTabWidget* bottom_tabs;
         QPlainTextEdit* output;
         QTableWidget* history_table;
@@ -779,19 +792,14 @@ class TraceDebugger {
             }
             std::vector<TraceInstrView> const& instrs = Instrs(selected);
             instr_table->setRowCount(instrs.size());
-            for (int i = 0; i < instrs.size(); i++) {
-                std::vector<QString> cells = {QString::number(instrs[i].index), qstr(instrs[i].info), qstr(instrs[i].ir), qstr(instrs[i].location)};
-                for (int col = 0; col < cells.size(); col++) {
-                    QTableWidgetItem* item = new QTableWidgetItem(cells[col]);
-                    item->setToolTip(cells[col]);
-                    if (col == 2) item->setFont(GUIManager::MonoFont());
-                    instr_table->setItem(i, col, item);
-                }
-                instr_table->item(i, 1)->setIcon(GUIManager::StatusIcon(InfoColor(instrs[i].info)));
+            for (int i = 0; i < instrs.size(); i++) SetInstrRow(instr_table, i, instrs[i], qstr(instrs[i].ir), {qstr(instrs[i].location)});
+            source_lines = session.BlockLines(selected, true);
+            source_table->setRowCount(source_lines.size());
+            for (int i = 0; i < source_lines.size(); i++) {
+                TraceInstrView const& instr = instrs[source_lines[i].instr];
+                std::string code = InteractiveUtils::getSourceCode(session.BlockInstruction(selected, instr.index));
+                SetInstrRow(source_table, i, instr, qstr(code), {qstr(instr.location)});
             }
-            QStringList lines;
-            for (InteractiveSession::BlockLine const& line : session.BlockLines(selected, true)) lines << qstr(line.text);
-            source_text->setPlainText(lines.join('\n'));
         }
 
         void UpdateHistory() {
@@ -925,6 +933,29 @@ class TraceDebugger {
                 return;
             }
             Execute(cmd + " " + path.toStdString());
+        }
+
+        // Read-only table of the selected block's instructions with code in the third column, row_instr maps a row to its instruction for the context menu
+        QTableWidget* InstrTable(QStringList const& headers, std::function<int(int)> row_instr) {
+            QTableWidget* table = new QTableWidget(0, headers.size());
+            table->setHorizontalHeaderLabels(headers);
+            table->verticalHeader()->hide();
+            table->verticalHeader()->setDefaultSectionSize(table->fontMetrics().height() + 6);
+            table->setSelectionBehavior(QAbstractItemView::SelectRows);
+            table->setSelectionMode(QAbstractItemView::SingleSelection);
+            table->setEditTriggers(QAbstractItemView::NoEditTriggers);
+            table->setWordWrap(false);
+            table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+            table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
+            table->setContextMenuPolicy(Qt::CustomContextMenu);
+            QObject::connect(table, &QTableWidget::customContextMenuRequested, page, [this, table, row_instr](QPoint const& pos) {
+                int row = table->rowAt(pos.y());
+                if (row < 0) return;
+                QMenu menu;
+                FillInstrMenu(&menu, selected, row_instr(row));
+                menu.exec(table->viewport()->mapToGlobal(pos));
+            });
+            return table;
         }
 
         void FillInstrMenu(QMenu* menu, int block, int instr) {
@@ -1084,33 +1115,11 @@ class TraceDebugger {
             block_buttons->addWidget(view_ir);
             block_buttons->addWidget(view_source);
 
-            instr_table = new QTableWidget(0, 4);
-            instr_table->setHorizontalHeaderLabels({"Instr", "State", "IR", "Location"});
-            instr_table->verticalHeader()->hide();
-            instr_table->verticalHeader()->setDefaultSectionSize(instr_table->fontMetrics().height() + 6);
-            instr_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-            instr_table->setSelectionMode(QAbstractItemView::SingleSelection);
-            instr_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
-            instr_table->setWordWrap(false);
-            instr_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
-            instr_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-            instr_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
-            instr_table->horizontalHeader()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
-            instr_table->setContextMenuPolicy(Qt::CustomContextMenu);
-            QObject::connect(instr_table, &QTableWidget::customContextMenuRequested, page, [this](QPoint const& pos) {
-                int row = instr_table->rowAt(pos.y());
-                if (row < 0) return;
-                QMenu menu;
-                FillInstrMenu(&menu, selected, row);
-                menu.exec(instr_table->viewport()->mapToGlobal(pos));
-            });
-            source_text = new QPlainTextEdit;
-            source_text->setReadOnly(true);
-            source_text->setLineWrapMode(QPlainTextEdit::NoWrap);
-            source_text->setFont(GUIManager::MonoFont());
+            instr_table = InstrTable({"Instr", "State", "IR", "Location"}, [](int row) { return row; });
+            source_table = InstrTable({"Instr", "State", "Source", "Location"}, [this](int row) { return source_lines[row].instr; });
             QTabWidget* detail_tabs = new QTabWidget;
             detail_tabs->addTab(instr_table, "Instructions");
-            detail_tabs->addTab(source_text, "Source Approx.");
+            detail_tabs->addTab(source_table, "Source Approx.");
 
             QWidget* details = new QWidget;
             QVBoxLayout* details_layout = new QVBoxLayout(details);

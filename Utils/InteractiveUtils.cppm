@@ -86,11 +86,18 @@ export std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
     }
 }
 
+// Source code of the instruction's line, empty without debug info
+export std::string getSourceCode(Instruction const* I) {
+    if (!I->getDebugLoc()) return "";
+    FileReference ref = ContractPassUtility::getFileReference(I);
+    return getSpecificLine(ref.file, ref.line);
+}
+
 export std::string getSourceLine(Instruction const* I, bool translate) {
     if (translate) {
         if (!I->getDebugLoc()) return "";
         FileReference ref = ContractPassUtility::getFileReference(I);
-        return std::format("{:>15}:{:0>3} | {}", std::filesystem::path(ref.file).filename().string(), ref.line, getSpecificLine(ref.file, ref.line));
+        return std::format("{:>15}:{:0>3} | {}", std::filesystem::path(ref.file).filename().string(), ref.line, getSourceCode(I));
     } else {
         std::string out;
         raw_string_ostream strstream(out);
