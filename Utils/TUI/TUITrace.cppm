@@ -2,7 +2,6 @@ module;
 
 #include <format>
 #include <string>
-#include <utility>
 #include <vector>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
@@ -32,19 +31,16 @@ void ShowHistory(History const& history) {
     }));
     lines.push_back(ftxui::separator());
     for (int i = 0; i < history.size(); i++) {
-        ftxui::Element result_str;
+        ftxui::Element result_str = ftxui::text(InteractiveSession::resultCodeStr(history[i].second.code));
         switch (history[i].second.code) {
             case CmdResultCode::INVALID_INPUT:
-                result_str = ftxui::text("Invalid Input") | ftxui::bgcolor(ftxui::Color::Yellow);
-                break;
             case CmdResultCode::INVALID_SYNTAX:
-                result_str = ftxui::text("Invalid Syntax") | ftxui::bgcolor(ftxui::Color::Yellow);
+                result_str |= ftxui::bgcolor(ftxui::Color::Yellow);
                 break;
             case CmdResultCode::UNKNOWN_COMMAND:
-                result_str = ftxui::text("Unknown Command") | ftxui::bgcolor(ftxui::Color::Red);
+                result_str |= ftxui::bgcolor(ftxui::Color::Red);
                 break;
             default:
-                result_str = ftxui::text("Success");
                 break;
         }
         result_str |= ftxui::size(ftxui::WIDTH, ftxui::EQUAL, res_size);

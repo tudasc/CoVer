@@ -2,7 +2,6 @@ module;
 
 #include <algorithm>
 #include <charconv>
-#include <concepts>
 #include <cstdint>
 #include <cstdlib>
 #include <expected>
@@ -10,7 +9,6 @@ module;
 #include <format>
 #include <fstream>
 #include <functional>
-#include <map>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -221,23 +219,36 @@ CmdResult CmdAliasEpoch(std::vector<std::string> const& args, TraceSession& sess
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("Added epoch for alias group {} at {}.{}", *group, *block, args[2])};
 }
 
+export struct AliasGroupEntry {
+    std::string arg; // Index as accepted by alias-rm
+    std::string label; // Padded index
+    std::string text;
+};
+
+// Members followed by epochs of an alias group
+export std::vector<AliasGroupEntry> getAliasGroupEntries(int group) {
+    std::vector<AliasGroupEntry> entries;
+    int num = 0;
+    for (Value const* V : ContractPassUtility::getAliasAnnots().at(group).members) {
+        std::string out;
+        raw_string_ostream strstream(out);
+        V->print(strstream);
+        entries.push_back({std::to_string(num), std::format("{:0>3}", num), out});
+        num++;
+    }
+    num = 0;
+    for (CallBase const* CB : ContractPassUtility::getAliasEpochs(group)) {
+        entries.push_back({std::format("e{}", num), std::format("e{:0>2}", num), std::format("epoch in {} at {}", CB->getFunction()->getName().str(), ContractPassUtility::getInstrLocStr(CB))});
+        num++;
+    }
+    return entries;
+}
+
 CmdResult CmdAliasGet(std::vector<std::string> const&, TraceSession& session, CmdFrontend const& frontend) {
-    std::map<int, ContractPassUtility::AliasGroup> const AGs = ContractPassUtility::getAliasAnnots();
     std::vector<std::string> group_lines;
-    for (std::pair<int, ContractPassUtility::AliasGroup> const& G : AGs) {
-        group_lines.push_back(std::format("Group {}, {}", G.first, G.second.areAliasing ? "should alias" : "should not alias"));
-        int num = 0;
-        for (Value const* V : G.second.members) {
-            std::string out;
-            raw_string_ostream strstream(out);
-            V->print(strstream);
-            group_lines.push_back(std::format("{}.{:0>3} | {}", G.first, num++, out));
-        }
-        // Epoch nums
-        num = 0;
-        for (CallBase const* CB : ContractPassUtility::getAliasEpochs(G.first)) {
-            group_lines.push_back(std::format("{}.e{:0>2} | epoch in {} at {}", G.first, num++, CB->getFunction()->getName().str(), ContractPassUtility::getInstrLocStr(CB)));
-        }
+    for (auto const& [group, info] : ContractPassUtility::getAliasAnnots()) {
+        group_lines.push_back(std::format("Group {}, {}", group, info.areAliasing ? "should alias" : "should not alias"));
+        for (AliasGroupEntry const& entry : getAliasGroupEntries(group)) group_lines.push_back(std::format("{}.{} | {}", group, entry.label, entry.text));
     }
     frontend.showLines(group_lines, "Current Alias Groups");
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
@@ -258,16 +269,12 @@ CmdResult CmdAllocCreate(std::vector<std::string> const& args, TraceSession& ses
 
 CmdResult CmdDiff(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
     std::ofstream difffile(args[0]);
-    difffile << "|| DIFF HISTORY BEGIN ||\n";
-    for (auto const& [command, result] : session.GetHistory()) {
-        difffile << command << "\n";
-    }
-    difffile << "|| DIFF HISTORY END ||\n---\n";
-    int rc = std::system("diff -c -I '^; ModuleID' -I '^!.*' -I '^@.*' CoVer_InteractStart.ll CoVer_Reanalyse.ll > CoVer_Diff.tmp");
+    session.WriteHistory(difffile, false);
+    int rc = std::system(std::format("diff -c -I '^; ModuleID' -I '^!.*' -I '^@.*' {} {} > {}", InteractiveUtils::INTERACT_START_FILE, InteractiveUtils::REANALYSE_FILE, InteractiveUtils::DIFF_TMP_FILE).c_str());
     if (!WIFEXITED(rc) || (WEXITSTATUS(rc) && WEXITSTATUS(rc) != 1)) {
         return {CmdResultCode::INVALID_INPUT, std::format("Error, diff returned exit code {}", WEXITSTATUS(rc))};
     }
-    difffile << std::ifstream("CoVer_Diff.tmp").rdbuf();
+    difffile << std::ifstream(InteractiveUtils::DIFF_TMP_FILE).rdbuf();
     return {CmdResultCode::SUCCESS_CONTINUE, "Wrote patch file to " + args[0]};
 }
 
@@ -275,7 +282,7 @@ CmdResult CmdPatch(std::vector<std::string> const& args, TraceSession& session, 
     if (!std::filesystem::exists(args[0])) {
         return {CmdResultCode::INVALID_INPUT, "File does not exist!"};
     }
-    std::string err = IRPatch::applyPatch("CoVer_Reanalyse.ll", args[0]);
+    std::string err = IRPatch::applyPatch(InteractiveUtils::REANALYSE_FILE, args[0]);
     if (!err.empty()) return {CmdResultCode::INVALID_INPUT, "Error, " + err};
     return {CmdResultCode::SUCCESS_REANALYSE, "Applied patch from " + args[0]};
 }

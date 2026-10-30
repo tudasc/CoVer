@@ -1,7 +1,6 @@
 module;
 
 #include <algorithm>
-#include <cstddef>
 #include <format>
 #include <functional>
 #include <fstream>
@@ -247,7 +246,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
 
     int choice;
     do {
-        choice = RenderMenu(contr_funcs, std::format("Start Menu ({} contracts to be analysed, parsed in {})", DB.Contracts.size(), InteractiveUtils::formatDuration(parse_time)));
+        choice = RenderMenu(contr_funcs, InteractiveUtils::startMenuTitle(DB.Contracts.size(), parse_time));
         // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
         if (choice != 0) ShowContractDetails(DB.Contracts[choice-1]);
     } while (choice != 0);
@@ -344,32 +343,17 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, Contract
 }
 
 export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, double runtime) {
-    std::vector<std::string> violations;
-    std::vector<std::pair<std::shared_ptr<ContractFormula>, Contract>> formulas;
-    violations.push_back("Exit Tool");
-    for (Contract const& C : ViolatedContracts) {
-        for (std::shared_ptr<ContractFormula> const& form : C.Data.Pre) {
-            if (*form->Status != Fulfillment::FULFILLED) {
-                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr));
-                formulas.push_back({form, C});
-            }
-        }
-        for (std::shared_ptr<ContractFormula> const& form : C.Data.Post) {
-            if (*form->Status != Fulfillment::FULFILLED) {
-                violations.push_back(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr));
-                formulas.push_back({form, C});
-            }
-        }
-    }
-    // size of viol at least one for exit tool prompt
-    std::string title = std::format("{} (analysed in {})", violations.size() == 1 ? "No reported errors!" : "Reported Errors", InteractiveUtils::formatDuration(runtime));
+    std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
+    std::vector<std::string> violations = {"Exit Tool"};
+    for (InteractiveUtils::ReportedFormula const& formula : formulas) violations.push_back(formula.Summary());
+    std::string title = InteractiveUtils::resultsTitle(!formulas.empty(), runtime);
     int choice = 0;
     do {
         choice = RenderMenu(violations, title);
         if (choice != 0) {
-            bool debug = ShowViolationDetails(formulas[choice-1].first, reports);
+            bool debug = ShowViolationDetails(formulas[choice-1].formula, reports);
             if (debug) {
-                bool reanalyse = ShowContractDetails(formulas[choice-1].second);
+                bool reanalyse = ShowContractDetails(*formulas[choice-1].contract);
                 if (reanalyse) return true;
             }
         }

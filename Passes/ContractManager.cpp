@@ -12,6 +12,7 @@ import LLVMModule;
 import ContractDataExtractor;
 import ContractPassUtility;
 import InteractiveUI;
+import InteractiveUtils;
 
 using namespace llvm;
 
@@ -79,10 +80,10 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     if (curDatabase.isInteractive) {
         InteractiveUI::SetMode(ClInteractMode);
         InteractiveUI::StartMenu(curDatabase, parse_time);
-        if (M.getName() != "CoVer_Reanalyse.ll") {
+        if (M.getName() != InteractiveUtils::REANALYSE_FILE) {
             // Write original module
             std::error_code rc;
-            llvm::raw_fd_stream orig_file("CoVer_InteractStart.ll", rc);
+            llvm::raw_fd_stream orig_file(InteractiveUtils::INTERACT_START_FILE, rc);
             M.print(orig_file, nullptr);
         }
         // Do not count time spent in the start menu for analysis when in interactive mode

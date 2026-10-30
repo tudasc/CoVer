@@ -124,6 +124,8 @@ std::vector<TraceInstrView> BuildInstructions(TraceSession const& session, int b
 
 std::string FunctionName(Instruction const* I) { return I->getFunction()->getName().str(); }
 
+std::string ToggleExpandCmd(TraceBlockView const& block) { return std::format("{} {}", block.expanded ? "collapse" : "expand", block.index); }
+
 std::string ChildText(int child, TraceEntryView const& entry) {
     return std::format("Child {}: {} [{}]", child, ContractPassUtility::getInstrLocStr(entry.loc, false), entry.info);
 }
@@ -449,7 +451,7 @@ class BlockNode : public NodeItem {
 
     protected:
         void mouseDoubleClickEvent(QGraphicsSceneMouseEvent*) override {
-            graph->Command(std::format("{} {}", block.expanded ? "collapse" : "expand", block.index));
+            graph->Command(ToggleExpandCmd(block));
         }
         void contextMenuEvent(QGraphicsSceneContextMenuEvent* e) override {
             setSelected(true);
@@ -638,15 +640,6 @@ class CommandLine : public QLineEdit {
         int pos = -1;
 };
 
-QString ResultText(CmdResultCode code) {
-    switch (code) {
-        case CmdResultCode::INVALID_INPUT: return "Invalid Input";
-        case CmdResultCode::INVALID_SYNTAX: return "Invalid Syntax";
-        case CmdResultCode::UNKNOWN_COMMAND: return "Unknown Command";
-        default: return "Success";
-    }
-}
-
 QColor ResultColor(CmdResultCode code) {
     switch (code) {
         case CmdResultCode::INVALID_INPUT:
@@ -804,7 +797,7 @@ class TraceDebugger {
         void UpdateHistory() {
             history_table->setRowCount(history.size());
             for (int i = 0; i < history.size(); i++) {
-                QTableWidgetItem* code = new QTableWidgetItem(ResultText(history[i].second.code));
+                QTableWidgetItem* code = new QTableWidgetItem(qstr(InteractiveSession::resultCodeStr(history[i].second.code)));
                 QColor color = ResultColor(history[i].second.code);
                 if (color.isValid()) code->setBackground(GUIManager::Tint(color));
                 code->setToolTip(qstr(history[i].second.res));
@@ -910,19 +903,8 @@ class TraceDebugger {
                     std::vector<std::pair<std::string, std::string>> choices;
                     int idx = std::stoi(group);
                     if (!ContractPassUtility::getAliasAnnots().contains(idx)) return choices;
-                    int num = 0;
-                    for (Value const* V : ContractPassUtility::getAliasAnnots().at(idx).members) {
-                        std::string out;
-                        raw_string_ostream strstream(out);
-                        V->print(strstream);
-                        choices.push_back({std::to_string(num), std::format("{:0>3}: {}", num, out)});
-                        num++;
-                    }
-                    num = 0;
-                    for (CallBase const* CB : ContractPassUtility::getAliasEpochs(idx)) {
-                        choices.push_back({std::format("e{}", num), std::format("e{:0>2}: epoch in {} at {}", num, CB->getFunction()->getName().str(), ContractPassUtility::getInstrLocStr(CB))});
-                        num++;
-                    }
+                    for (InteractiveCmds::AliasGroupEntry const& entry : InteractiveCmds::getAliasGroupEntries(idx))
+                        choices.push_back({entry.arg, std::format("{}: {}", entry.label, entry.text)});
                     return choices;
                 }};
             Form("Remove from Alias Group", "Remove a value or an epoch from an alias group.", {GroupField(), member},
@@ -974,7 +956,7 @@ class TraceDebugger {
             SelectBlock(block, false);
             TraceBlockView const& b = blocks[block];
             menu->addSection(QString("Block %1").arg(block));
-            QObject::connect(menu->addAction(b.expanded ? "Collapse" : "Expand"), &QAction::triggered, [=, this] { Execute(std::format("{} {}", b.expanded ? "collapse" : "expand", block)); });
+            QObject::connect(menu->addAction(b.expanded ? "Collapse" : "Expand"), &QAction::triggered, [=, this] { Execute(ToggleExpandCmd(b)); });
             QObject::connect(menu->addAction("View IR"), &QAction::triggered, [=, this] { Execute(std::format("show ir {}", block)); });
             QObject::connect(menu->addAction("View source approximation"), &QAction::triggered, [=, this] { Execute(std::format("show source {}", block)); });
             if (b.children.size() > 1) {
@@ -1073,7 +1055,7 @@ class TraceDebugger {
             });
             QObject::connect(block_list, &QTreeWidget::itemActivated, page, [this](QTreeWidgetItem* item) {
                 int block = block_list->indexOfTopLevelItem(item);
-                Execute(std::format("{} {}", blocks[block].expanded ? "collapse" : "expand", block));
+                Execute(ToggleExpandCmd(blocks[block]));
             });
 
             block_title = new QLabel;
@@ -1090,7 +1072,7 @@ class TraceDebugger {
                 if (child >= 0 && child != blocks[selected].selected_child) Execute(std::format("child {} {}", selected, child));
             });
             expand_button = new QPushButton;
-            QObject::connect(expand_button, &QPushButton::clicked, page, [this] { Execute(std::format("{} {}", blocks[selected].expanded ? "collapse" : "expand", selected)); });
+            QObject::connect(expand_button, &QPushButton::clicked, page, [this] { Execute(ToggleExpandCmd(blocks[selected])); });
             QPushButton* view_ir = new QPushButton("View IR");
             QObject::connect(view_ir, &QPushButton::clicked, page, [this] { Execute(std::format("show ir {}", selected)); });
             QPushButton* view_source = new QPushButton("View Source");

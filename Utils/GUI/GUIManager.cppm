@@ -33,7 +33,6 @@ module;
 #include <algorithm>
 #include <clocale>
 #include <cstdlib>
-#include <filesystem>
 #include <format>
 #include <functional>
 #include <map>
@@ -227,6 +226,22 @@ void Suspend() {
     QApplication::processEvents();
 }
 
+// Accepts or rejects the dialog depending on the button
+QDialogButtonBox* DialogButtons(QDialog* dialog, QDialogButtonBox::StandardButtons buttons) {
+    QDialogButtonBox* box = new QDialogButtonBox(buttons);
+    QObject::connect(box, &QDialogButtonBox::accepted, dialog, &QDialog::accept);
+    QObject::connect(box, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
+    return box;
+}
+
+// Hides the items of the list not containing the search text
+void ConnectFilter(QLineEdit* search, QListWidget* list) {
+    QObject::connect(search, &QLineEdit::textChanged, list, [list](QString const& text) {
+        for (int i = 0; i < list->count(); i++)
+            list->item(i)->setHidden(!list->item(i)->text().contains(text, Qt::CaseInsensitive));
+    });
+}
+
 export void ShowLines(std::vector<std::string> const& lines, std::string const& title) {
     QDialog dialog(GetWindow());
     dialog.setWindowTitle(qstr(title));
@@ -239,9 +254,7 @@ export void ShowLines(std::vector<std::string> const& lines, std::string const& 
     for (std::string const& line : lines) qlines << qstr(line);
     text->setPlainText(qlines.join('\n'));
     layout->addWidget(text);
-    QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Close);
-    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(buttons);
+    layout->addWidget(DialogButtons(&dialog, QDialogButtonBox::Close));
     dialog.resize(1000, 600);
     dialog.exec();
 }
@@ -273,14 +286,8 @@ export std::vector<std::string> SelectMultiple(std::vector<std::string> const& c
     QObject::connect(list, &QListWidget::itemActivated, &dialog, [](QListWidgetItem* item) {
         item->setCheckState(item->checkState() == Qt::Checked ? Qt::Unchecked : Qt::Checked);
     });
-    QObject::connect(search, &QLineEdit::textChanged, &dialog, [&](QString const& text) {
-        for (int i = 0; i < list->count(); i++)
-            list->item(i)->setHidden(!list->item(i)->text().contains(text, Qt::CaseInsensitive));
-    });
-    QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(buttons);
+    ConnectFilter(search, list);
+    layout->addWidget(DialogButtons(&dialog, QDialogButtonBox::Ok | QDialogButtonBox::Cancel));
     dialog.resize(500, 600);
     search->setFocus();
 
@@ -377,10 +384,7 @@ export std::optional<std::vector<std::string>> RunForm(std::string const& title,
         else if (QLineEdit* edit = qobject_cast<QLineEdit*>(widgets[dep])) QObject::connect(edit, &QLineEdit::textChanged, &dialog, refill);
     }
 
-    QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
-    QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
-    layout->addWidget(buttons);
+    layout->addWidget(DialogButtons(&dialog, QDialogButtonBox::Ok | QDialogButtonBox::Cancel));
     if (!widgets.empty()) widgets.front()->setFocus();
 
     if (dialog.exec() != QDialog::Accepted) return std::nullopt;
@@ -390,7 +394,7 @@ export std::optional<std::vector<std::string>> RunForm(std::string const& title,
 }
 
 // Read-only source view with line numbers
-export class CodeView : public QPlainTextEdit {
+class CodeView : public QPlainTextEdit {
     public:
         CodeView() : gutter{new Gutter(this)} {
             setReadOnly(true);
@@ -590,13 +594,6 @@ QWidget* VBox(std::vector<QWidget*> widgets, QString const& title = "") {
     return box;
 }
 
-void RemoveInteractiveFiles() {
-    std::filesystem::remove("CoVer_InteractStart.ll");
-    std::filesystem::remove("CoVer_Reanalyse.ll");
-    std::filesystem::remove("CoVer_HistoryCache");
-    std::filesystem::remove("CoVer_Diff.tmp");
-}
-
 export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double parse_time) {
     GetWindow(); // Sets up the application
     QWidget* page = new QWidget;
@@ -624,27 +621,24 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     buttons->addWidget(start);
     layout->addLayout(buttons);
 
-    QObject::connect(search, &QLineEdit::textChanged, page, [contracts](QString const& text) {
-        for (int i = 0; i < contracts->count(); i++)
-            contracts->item(i)->setHidden(!contracts->item(i)->text().contains(text, Qt::CaseInsensitive));
-    });
+    ConnectFilter(search, contracts);
     QObject::connect(contracts, &QListWidget::currentRowChanged, page, [&](int row) {
         if (row >= 0) details->SetContract(DB.Contracts[row]);
     });
 
-    PageRun run(page, std::format("Start Menu ({} contracts to be analysed, parsed in {})", DB.Contracts.size(), InteractiveUtils::formatDuration(parse_time)));
+    PageRun run(page, InteractiveUtils::startMenuTitle(DB.Contracts.size(), parse_time));
     QObject::connect(start, &QPushButton::clicked, page, [&] { run.Finish(); });
     start->setFocus();
     run.Exec();
     if (Quitting()) {
         errs() << "CoVer: Interactive session aborted\n";
-        RemoveInteractiveFiles();
+        InteractiveUtils::removeInteractiveFiles();
         std::exit(EXIT_FAILURE);
     }
 }
 
 export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, double runtime) {
-    std::vector<std::pair<std::shared_ptr<ContractFormula>, Contract>> formulas;
+    std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
     GetWindow(); // Sets up the application
     QWidget* page = new QWidget;
     QVBoxLayout* layout = new QVBoxLayout(page);
@@ -652,16 +646,10 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
 
     QListWidget* violations = new QListWidget;
     violations->setWordWrap(true);
-    for (Contract const& C : ViolatedContracts) {
-        for (std::vector<std::shared_ptr<ContractFormula>> const* list : {&C.Data.Pre, &C.Data.Post}) {
-            for (std::shared_ptr<ContractFormula> const& form : *list) {
-                if (*form->Status == Fulfillment::FULFILLED) continue;
-                QListWidgetItem* item = new QListWidgetItem(qstr(std::format("{}: {}", C.F->getName().str(), form->Message ? *form->Message : form->ExprStr)), violations);
-                item->setIcon(StatusIcon(FulfillmentColor(*form->Status)));
-                item->setToolTip(qstr(FulfillmentStr(*form->Status) + ": " + form->ExprStr));
-                formulas.push_back({form, C});
-            }
-        }
+    for (InteractiveUtils::ReportedFormula const& formula : formulas) {
+        QListWidgetItem* item = new QListWidgetItem(qstr(formula.Summary()), violations);
+        item->setIcon(StatusIcon(FulfillmentColor(*formula.formula->Status)));
+        item->setToolTip(qstr(FulfillmentStr(*formula.formula->Status) + ": " + formula.formula->ExprStr));
     }
     if (formulas.empty()) {
         QListWidgetItem* item = new QListWidgetItem("No reported errors!", violations);
@@ -715,7 +703,7 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
     });
     QObject::connect(violations, &QListWidget::currentRowChanged, page, [&](int row) {
         if (row < 0 || row >= formulas.size()) return;
-        std::shared_ptr<ContractFormula> const& form = formulas[row].first;
+        std::shared_ptr<ContractFormula> const& form = formulas[row].formula;
         QStringList texts;
         cur_refs.clear();
         refs->clear();
@@ -732,10 +720,10 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
         source_file->clear();
         source->clear();
         if (!cur_refs.empty()) refs->setCurrentRow(0);
-        contract->SetContract(formulas[row].second, form.get());
+        contract->SetContract(*formulas[row].contract, form.get());
     });
 
-    run.emplace(page, std::format("{} (analysed in {})", formulas.empty() ? "No reported errors!" : "Reported Errors", InteractiveUtils::formatDuration(runtime)));
+    run.emplace(page, InteractiveUtils::resultsTitle(!formulas.empty(), runtime));
     QObject::connect(exit, &QPushButton::clicked, page, [&] { run->Finish(); });
     if (!formulas.empty()) violations->setCurrentRow(0);
     run->Exec();

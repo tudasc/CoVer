@@ -7,7 +7,6 @@
 #include <memory>
 #include <optional>
 #include <sstream>
-#include <filesystem>
 #include <string>
 #include <system_error>
 #include <vector>
@@ -17,6 +16,7 @@
 import LLVMModule;
 import ContractPassUtility;
 import InteractiveUI;
+import InteractiveUtils;
 import ErrorMessage;
 
 using namespace llvm;
@@ -168,12 +168,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
 
     if (isInteractive) {
         bool reanalyse = InteractiveUI::ResultsScreen(ViolatedContracts, DB->reports, runtime);
-        if (!reanalyse) {
-            std::filesystem::remove("CoVer_InteractStart.ll");
-            std::filesystem::remove("CoVer_Reanalyse.ll");
-            std::filesystem::remove("CoVer_HistoryCache");
-            std::filesystem::remove("CoVer_Diff.tmp");
-        }
+        if (!reanalyse) InteractiveUtils::removeInteractiveFiles();
         else exit(0);
     }
 

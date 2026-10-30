@@ -28,8 +28,6 @@ export enum struct InteractMode { NONE, TUI, GUI };
 
 InteractMode mode = InteractMode::NONE;
 
-export InteractMode GetMode() { return mode; }
-
 export void SetMode(InteractMode m) {
 #ifdef COVER_HAS_GUI
     if (m == InteractMode::GUI && !GUIManager::IsAvailable()) {
