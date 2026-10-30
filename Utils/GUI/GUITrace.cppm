@@ -40,6 +40,7 @@ module;
 #include <functional>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <string>
 #include <utility>
@@ -1289,7 +1290,9 @@ bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::Jum
         return InteractiveCmds::ExecuteCommand(cmd, ctx);
     };
 
-    auto source_lines = [&](int b) { return InteractiveUtils::getBlockLines(trace_by_blocks[b], true, infoToStr); };
+    auto source_lines = [&](int b) {
+        return InteractiveUtils::getBlockLines(trace_by_blocks[b], true, infoToStr) | std::views::transform(&InteractiveUtils::BlockLine::text) | std::ranges::to<std::vector>();
+    };
 
     std::vector<CommandDoc> commands;
     for (CmdInfo<T> const& cmd : InteractiveCmds::GetTraceCommands<T>())

@@ -90,12 +90,9 @@ bool ShowTrace(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::
             std::string trace_block_str = std::format("{:>3}: {:^{}} - {}", i, infoToStr(trace_by_blocks[i].first_entry->analysisInfo), InteractiveUtils::UI_ANALYSISINFO_PAD_SIZE, trace_by_blocks[i].trace_list);
             full_trace.push_back(ftxui::text(trace_block_str));
             if (expand_select.contains(trace_by_blocks[i].last_entry) && expand_select[trace_by_blocks[i].last_entry]) {
-                std::vector<std::string> block_lines = InteractiveUtils::getBlockLines(trace_by_blocks[i], expand_as_source, infoToStr);
-                std::vector<ftxui::Element> formatted_lines;
-                for (std::string block_line : block_lines) {
-                    formatted_lines.push_back(ftxui::text(std::format("{:>3}.{:0>3}", i, formatted_lines.size()) + block_line));
+                for (InteractiveUtils::BlockLine const& line : InteractiveUtils::getBlockLines(trace_by_blocks[i], expand_as_source, infoToStr)) {
+                    full_trace.push_back(ftxui::text(std::format("{:>3}.{:0>3}{}", i, line.instr, line.text)));
                 }
-                full_trace.insert(full_trace.end(), formatted_lines.begin(), formatted_lines.end());
             }
         }
 

@@ -6,9 +6,13 @@ module;
 #include <functional>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <string>
 #include <system_error>
+#include <utility>
 #include <vector>
+
+#include "ContractTree.hpp"
 
 export module InteractiveUtils;
 import LLVMModule;
@@ -126,20 +130,34 @@ std::vector<TraceBlock<T>> GetTraceList(TraceDB<T> traceDB, JumpTraceEntry<T>* t
 }
 
 export template<typename T>
-std::vector<std::string> getBlockLines(TraceBlock<T> block, bool transToSource, std::function<std::string(T)> infoToStr) {
-    std::vector<std::string> lines;
+std::vector<JumpTraceEntry<T>*> getBlockEntries(TraceBlock<T> const& block) {
+    std::vector<JumpTraceEntry<T>*> entries = {block.first_entry};
+    while (entries.back() != block.last_entry) entries.push_back(entries.back()->predecessors[0]);
+    return entries;
+}
+
+export struct BlockLine {
+    int instr; // Index of the instruction, or index of first if aggregate due to source approx
+    std::string text;
+};
+
+export template<typename T>
+std::vector<BlockLine> getBlockLines(TraceBlock<T> const& block, bool transToSource, std::function<std::string(T)> const& infoToStr) {
+    std::vector<BlockLine> lines;
     std::string last;
-    for (JumpTraceEntry<T>* cur_trace = block.first_entry; cur_trace != block.last_entry; cur_trace = cur_trace->predecessors[0]) {
-        std::string newline = getSourceLine(cur_trace, transToSource, infoToStr);
-        if (newline.empty() || newline == last) continue;
-        lines.push_back(std::format("{:>{}} | {}", infoToStr(cur_trace->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, newline));
-        last = newline;
+    for (auto const [instr, entry] : std::views::enumerate(getBlockEntries(block))) {
+        std::string line = getSourceLine(entry, transToSource, infoToStr);
+        if (line.empty() || line == last) continue;
+        lines.emplace_back(instr, std::format("{:>{}} | {}", infoToStr(entry->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, line));
+        last = std::move(line);
     }
-    // Print last
-    std::string newline = getSourceLine(block.last_entry, transToSource, infoToStr);
-    if (!newline.empty() && newline != last)
-        lines.push_back(std::format("{:>{}} | {}", infoToStr(block.last_entry->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, newline));
     return lines;
+}
+
+// Leaf formula whose worklist analysis trace can be inspected
+export bool isDebuggable(ContractTree::ContractFormula const& form) {
+    if (!form.Children.empty()) return false;
+    return static_cast<ContractTree::ContractExpression const&>(form).WorklistInfo != nullptr;
 }
 
 // Print current module, used as input for reanalysis and diffing

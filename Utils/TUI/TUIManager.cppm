@@ -3,6 +3,7 @@ module;
 #include <algorithm>
 #include <cstddef>
 #include <format>
+#include <functional>
 #include <fstream>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_base.hpp>
@@ -12,7 +13,6 @@ module;
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
-#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -52,19 +52,19 @@ static ftxui::Element getHeader(std::string cur_title) {
     return header;
 }
 
-static bool scrollableEventHdlr(ftxui::Event e, size_t num_lines, int offset, size_t* cur_focus) {
-    // Avoid "empty scrolling"
-    int lines_shown = screen.dimy() - offset; // Number of lines of the trace shown
-    size_t min_focus = (lines_shown / 2) - 1;
-    size_t max_focus = num_lines - (lines_shown / 2) - 1;
-    *cur_focus = std::clamp(*cur_focus, min_focus, std::max(max_focus, min_focus));
+static bool scrollableEventHdlr(ftxui::Event e, int num_lines, int offset, int& cur_focus) {
+    // Avoid "empty scrolling", signed as lists may be shorter than the view
+    int half_shown = (screen.dimy() - offset) / 2; // Half the number of lines of the trace shown
+    int min_focus = std::max(0, half_shown - 1);
+    int max_focus = std::max(min_focus, num_lines - half_shown - 1);
+    cur_focus = std::clamp(cur_focus, min_focus, max_focus);
 
     if (e == ftxui::Event::ArrowUp || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelUp)) {
-        *cur_focus = std::max(min_focus, *cur_focus - 1);
+        cur_focus = std::max(min_focus, cur_focus - 1);
         return true;
     }
     if (e == ftxui::Event::ArrowDown || (e.is_mouse() && e.mouse().button == ftxui::Mouse::WheelDown)) {
-        *cur_focus = std::min(max_focus, *cur_focus + 1);
+        cur_focus = std::min(max_focus, cur_focus + 1);
         return true;
     }
     return false;
@@ -152,9 +152,9 @@ export std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string
         .on_enter = [&]() { screen.Exit(); }
     };
     ftxui::Component input_comp = ftxui::Input(input_options);
-    size_t offset = 7; // Number of lines taken by decorations, input, etc. excluding trace itself
-    size_t cur_focus = 0;
-    std::function<bool(ftxui::Event)> scrollableEventHdlr_inst = std::bind(scrollableEventHdlr, std::placeholders::_1, lines.size(), offset, &cur_focus);
+    int offset = 7; // Number of lines taken by decorations, input, etc. excluding trace itself
+    int cur_focus = 0;
+    std::function<bool(ftxui::Event)> scrollableEventHdlr_inst = [&](ftxui::Event e) { return scrollableEventHdlr(e, lines.size(), offset, cur_focus); };
     ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(
         input_comp, [&] {
            return ftxui::vbox({
@@ -171,11 +171,12 @@ export std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string
     return *input_options.content;
 }
 
-bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, std::string title) {
+bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> const& Form, std::string const& title) {
     int selected = 0;
+    bool debuggable = InteractiveUtils::isDebuggable(*Form);
     std::vector<std::string> menu_entries = {"Exit debugger"};
-    if (Form->Children.empty() && std::dynamic_pointer_cast<ContractExpression>(Form)->WorklistInfo) menu_entries.push_back("Inspect formula worklist analysis");
-    for (std::shared_ptr<ContractFormula> subform : Form->Children) {
+    if (debuggable) menu_entries.push_back("Inspect formula worklist analysis");
+    for (std::shared_ptr<ContractFormula> const& subform : Form->Children) {
         menu_entries.push_back("Inspect " + FulfillmentStr(*subform->Status) + " subformula: " + subform->ExprStr);
     }
     ftxui::MenuOption menu_options = {
@@ -198,26 +199,20 @@ bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> Form, st
     );
     screen.Loop(render);
     if (selected == 0) return false;
-    if (Form->Children.empty() && std::dynamic_pointer_cast<ContractExpression>(Form)->WorklistInfo) {
-        std::shared_ptr<ContractExpression> Expr = std::dynamic_pointer_cast<ContractExpression>(Form);
-        return Expr->WorklistInfo->handleDebug();
-    } else {
-        return ShowContractFormula(Form->Children[--selected], title);
-    }
+    if (debuggable) return static_cast<ContractExpression const&>(*Form).WorklistInfo->handleDebug();
+    return ShowContractFormula(Form->Children[selected - 1], title);
 }
 
-bool ShowContractDetails(Contract C) {
+bool ShowContractDetails(Contract const& C) {
     std::vector<std::string> menu_entries = {"Back to Listing"};
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
-    for (int i = 0; i < C.Data.Pre.size(); i++) {
-        if (*C.Data.Pre[i]->Status != Fulfillment::BROKEN) continue;
-        menu_entries.push_back(std::format("Inspect {} Precondition Subformula: {}", FulfillmentStr(*C.Data.Pre[i]->Status), C.Data.Pre[i]->ExprStr));
-        violated_formulas.push_back(C.Data.Pre[i]);
-    }
-    for (int i = 0; i < C.Data.Post.size(); i++) {
-        if (*C.Data.Post[i]->Status != Fulfillment::BROKEN) continue;
-        menu_entries.push_back(std::format("Inspect {} Postcondition Subformula: {}", FulfillmentStr(*C.Data.Post[i]->Status), C.Data.Post[i]->ExprStr));
-        violated_formulas.push_back(C.Data.Post[i]);
+    // Same selection as the results screen, which also reports unknown formulas
+    for (auto const& [kind, list] : {std::pair{"Precondition", &C.Data.Pre}, std::pair{"Postcondition", &C.Data.Post}}) {
+        for (std::shared_ptr<ContractFormula> const& form : *list) {
+            if (*form->Status != Fulfillment::BROKEN) continue;
+            menu_entries.push_back(std::format("Inspect {} {} Subformula: {}", FulfillmentStr(*form->Status), kind, form->ExprStr));
+            violated_formulas.push_back(form);
+        }
     }
     int selected = 0;
     ftxui::MenuOption menu_options = {
@@ -268,8 +263,8 @@ export void ShowLines(std::vector<ftxui::Element> lines, std::string title, int 
     ftxui::Component menu = ftxui::Menu(menu_options);
 
     int offset = 6;
-    size_t cur_focus = focus;
-    std::function<bool(ftxui::Event)> scrollableEventHdlr_inst = std::bind(scrollableEventHdlr, std::placeholders::_1, lines.size(), offset, &cur_focus);
+    int cur_focus = focus;
+    std::function<bool(ftxui::Event)> scrollableEventHdlr_inst = [&](ftxui::Event e) { return scrollableEventHdlr(e, lines.size(), offset, cur_focus); };
     ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(
         menu, [&] {
         return ftxui::vbox({

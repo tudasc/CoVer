@@ -465,12 +465,6 @@ export class CodeView : public QPlainTextEdit {
         }
 };
 
-static bool isDebuggable(std::shared_ptr<ContractFormula> const& form) {
-    if (!form->Children.empty()) return false;
-    std::shared_ptr<ContractExpression> expr = std::dynamic_pointer_cast<ContractExpression>(form);
-    return expr && expr->WorklistInfo && expr->WorklistInfo->handleDebug;
-}
-
 // Contract string and formula tree, optionally allowing to launch the worklist debugger for leaf formulas
 class ContractView : public QWidget {
     public:
@@ -562,7 +556,7 @@ class ContractView : public QWidget {
 
         QTreeWidgetItem* FindDebuggable(QTreeWidgetItem* item) {
             std::shared_ptr<ContractFormula> const& form = formulas.at(item);
-            if (*form->Status != Fulfillment::FULFILLED && isDebuggable(form)) return item;
+            if (*form->Status != Fulfillment::FULFILLED && InteractiveUtils::isDebuggable(*form)) return item;
             for (int i = 0; i < item->childCount(); i++) {
                 if (QTreeWidgetItem* found = FindDebuggable(item->child(i))) return found;
             }
@@ -572,8 +566,8 @@ class ContractView : public QWidget {
         std::shared_ptr<ContractExpression> Selected() {
             if (!formulas.contains(tree->currentItem())) return nullptr;
             std::shared_ptr<ContractFormula> form = formulas[tree->currentItem()];
-            if (!isDebuggable(form)) return nullptr;
-            return std::dynamic_pointer_cast<ContractExpression>(form);
+            if (!InteractiveUtils::isDebuggable(*form)) return nullptr;
+            return std::static_pointer_cast<ContractExpression>(form);
         }
 
         void UpdateDebugButton() {
@@ -600,6 +594,7 @@ void RemoveInteractiveFiles() {
     std::filesystem::remove("CoVer_InteractStart.ll");
     std::filesystem::remove("CoVer_Reanalyse.ll");
     std::filesystem::remove("CoVer_HistoryCache");
+    std::filesystem::remove("CoVer_Diff.tmp");
 }
 
 export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double parse_time) {

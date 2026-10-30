@@ -1,16 +1,18 @@
 module;
 
 #include <algorithm>
+#include <charconv>
+#include <concepts>
 #include <cstdint>
 #include <cstdlib>
+#include <expected>
 #include <filesystem>
 #include <format>
 #include <fstream>
 #include <functional>
-#include <iterator>
 #include <limits>
 #include <map>
-#include <optional>
+#include <ranges>
 #include <set>
 #include <sstream>
 #include <string>
@@ -102,72 +104,66 @@ export void SaveHistoryCache(std::vector<std::pair<std::string, CmdResult>> cons
 template<typename T>
 extern std::vector<CmdInfo<T>> TraceCommands;
 
+// Parse a whole argument as integer, the error names the argument
+std::expected<int, std::string> ParseInt(std::string_view s, std::string_view arg_name) {
+    int value;
+    auto [end, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+    if (ec != std::errc{} || end != s.data() + s.size()) return std::unexpected(std::format("{} argument is not a number!", arg_name));
+    return value;
+}
+
 template<typename T>
-std::optional<int> ParseBlock(std::string const& s, CmdContext<T>& ctx, std::string& last_res) {
-    int block;
-    try { block = std::stoi(s); } catch (...) { last_res = "Block argument is not a number!"; return std::nullopt; }
-    if (block < 0 || block >= ctx.trace_by_blocks.size()) {
-        last_res = std::format("Invalid block number! Must be between 0 and {}", ctx.trace_by_blocks.size() - 1);
-        return std::nullopt;
-    }
+std::expected<int, std::string> ParseBlock(std::string_view s, CmdContext<T> const& ctx) {
+    std::expected<int, std::string> block = ParseInt(s, "Block");
+    if (block && (*block < 0 || *block >= ctx.trace_by_blocks.size()))
+        return std::unexpected(std::format("Invalid block number! Must be between 0 and {}", ctx.trace_by_blocks.size() - 1));
     return block;
 }
 
 template<typename T>
-Instruction* ParseTraceInstr(std::string const& s, int block, CmdContext<T>& ctx, std::string& last_res) {
-    int instr;
-    try { instr = std::stoi(s); } catch (...) { last_res = "Instruction argument is not a number!"; return nullptr; }
-    int count = 0;
-    for (ContractPassUtility::JumpTraceEntry<T>* cur_trace = ctx.trace_by_blocks[block].first_entry;; cur_trace = cur_trace->predecessors[0]) {
-        if (count == instr) return cur_trace->loc;
-        if (cur_trace == ctx.trace_by_blocks[block].last_entry) break;
-        count++;
-    }
-    last_res = "No such instruction!";
-    return nullptr;
+std::expected<Instruction*, std::string> ParseTraceInstr(std::string_view s, int block, CmdContext<T> const& ctx) {
+    std::expected<int, std::string> instr = ParseInt(s, "Instruction");
+    if (!instr) return std::unexpected(instr.error());
+    std::vector<JumpTraceEntry<T>*> entries = InteractiveUtils::getBlockEntries(ctx.trace_by_blocks[block]);
+    if (*instr < 0 || *instr >= entries.size()) return std::unexpected("No such instruction!");
+    return entries[*instr]->loc;
 }
 
-inline std::optional<int> ParseAliasGroup(std::string const& s, std::string& last_res) {
-    int group;
-    try { group = std::stoi(s); } catch (...) { last_res = "Group argument is not a number!"; return std::nullopt; }
-    if (!ContractPassUtility::getAliasAnnots().contains(group)) {
-        last_res = "Invalid alias group! Check existing groups using alias-get";
-        return std::nullopt;
-    }
+inline std::expected<int, std::string> ParseAliasGroup(std::string_view s) {
+    std::expected<int, std::string> group = ParseInt(s, "Group");
+    if (group && !ContractPassUtility::getAliasAnnots().contains(*group))
+        return std::unexpected("Invalid alias group! Check existing groups using alias-get");
     return group;
 }
 
 template<typename T>
 CmdResult CmdCollapse(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    std::optional<int> block = ParseBlock(args[0], ctx, last_res);
-    if (!block) return {CmdResultCode::INVALID_INPUT};
+    std::expected<int, std::string> block = ParseBlock(args[0], ctx);
+    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
     ctx.expand_select[ctx.trace_by_blocks[*block].last_entry] = false;
-    return {CmdResultCode::SUCCESS_CONTINUE, "Collapsing block " + std::to_string(*block)};
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Collapsing block {}", *block)};
 }
 
 template<typename T>
 CmdResult CmdExpand(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    std::optional<int> block = ParseBlock(args[0], ctx, last_res);
-    if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
+    std::expected<int, std::string> block = ParseBlock(args[0], ctx);
+    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
     ctx.expand_select[ctx.trace_by_blocks[*block].last_entry] = true;
-    return {CmdResultCode::SUCCESS_CONTINUE, "Expanding block " + std::to_string(*block)};
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Expanding block {}", *block)};
 }
 
 template<typename T>
 CmdResult CmdChild(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    std::optional<int> block = ParseBlock(args[0], ctx, last_res);
-    if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
-    int child;
-    try { child = std::stoi(args[1]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Child argument is not a number!"}; }
-    TraceBlock<T> selected_block = ctx.trace_by_blocks[*block];
-    if (child < 0 || child >= (int)selected_block.last_entry->predecessors.size()) {
-        return {CmdResultCode::INVALID_INPUT, "Invalid child number! Must be between 0 and " + std::to_string(selected_block.last_entry->predecessors.size() - 1)};
+    std::expected<int, std::string> block = ParseBlock(args[0], ctx);
+    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
+    std::expected<int, std::string> child = ParseInt(args[1], "Child");
+    if (!child) return {CmdResultCode::INVALID_INPUT, child.error()};
+    JumpTraceEntry<T>* last_entry = ctx.trace_by_blocks[*block].last_entry;
+    if (*child < 0 || *child >= last_entry->predecessors.size()) {
+        return {CmdResultCode::INVALID_INPUT, std::format("Invalid child number! Must be between 0 and {}", last_entry->predecessors.size() - 1)};
     }
-    ctx.sibling_select[selected_block.last_entry] = child;
-    return {CmdResultCode::SUCCESS_CONTINUE, "Switching child view for block " + std::to_string(*block) + " to child " + std::to_string(child)};
+    ctx.sibling_select[last_entry] = *child;
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Switching child view for block {} to child {}", *block, *child)};
 }
 
 template<typename T>
@@ -175,11 +171,12 @@ CmdResult CmdShow(std::vector<std::string>& args, CmdContext<T>& ctx) {
     if (args[0] != "source" && args[0] != "ir") {
         return {CmdResultCode::INVALID_INPUT, "Unknown source representation: " + args[0]};
     }
-    std::string last_res;
-    std::optional<int> block = ParseBlock(args[1], ctx, last_res);
-    if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
+    std::expected<int, std::string> block = ParseBlock(args[1], ctx);
+    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
     bool transToSource = args[0] == "source";
-    ctx.frontend.showLines(InteractiveUtils::getBlockLines(ctx.trace_by_blocks[*block], transToSource, ctx.infoToStr), std::string("Block Preview") + (transToSource ? ", Source Approx." : ", LLVM IR"));
+    std::vector<std::string> lines = InteractiveUtils::getBlockLines(ctx.trace_by_blocks[*block], transToSource, ctx.infoToStr)
+                                   | std::views::transform(&InteractiveUtils::BlockLine::text) | std::ranges::to<std::vector>();
+    ctx.frontend.showLines(lines, std::format("Block Preview, {}", transToSource ? "Source Approx." : "LLVM IR"));
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
@@ -191,26 +188,24 @@ CmdResult CmdToggleView(std::vector<std::string>&, CmdContext<T>& ctx) {
 
 template<typename T>
 CmdResult CmdFpTarget(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    std::optional<int> block = ParseBlock(args[0], ctx, last_res);
-    if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
-    Instruction* selected = ParseTraceInstr(args[1], *block, ctx, last_res);
-    if (!selected) return {CmdResultCode::INVALID_INPUT, last_res};
-    if (!isa<CallBase>(selected) || !dyn_cast<CallBase>(selected)->isIndirectCall()) {
+    std::expected<int, std::string> block = ParseBlock(args[0], ctx);
+    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
+    std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[1], *block, ctx);
+    if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
+    CallBase* CB = dyn_cast<CallBase>(*selected);
+    if (!CB || !CB->isIndirectCall()) {
         return {CmdResultCode::INVALID_INPUT, "Instruction is not an indirect function call!"};
     }
     std::vector<std::string> funcs;
-    Module* M = selected->getModule();
+    Module* M = CB->getModule();
     for (Function const& F : M->functions()) {
         if (!F.getName().starts_with("CoVer_") && !F.getName().starts_with("llvm.")) funcs.push_back(F.getName().str());
     }
-    std::set<Function*> selected_func = ContractPassUtility::getFPAnnots(dyn_cast<CallBase>(selected));
-    std::set<std::string> previously_selected;
-    std::transform(selected_func.begin(), selected_func.end(), std::inserter(previously_selected, previously_selected.end()), [](Function* F){ return F->getName().str(); });
-    std::vector<std::string> sel_func_str = ctx.frontend.selectMultiple(funcs, "Select Function Target", previously_selected);
-    selected_func.clear();
-    std::transform(sel_func_str.begin(), sel_func_str.end(), std::inserter(selected_func, selected_func.end()), [&](std::string Fstr){ return M->getFunction(Fstr); });
-    ContractPassUtility::setFPTarget(dyn_cast<CallBase>(selected), selected_func);
+    std::set<std::string> previously_selected = ContractPassUtility::getFPAnnots(CB)
+                                              | std::views::transform([](Function* F) { return F->getName().str(); }) | std::ranges::to<std::set>();
+    std::set<Function*> selected_func = ctx.frontend.selectMultiple(funcs, "Select Function Target", previously_selected)
+                                      | std::views::transform([&](std::string const& name) { return M->getFunction(name); }) | std::ranges::to<std::set>();
+    ContractPassUtility::setFPTarget(CB, selected_func);
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("{}.{} now has {} possible target(s)", *block, args[1], selected_func.size())};
 }
 
@@ -220,10 +215,10 @@ CmdResult CmdAliasCreate(std::vector<std::string>& args, CmdContext<T>& ctx) {
         return {CmdResultCode::INVALID_INPUT, "Unknown alias type " + args[0]};
     }
     bool isAlias = args[0].starts_with("y");
-    std::string last_res;
-    std::optional<int> block1 = ParseBlock(args[1], ctx, last_res);
-    std::optional<int> block2 = ParseBlock(args[3], ctx, last_res);
-    if (!block1 || !block2) return {CmdResultCode::INVALID_INPUT, last_res};
+    std::expected<int, std::string> block1 = ParseBlock(args[1], ctx);
+    if (!block1) return {CmdResultCode::INVALID_INPUT, block1.error()};
+    std::expected<int, std::string> block2 = ParseBlock(args[3], ctx);
+    if (!block2) return {CmdResultCode::INVALID_INPUT, block2.error()};
     Value* V1 = ContractPassUtility::getValueByName(args[2], ctx.trace_by_blocks[*block1].first_entry->loc->getFunction());
     Value* V2 = ContractPassUtility::getValueByName(args[4], ctx.trace_by_blocks[*block2].first_entry->loc->getFunction());
     if (!V1 || !V2) { return {CmdResultCode::INVALID_INPUT, "Could not identify value " + (!V1 ? args[2] : args[4])}; }
@@ -233,10 +228,10 @@ CmdResult CmdAliasCreate(std::vector<std::string>& args, CmdContext<T>& ctx) {
 
 template<typename T>
 CmdResult CmdAliasAdd(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    std::optional<int> group = ParseAliasGroup(args[0], last_res);
-    std::optional<int> block = ParseBlock(args[1], ctx, last_res);
-    if (!group || !block) return {CmdResultCode::INVALID_INPUT, last_res};
+    std::expected<int, std::string> group = ParseAliasGroup(args[0]);
+    if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
+    std::expected<int, std::string> block = ParseBlock(args[1], ctx);
+    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
     Value* V = ContractPassUtility::getValueByName(args[2], ctx.trace_by_blocks[*block].first_entry->loc->getFunction());
     if (!V) { return {CmdResultCode::INVALID_INPUT, "Could not identify value " + args[2]}; }
     ContractPassUtility::addToAliasGroup(*group, V);
@@ -245,9 +240,8 @@ CmdResult CmdAliasAdd(std::vector<std::string>& args, CmdContext<T>& ctx) {
 
 template<typename T>
 CmdResult CmdAliasType(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    std::optional<int> group = ParseAliasGroup(args[0], last_res);
-    if (!group) return {CmdResultCode::INVALID_INPUT, last_res};
+    std::expected<int, std::string> group = ParseAliasGroup(args[0]);
+    if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
     bool isAlias = args[1].starts_with("y");
     ContractPassUtility::setAliasGroupType(*group, isAlias);
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("Alias group {} {}", *group, isAlias ? "should alias" : "should not alias")};
@@ -255,37 +249,37 @@ CmdResult CmdAliasType(std::vector<std::string>& args, CmdContext<T>& ctx) {
 
 template<typename T>
 CmdResult CmdAliasRm(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    auto group = ParseAliasGroup(args[0], last_res);
-    if (!group) return {CmdResultCode::INVALID_INPUT, last_res};
-    int idx;
+    std::expected<int, std::string> group = ParseAliasGroup(args[0]);
+    if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
     if (args[1].starts_with("e")) {
-        try { idx = std::stoi(args[1].substr(1)); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Epoch index argument is not a number!"}; }
+        std::expected<int, std::string> idx = ParseInt(std::string_view(args[1]).substr(1), "Epoch index");
+        if (!idx) return {CmdResultCode::INVALID_INPUT, idx.error()};
         int num_epochs = ContractPassUtility::getAliasEpochs(*group).size();
-        if (idx < 0 || idx >= num_epochs) {
+        if (*idx < 0 || *idx >= num_epochs) {
             return {CmdResultCode::INVALID_INPUT, std::format("Epoch index must be between e0 and e{}", num_epochs - 1)};
         }
-        ContractPassUtility::removeAliasEpoch(*group, idx);
-        return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias epoch {:>3}.e{:0>2}", *group, idx)};
+        ContractPassUtility::removeAliasEpoch(*group, *idx);
+        return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias epoch {:>3}.e{:0>2}", *group, *idx)};
     }
-    try { idx = std::stoi(args[1]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Group member index argument is not a number!"}; }
-    ContractPassUtility::AliasGroup sel = ContractPassUtility::getAliasAnnots().at(*group);
-    if (idx < 0 || idx >= (int)sel.members.size()) {
-        return {CmdResultCode::INVALID_INPUT, std::format("Group member index must be between 0 and {}", sel.members.size() - 1)};
+    std::expected<int, std::string> idx = ParseInt(args[1], "Group member index");
+    if (!idx) return {CmdResultCode::INVALID_INPUT, idx.error()};
+    int num_members = ContractPassUtility::getAliasAnnots().at(*group).members.size();
+    if (*idx < 0 || *idx >= num_members) {
+        return {CmdResultCode::INVALID_INPUT, std::format("Group member index must be between 0 and {}", num_members - 1)};
     }
-    ContractPassUtility::removeFromAliasGroup(*group, idx);
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias annotation {:>3}.{:0>3}", *group, idx)};
+    ContractPassUtility::removeFromAliasGroup(*group, *idx);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias annotation {:>3}.{:0>3}", *group, *idx)};
 }
 
 template<typename T>
 CmdResult CmdAliasEpoch(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    std::optional<int> group = ParseAliasGroup(args[0], last_res);
-    std::optional<int> block = ParseBlock(args[1], ctx, last_res);
-    if (!group || !block) return {CmdResultCode::INVALID_INPUT, last_res};
-    Instruction* selected = ParseTraceInstr(args[2], *block, ctx, last_res);
-    if (!selected) return {CmdResultCode::INVALID_INPUT, last_res};
-    ContractPassUtility::addAliasEpoch(*group, selected);
+    std::expected<int, std::string> group = ParseAliasGroup(args[0]);
+    if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
+    std::expected<int, std::string> block = ParseBlock(args[1], ctx);
+    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
+    std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[2], *block, ctx);
+    if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
+    ContractPassUtility::addAliasEpoch(*group, *selected);
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("Added epoch for alias group {} at {}.{}", *group, *block, args[2])};
 }
 
@@ -314,31 +308,31 @@ CmdResult CmdAliasGet(std::vector<std::string>&, CmdContext<T>& ctx) {
 
 template<typename T>
 CmdResult CmdAllocCreate(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    std::string last_res;
-    std::optional<int> block = ParseBlock(args[0], ctx, last_res);
-    if (!block) return {CmdResultCode::INVALID_INPUT, last_res};
-    Instruction* selected = ParseTraceInstr(args[1], *block, ctx, last_res);
-    if (!selected) return {CmdResultCode::INVALID_INPUT, last_res};
-    uint64_t size;
+    std::expected<int, std::string> block = ParseBlock(args[0], ctx);
+    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
+    std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[1], *block, ctx);
+    if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
     if (args[2].starts_with("-")) return {CmdResultCode::INVALID_INPUT, "Size argument must not be negative!"};
-    try { size = std::stoull(args[2]); } catch (...) { return {CmdResultCode::INVALID_INPUT, "Size argument is not a number!"}; }
-    std::string err = ContractPassUtility::setAllocAnnot(selected, size);
+    std::expected<uint64_t, std::string> size = ParseInt(args[2], "Size");
+    if (!size) return {CmdResultCode::INVALID_INPUT, size.error()};
+    std::string err = ContractPassUtility::setAllocAnnot(*selected, *size);
     if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} at {}.{} is now annotated as allocated{}", selected->getNameOrAsOperand(), *block, args[1], size ? std::format(" with at least {} bytes", size) : "")};
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} at {}.{} is now annotated as allocated{}", (*selected)->getNameOrAsOperand(), *block, args[1], *size ? std::format(" with at least {} bytes", *size) : "")};
 }
 
 template<typename T>
 CmdResult CmdDiff(std::vector<std::string>& args, CmdContext<T>& ctx) {
-    Module* M = ctx.trace_by_blocks.begin()->first_entry->loc->getModule();
     std::ofstream difffile(args[0]);
     difffile << "|| DIFF HISTORY BEGIN ||\n";
-    for (std::pair<std::string, CmdResult> x : ctx.history) {
-        difffile << x.first << "\n";
+    for (auto const& [command, result] : ctx.history) {
+        difffile << command << "\n";
     }
     difffile << "|| DIFF HISTORY END ||\n---\n";
-    difffile.flush();
-    int rc = std::system(std::format("diff -c -I '^; ModuleID' -I '^!.*' -I '^@.*' CoVer_InteractStart.ll CoVer_Reanalyse.ll >> {}", args[0]).c_str());
-    if (!WIFEXITED(rc) || (WEXITSTATUS(rc) && WEXITSTATUS(rc) != 1)) return {CmdResultCode::INVALID_INPUT, std::format("Error, diff returned exit code {}", WEXITSTATUS(rc))};
+    int rc = std::system("diff -c -I '^; ModuleID' -I '^!.*' -I '^@.*' CoVer_InteractStart.ll CoVer_Reanalyse.ll > CoVer_Diff.tmp");
+    if (!WIFEXITED(rc) || (WEXITSTATUS(rc) && WEXITSTATUS(rc) != 1)) {
+        return {CmdResultCode::INVALID_INPUT, std::format("Error, diff returned exit code {}", WEXITSTATUS(rc))};
+    }
+    difffile << std::ifstream("CoVer_Diff.tmp").rdbuf();
     return {CmdResultCode::SUCCESS_CONTINUE, "Wrote patch file to " + args[0]};
 }
 

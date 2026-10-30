@@ -172,6 +172,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
             std::filesystem::remove("CoVer_InteractStart.ll");
             std::filesystem::remove("CoVer_Reanalyse.ll");
             std::filesystem::remove("CoVer_HistoryCache");
+            std::filesystem::remove("CoVer_Diff.tmp");
         }
         else exit(0);
     }
