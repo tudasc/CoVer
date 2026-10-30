@@ -40,6 +40,7 @@ module;
 #include <functional>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <string>
 #include <utility>
@@ -65,11 +66,67 @@ using InteractiveSession::CmdResult;
 using InteractiveSession::CmdResultCode;
 using InteractiveSession::History;
 using InteractiveSession::TraceBlockView;
-using InteractiveSession::TraceChildView;
-using InteractiveSession::TraceInstrView;
+using InteractiveSession::TraceEntryView;
 using InteractiveSession::TraceSession;
 using GUIManager::qstr;
 using ContractTree::Fulfillment;
+
+struct TraceInstrView {
+    int index;
+    std::string info;
+    std::string ir;
+    std::string location;
+    std::string value; // Name usable in alias commands, empty if the instruction is no pointer value
+    bool indirect_call;
+    std::string source; // Source code approximation, empty without debug info
+    std::vector<std::string> operands; // Pointer values referenced by the instruction, usable in alias commands
+};
+
+using InstrFn = std::function<std::vector<TraceInstrView> const&(int)>;
+
+// Instructions of a block, numbered like the instruction arguments of the trace commands
+std::vector<TraceInstrView> BuildInstructions(TraceSession const& session, int block) {
+    std::vector<TraceInstrView> instrs;
+    ModuleSlotTracker MST(session.GetModule(), false);
+    Function const* cur_func = nullptr;
+    // Name of a pointer value as resolved by the alias commands (instructions and arguments of the function or named globals), empty if not resolvable
+    auto valueName = [&](Value const* V) -> std::string {
+        if (!V->getType()->isPointerTy()) return "";
+        if (isa<Instruction>(V) || isa<Argument>(V)) {
+            if (V->hasName()) return "%" + V->getName().str();
+            if (MST.getLocalSlot(V) >= 0) return std::format("%{}", MST.getLocalSlot(V));
+        }
+        if (isa<GlobalVariable>(V) && V->hasName()) return "@" + V->getName().str();
+        return "";
+    };
+    for (auto const [index, entry] : std::views::enumerate(session.BlockEntries(block))) {
+        Instruction* I = entry.loc;
+        if (I->getFunction() != cur_func) {
+            cur_func = I->getFunction();
+            MST.incorporateFunction(*cur_func);
+        }
+        std::string ir;
+        raw_string_ostream strstream(ir);
+        I->print(strstream, MST);
+        ir.erase(0, ir.find_first_not_of(' '));
+        std::string value = valueName(I);
+        std::vector<std::string> operands;
+        for (Use const& U : I->operands()) {
+            std::string op = valueName(U.get());
+            if (!op.empty() && op != value && !std::ranges::contains(operands, op)) operands.push_back(op);
+        }
+        CallBase const* CB = dyn_cast<CallBase>(I);
+        instrs.push_back({static_cast<int>(index), entry.info, ir, ContractPassUtility::getInstrLocStr(I, false), value, CB && CB->isIndirectCall(),
+                          session.ExpandAsSource() ? InteractiveUtils::getSourceLine(I, true) : "", operands});
+    }
+    return instrs;
+}
+
+std::string FunctionName(Instruction const* I) { return I->getFunction()->getName().str(); }
+
+std::string ChildText(int child, TraceEntryView const& entry) {
+    return std::format("Child {}: {} [{}]", child, ContractPassUtility::getInstrLocStr(entry.loc, false), entry.info);
+}
 
 constexpr qreal NODE_MIN_WIDTH = 280;
 constexpr qreal NODE_MAX_WIDTH = 760;
@@ -255,7 +312,7 @@ class TraceGraph {
 
         QGraphicsScene* Scene() { return scene; }
 
-        void Rebuild(TraceSession& session);
+        void Rebuild(TraceSession const& session, InstrFn const& instructions);
 
         void Select(int block) {
             if (block < 0 || block >= block_nodes.size()) return;
@@ -306,7 +363,7 @@ void NodeItem::mouseReleaseEvent(QGraphicsSceneMouseEvent* e) {
 class BlockNode : public NodeItem {
     public:
         BlockNode(TraceGraph* graph, TraceBlockView const& block, std::vector<TraceInstrView> instrs, bool as_source)
-            : NodeItem(graph, {block.entry, block.jump_to ? 1 : 0}), block{block}, instrs{std::move(instrs)} {
+            : NodeItem(graph, {block.first.loc, block.jump_to ? 1 : 0}), block{block}, instrs{std::move(instrs)} {
             QFontMetricsF fm(QApplication::font());
             QFontMetricsF mono_fm(GUIManager::MonoFont());
             line_height = fm.height();
@@ -319,7 +376,7 @@ class BlockNode : public NodeItem {
             for (TraceInstrView const& instr : this->instrs)
                 instr_lines << qstr(std::format("{:0>3} {:<{}} {}", instr.index, instr.info, info_width, as_source ? instr.source : instr.ir));
 
-            qreal width = fm.horizontalAdvance(QString("Block %1").arg(block.index)) + fm.horizontalAdvance(qstr(block.info)) + fm.horizontalAdvance(qstr(block.function)) + 70;
+            qreal width = fm.horizontalAdvance(QString("Block %1").arg(block.index)) + fm.horizontalAdvance(qstr(block.first.info)) + fm.horizontalAdvance(qstr(FunctionName(block.first.loc))) + 70;
             for (QString const& line : lines) width = std::max(width, fm.horizontalAdvance(line));
             for (QString const& line : instr_lines) width = std::max(width, mono_fm.horizontalAdvance(line));
             size.setWidth(std::clamp(width + 2 * PAD, NODE_MIN_WIDTH, NODE_MAX_WIDTH));
@@ -331,7 +388,7 @@ class BlockNode : public NodeItem {
 
         void paint(QPainter* p, QStyleOptionGraphicsItem const*, QWidget*) override {
             QPalette pal = QApplication::palette();
-            QColor accent = InfoColor(block.info);
+            QColor accent = InfoColor(block.first.info);
             QRectF rect = Rect();
             p->setRenderHint(QPainter::Antialiasing);
 
@@ -359,11 +416,11 @@ class BlockNode : public NodeItem {
             QRectF title_rect(PAD, 0, rect.width() - 2 * PAD, HEADER_HEIGHT);
             p->drawText(title_rect, Qt::AlignVCenter | Qt::AlignLeft, title);
             qreal x = PAD + QFontMetricsF(bold).horizontalAdvance(title) + 8;
-            x += DrawBadge(p, QPointF(x, HEADER_HEIGHT / 2), qstr(block.info), accent) + 8;
+            x += DrawBadge(p, QPointF(x, HEADER_HEIGHT / 2), qstr(block.first.info), accent) + 8;
             p->setFont(QApplication::font());
             QFontMetricsF fm(p->font());
             p->drawText(QRectF(x, 0, rect.width() - x - PAD, HEADER_HEIGHT), Qt::AlignVCenter | Qt::AlignRight,
-                        fm.elidedText(qstr(block.function), Qt::ElideMiddle, rect.width() - x - PAD));
+                        fm.elidedText(qstr(FunctionName(block.first.loc)), Qt::ElideMiddle, rect.width() - x - PAD));
 
             // Locations
             qreal y = HEADER_HEIGHT + PAD / 2;
@@ -431,10 +488,11 @@ class BlockNode : public NodeItem {
 // Alternative child (predecessor) of a block that is not part of the currently shown trace
 class SiblingNode : public NodeItem {
     public:
-        SiblingNode(TraceGraph* graph, int block, TraceChildView const& child) : NodeItem(graph, {child.entry, 2}), block{block}, child{child} {
+        SiblingNode(TraceGraph* graph, int block, int child, TraceEntryView const& entry)
+            : NodeItem(graph, {entry.loc, 2}), block{block}, child{child}, info{entry.info}, location{ContractPassUtility::getInstrLocStr(entry.loc, false)}, function{FunctionName(entry.loc)} {
             QFontMetricsF fm(QApplication::font());
             size = QSizeF(GHOST_WIDTH, HEADER_HEIGHT + 2 * fm.height() + PAD);
-            setToolTip(qstr(std::format("Child {} of block {}: {} in {}\nDouble-click to show this child instead", child.child, block, child.location, child.function)));
+            setToolTip(qstr(std::format("Child {} of block {}: {} in {}\nDouble-click to show this child instead", child, block, location, function)));
         }
 
         void paint(QPainter* p, QStyleOptionGraphicsItem const*, QWidget*) override {
@@ -445,13 +503,13 @@ class SiblingNode : public NodeItem {
             p->setPen(QPen(isSelected() ? pal.color(QPalette::Highlight) : GUIManager::Tint(pal.color(QPalette::Text), 120), isSelected() ? 2.5 : 1.2, Qt::DashLine));
             p->drawRoundedRect(rect, 8, 8);
             p->setPen(GUIManager::Tint(pal.color(QPalette::Text), 200));
-            QString title = QString("Child %1").arg(child.child);
+            QString title = QString("Child %1").arg(child);
             p->drawText(QRectF(PAD, 0, rect.width(), HEADER_HEIGHT), Qt::AlignVCenter | Qt::AlignLeft, title);
             qreal x = PAD + QFontMetricsF(p->font()).horizontalAdvance(title) + 8;
-            DrawBadge(p, QPointF(x, HEADER_HEIGHT / 2), qstr(child.info), GUIManager::Tint(InfoColor(child.info), 170));
+            DrawBadge(p, QPointF(x, HEADER_HEIGHT / 2), qstr(info), GUIManager::Tint(InfoColor(info), 170));
             QFontMetricsF fm(p->font());
             qreal y = HEADER_HEIGHT;
-            for (std::string const& line : {child.location, child.function}) {
+            for (std::string const& line : {location, function}) {
                 p->drawText(QRectF(PAD, y, rect.width() - 2 * PAD, fm.height()), Qt::AlignVCenter | Qt::AlignLeft, fm.elidedText(qstr(line), Qt::ElideMiddle, rect.width() - 2 * PAD));
                 y += fm.height();
             }
@@ -461,15 +519,18 @@ class SiblingNode : public NodeItem {
         void mouseDoubleClickEvent(QGraphicsSceneMouseEvent*) override { Follow(); }
         void contextMenuEvent(QGraphicsSceneContextMenuEvent* e) override {
             QMenu menu;
-            QObject::connect(menu.addAction(QString("Show child %1 of block %2").arg(child.child).arg(block)), &QAction::triggered, [this] { Follow(); });
+            QObject::connect(menu.addAction(QString("Show child %1 of block %2").arg(child).arg(block)), &QAction::triggered, [this] { Follow(); });
             menu.exec(e->screenPos());
         }
 
     private:
         int block;
-        TraceChildView child;
+        int child;
+        std::string info;
+        std::string location;
+        std::string function;
 
-        void Follow() { graph->Command(std::format("child {} {}", block, child.child)); }
+        void Follow() { graph->Command(std::format("child {} {}", block, child)); }
 };
 
 void TraceGraph::SelectionChanged() {
@@ -482,7 +543,7 @@ void TraceGraph::SelectionChanged() {
     }
 }
 
-void TraceGraph::Rebuild(TraceSession& session) {
+void TraceGraph::Rebuild(TraceSession const& session, InstrFn const& instructions) {
     std::vector<TraceBlockView> const& blocks = session.Blocks();
     updating = true;
     scene->clear();
@@ -491,7 +552,7 @@ void TraceGraph::Rebuild(TraceSession& session) {
     // Trace blocks form a chain, each block followed by its selected child
     qreal y = 0;
     for (TraceBlockView const& block : blocks) {
-        BlockNode* node = new BlockNode(this, block, block.expanded ? session.Instructions(block.index) : std::vector<TraceInstrView>{}, session.ExpandAsSource());
+        BlockNode* node = new BlockNode(this, block, block.expanded ? instructions(block.index) : std::vector<TraceInstrView>{}, session.ExpandAsSource());
         scene->addItem(node);
         node->setPos(manual_pos.contains(node->key) ? manual_pos[node->key] : QPointF(-node->Width() / 2, y));
         y += node->Height() + ROW_GAP;
@@ -499,19 +560,19 @@ void TraceGraph::Rebuild(TraceSession& session) {
     }
     for (int i = 0; i + 1 < blocks.size(); i++) {
         TraceBlockView const& block = blocks[i];
-        QString label = qstr(block.kind);
+        QString label = qstr(InteractiveUtils::traceKindToStr(block.kind));
         if (block.children.size() > 1) label += QString(" | child %1/%2").arg(block.selected_child).arg(block.children.size() - 1);
         scene->addItem(new EdgeItem(block_nodes[i], block_nodes[i + 1], EdgeItem::Style::CHAIN, label));
 
         // Siblings of the selected child are placed beside it
         qreal x = block_nodes[i + 1]->pos().x() + block_nodes[i + 1]->Width() + COL_GAP;
-        for (TraceChildView const& child : block.children) {
-            if (child.child == block.selected_child) continue;
-            SiblingNode* sibling = new SiblingNode(this, i, child);
+        for (int child = 0; child < block.children.size(); child++) {
+            if (child == block.selected_child) continue;
+            SiblingNode* sibling = new SiblingNode(this, i, child, block.children[child]);
             scene->addItem(sibling);
             sibling->setPos(manual_pos.contains(sibling->key) ? manual_pos[sibling->key] : QPointF(x, block_nodes[i + 1]->pos().y()));
             x += sibling->Width() + COL_GAP / 2;
-            scene->addItem(new EdgeItem(block_nodes[i], sibling, EdgeItem::Style::SIBLING, QString("child %1").arg(child.child)));
+            scene->addItem(new EdgeItem(block_nodes[i], sibling, EdgeItem::Style::SIBLING, QString("child %1").arg(child)));
         }
     }
     for (TraceBlockView const& block : blocks) {
@@ -632,6 +693,7 @@ class TraceDebugger {
         std::vector<CmdInfo> const& commands;
         CmdFrontend frontend;
 
+        std::map<int, std::vector<TraceInstrView>> instr_cache;
         int selected = 0;
         bool reanalyse = false;
         GUIManager::PageRun* run = nullptr;
@@ -651,6 +713,11 @@ class TraceDebugger {
         QTableWidget* history_table;
         CommandLine* console;
         QLabel* last_result;
+
+        std::vector<TraceInstrView> const& Instrs(int block) {
+            if (!instr_cache.contains(block)) instr_cache[block] = BuildInstructions(session, block);
+            return instr_cache[block];
+        }
 
         void Execute(std::string const& cmd) {
             QTimer::singleShot(0, page, [this, cmd] { RunCommand(cmd); });
@@ -678,15 +745,16 @@ class TraceDebugger {
         }
 
         void Refresh() {
+            instr_cache.clear();
             selected = std::clamp(selected, 0, (int)blocks.size() - 1);
             QSignalBlocker blocker(block_list);
             block_list->clear();
             for (TraceBlockView const& block : blocks) {
-                QTreeWidgetItem* item = new QTreeWidgetItem(block_list, {QString::number(block.index), qstr(block.info), qstr(block.description)});
-                item->setIcon(1, GUIManager::StatusIcon(InfoColor(block.info)));
+                QTreeWidgetItem* item = new QTreeWidgetItem(block_list, {QString::number(block.index), qstr(block.first.info), qstr(block.description)});
+                item->setIcon(1, GUIManager::StatusIcon(InfoColor(block.first.info)));
                 item->setToolTip(2, qstr(block.description));
             }
-            graph->Rebuild(session);
+            graph->Rebuild(session, [this](int block) -> std::vector<TraceInstrView> const& { return Instrs(block); });
             SelectBlock(selected, false);
             view->ensureVisible(graph->Node(selected), 40, 40);
         }
@@ -705,18 +773,18 @@ class TraceDebugger {
 
         void UpdateDetails() {
             TraceBlockView const& block = blocks[selected];
-            block_title->setText(qstr(std::format("Block {} in {} [{}]", block.index, block.function, block.info)));
+            block_title->setText(qstr(std::format("Block {} in {} [{}]", block.index, FunctionName(block.first.loc), block.first.info)));
             block_desc->setText(qstr(block.description));
             expand_button->setText(block.expanded ? "Collapse in graph" : "Expand in graph");
             {
                 QSignalBlocker blocker(child_select);
                 child_select->clear();
-                for (TraceChildView const& child : block.children)
-                    child_select->addItem(GUIManager::StatusIcon(InfoColor(child.info)), qstr(std::format("Child {}: {} [{}]", child.child, child.location, child.info)));
+                for (int child = 0; child < block.children.size(); child++)
+                    child_select->addItem(GUIManager::StatusIcon(InfoColor(block.children[child].info)), qstr(ChildText(child, block.children[child])));
                 child_select->setCurrentIndex(block.selected_child);
                 child_select->setEnabled(block.children.size() > 1);
             }
-            std::vector<TraceInstrView> const& instrs = session.Instructions(selected);
+            std::vector<TraceInstrView> const& instrs = Instrs(selected);
             instr_table->setRowCount(instrs.size());
             for (int i = 0; i < instrs.size(); i++) {
                 std::vector<QString> cells = {QString::number(instrs[i].index), qstr(instrs[i].info), qstr(instrs[i].ir), qstr(instrs[i].location)};
@@ -729,7 +797,7 @@ class TraceDebugger {
                 instr_table->item(i, 1)->setIcon(GUIManager::StatusIcon(InfoColor(instrs[i].info)));
             }
             QStringList lines;
-            for (InteractiveUtils::BlockLine const& line : session.BlockLines(selected, true)) lines << qstr(line.text);
+            for (InteractiveSession::BlockLine const& line : session.BlockLines(selected, true)) lines << qstr(line.text);
             source_text->setPlainText(lines.join('\n'));
         }
 
@@ -749,7 +817,7 @@ class TraceDebugger {
 
         int SelectedInstr() {
             int row = instr_table->currentRow();
-            return row >= 0 && row < session.Instructions(selected).size() ? session.Instructions(selected)[row].index : 0;
+            return row >= 0 && row < Instrs(selected).size() ? Instrs(selected)[row].index : 0;
         }
 
         // Form helpers for the annotation commands
@@ -761,7 +829,7 @@ class TraceDebugger {
             return {.label = "Instruction", .kind = GUIManager::FormField::Kind::CHOICE, .value = std::to_string(instr), .depends_on = block_field,
                     .update_choices = [this](std::string const& block) {
                         std::vector<std::pair<std::string, std::string>> choices;
-                        for (TraceInstrView const& in : session.Instructions(std::stoi(block)))
+                        for (TraceInstrView const& in : Instrs(std::stoi(block)))
                             choices.push_back({std::to_string(in.index), std::format("{:0>3}: {}{}", in.index, in.indirect_call ? "[indirect call] " : "", in.ir)});
                         return choices;
                     }};
@@ -772,11 +840,11 @@ class TraceDebugger {
                     .update_choices = [this](std::string const& block) {
                         std::vector<std::pair<std::string, std::string>> choices;
                         std::set<std::string> seen;
-                        for (TraceInstrView const& in : session.Instructions(std::stoi(block))) {
+                        for (TraceInstrView const& in : Instrs(std::stoi(block))) {
                             if (!in.value.empty() && seen.insert(in.value).second) choices.push_back({in.value, in.value});
                         }
                         // Values defined outside of the block, but referenced in it
-                        for (TraceInstrView const& in : session.Instructions(std::stoi(block))) {
+                        for (TraceInstrView const& in : Instrs(std::stoi(block))) {
                             for (std::string const& op : in.operands)
                                 if (seen.insert(op).second) choices.push_back({op, op});
                         }
@@ -878,7 +946,7 @@ class TraceDebugger {
         }
 
         void FillInstrMenu(QMenu* menu, int block, int instr) {
-            TraceInstrView const& in = session.Instructions(block)[instr];
+            TraceInstrView const& in = Instrs(block)[instr];
             menu->addSection(qstr(std::format("Instruction {}.{:0>3}", block, in.index)));
             if (in.indirect_call)
                 QObject::connect(menu->addAction("Annotate function pointer targets..."), &QAction::triggered, [=, this] { Execute(std::format("fp-target {} {}", block, in.index)); });
@@ -911,11 +979,11 @@ class TraceDebugger {
             QObject::connect(menu->addAction("View source approximation"), &QAction::triggered, [=, this] { Execute(std::format("show source {}", block)); });
             if (b.children.size() > 1) {
                 QMenu* children = menu->addMenu("Show child");
-                for (TraceChildView const& child : b.children) {
-                    QAction* action = children->addAction(qstr(std::format("Child {}: {} [{}]", child.child, child.location, child.info)));
+                for (int child = 0; child < b.children.size(); child++) {
+                    QAction* action = children->addAction(qstr(ChildText(child, b.children[child])));
                     action->setCheckable(true);
-                    action->setChecked(child.child == b.selected_child);
-                    QObject::connect(action, &QAction::triggered, [=, this] { Execute(std::format("child {} {}", block, child.child)); });
+                    action->setChecked(child == b.selected_child);
+                    QObject::connect(action, &QAction::triggered, [=, this] { Execute(std::format("child {} {}", block, child)); });
                 }
             }
             if (b.jump_to) {

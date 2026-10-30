@@ -1,6 +1,5 @@
 module;
 
-#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <format>
@@ -26,7 +25,6 @@ namespace InteractiveSession {
 
 using ContractPassUtility::JumpTraceEntry;
 using ContractPassUtility::TraceDB;
-using InteractiveUtils::BlockLine;
 using InteractiveUtils::TraceBlock;
 
 export enum struct CmdResultCode {
@@ -69,38 +67,27 @@ void SaveHistoryCache(History const& history) {
     difffile << "|| DIFF HISTORY END ||\n---\n";
 }
 
-export struct TraceInstrView {
-    int index;
+export struct TraceEntryView {
+    Instruction* loc; // Also identifies the entry across refreshes, as there is one per instruction
     std::string info;
-    std::string ir;
-    std::string location;
-    std::string value; // Name usable in alias commands, empty if the instruction is no pointer value
-    bool indirect_call;
-    std::string source; // Source code approximation, empty without debug info
-    std::vector<std::string> operands; // Pointer values referenced by the instruction, usable in alias commands
-};
-
-export struct TraceChildView {
-    int child;
-    void const* entry;
-    std::string info;
-    std::string location;
-    std::string function;
 };
 
 export struct TraceBlockView {
     int index;
-    void const* entry; // Identifies the block across refreshes
-    std::string info;
-    std::string function;
+    TraceEntryView first;
     std::string description;
     std::string start_loc;
     std::string end_loc;
     std::optional<int> jump_to;
     bool expanded;
-    std::string kind; // How the last entry is reached from its children (predecessors)
-    std::vector<TraceChildView> children;
+    ContractPassUtility::TraceKind kind; // How the last entry is reached from its children
+    std::vector<TraceEntryView> children; // Predecessors of the last entry, empty for blocks repeating an earlier one
     int selected_child = 0;
+};
+
+export struct BlockLine {
+    int instr; // Index of the instruction, or index of first if aggregate due to source approx
+    std::string text;
 };
 
 // Views are rebuilt by Refresh, which the trace commands call after every command except for those ending the session
@@ -109,17 +96,33 @@ export class TraceSession {
         virtual ~TraceSession() = default;
         virtual void Refresh() = 0;
         virtual std::vector<TraceBlockView> const& Blocks() const = 0;
-        // Instructions of a block, numbered like the instruction arguments of the trace commands
-        virtual std::vector<TraceInstrView> const& Instructions(int block) = 0;
-        virtual std::vector<BlockLine> BlockLines(int block, bool source) const = 0;
-
-        // Access for the trace commands, block and instruction numbers as in the views
-        virtual Instruction* BlockInstruction(int block, int instr) const = 0; // nullptr if there is no such instruction
-        virtual Function* BlockFunction(int block) const = 0;
+        // Entries of a block, numbered like the instruction arguments of the trace commands
+        virtual std::vector<TraceEntryView> BlockEntries(int block) const = 0;
         virtual int NumChildren(int block) const = 0;
         virtual void SelectChild(int block, int child) = 0;
         virtual void SetExpanded(int block, bool expanded) = 0;
-        virtual Module* GetModule() const = 0;
+
+        // Lines of a block, skipping instructions without source line and repetitions of the previous line
+        std::vector<BlockLine> BlockLines(int block, bool source) const {
+            std::vector<BlockLine> lines;
+            std::string last;
+            for (auto const [instr, entry] : std::views::enumerate(BlockEntries(block))) {
+                std::string line = InteractiveUtils::getSourceLine(entry.loc, source);
+                if (line.empty() || line == last) continue;
+                lines.emplace_back(instr, std::format("{:>{}} | {}", entry.info, InteractiveUtils::UI_ANALYSISINFO_PAD_SIZE, line));
+                last = std::move(line);
+            }
+            return lines;
+        }
+
+        // nullptr if there is no such instruction
+        Instruction* BlockInstruction(int block, int instr) const {
+            std::vector<TraceEntryView> entries = BlockEntries(block);
+            return instr >= 0 && instr < entries.size() ? entries[instr].loc : nullptr;
+        }
+
+        Function* BlockFunction(int block) const { return Blocks()[block].first.loc->getFunction(); }
+        Module* GetModule() const { return Blocks().front().first.loc->getModule(); }
 
         // Show instructions of expanded blocks as source code approximation, see toggle-view
         bool ExpandAsSource() const { return expand_as_source; }
@@ -143,28 +146,23 @@ class TraceSessionImpl : public TraceSession {
 
         void Refresh() override {
             trace_by_blocks = InteractiveUtils::GetTraceList(traceDB, trace, infoToStr, sibling_select);
-            InteractiveUtils::WriteReanalyseModule(GetModule());
-            instr_cache.clear();
+            InteractiveUtils::WriteReanalyseModule(trace->loc->getModule());
             blocks.clear();
             for (int i = 0; i < trace_by_blocks.size(); i++) {
                 TraceBlock<T> const& block = trace_by_blocks[i];
                 TraceBlockView view = {
                     .index = i,
-                    .entry = block.first_entry,
-                    .info = infoToStr(block.first_entry->analysisInfo),
-                    .function = block.first_entry->loc->getFunction()->getName().str(),
+                    .first = EntryView(block.first_entry),
                     .description = block.trace_list,
                     .start_loc = block.start_loc,
                     .end_loc = block.end_loc,
                     .jump_to = block.jump_to,
                     .expanded = expanded.contains(block.last_entry),
+                    .kind = block.last_entry->kind,
                 };
                 if (!block.jump_to) {
-                    view.kind = InteractiveUtils::traceKindToStr(block.last_entry->kind);
                     view.selected_child = sibling_select.contains(block.last_entry) ? sibling_select[block.last_entry] : 0;
-                    for (auto const [k, child] : std::views::enumerate(block.last_entry->predecessors)) {
-                        view.children.push_back({static_cast<int>(k), child, infoToStr(child->analysisInfo), ContractPassUtility::getInstrLocStr(child->loc, false), child->loc->getFunction()->getName().str()});
-                    }
+                    for (JumpTraceEntry<T>* child : block.last_entry->predecessors) view.children.push_back(EntryView(child));
                 }
                 blocks.push_back(view);
             }
@@ -172,21 +170,10 @@ class TraceSessionImpl : public TraceSession {
 
         std::vector<TraceBlockView> const& Blocks() const override { return blocks; }
 
-        std::vector<TraceInstrView> const& Instructions(int block) override {
-            if (!instr_cache.contains(block)) instr_cache[block] = BuildInstructions(block);
-            return instr_cache[block];
+        std::vector<TraceEntryView> BlockEntries(int block) const override {
+            return InteractiveUtils::getBlockEntries(trace_by_blocks[block]) | std::views::transform([this](JumpTraceEntry<T>* entry) { return EntryView(entry); })
+                 | std::ranges::to<std::vector>();
         }
-
-        std::vector<BlockLine> BlockLines(int block, bool source) const override {
-            return InteractiveUtils::getBlockLines(trace_by_blocks[block], source, infoToStr);
-        }
-
-        Instruction* BlockInstruction(int block, int instr) const override {
-            std::vector<JumpTraceEntry<T>*> entries = InteractiveUtils::getBlockEntries(trace_by_blocks[block]);
-            return instr >= 0 && instr < entries.size() ? entries[instr]->loc : nullptr;
-        }
-
-        Function* BlockFunction(int block) const override { return trace_by_blocks[block].first_entry->loc->getFunction(); }
 
         int NumChildren(int block) const override { return trace_by_blocks[block].last_entry->predecessors.size(); }
 
@@ -197,8 +184,6 @@ class TraceSessionImpl : public TraceSession {
             else expanded.erase(trace_by_blocks[block].last_entry);
         }
 
-        Module* GetModule() const override { return trace->loc->getModule(); }
-
     private:
         TraceDB<T> traceDB;
         JumpTraceEntry<T>* trace;
@@ -207,45 +192,8 @@ class TraceSessionImpl : public TraceSession {
         std::set<JumpTraceEntry<T>*> expanded;
         std::vector<TraceBlock<T>> trace_by_blocks;
         std::vector<TraceBlockView> blocks;
-        std::map<int, std::vector<TraceInstrView>> instr_cache;
 
-        std::vector<TraceInstrView> BuildInstructions(int b) {
-            std::vector<TraceInstrView> instrs;
-            TraceBlock<T> const& block = trace_by_blocks[b];
-            ModuleSlotTracker MST(block.first_entry->loc->getModule(), false);
-            Function const* cur_func = nullptr;
-            // Name of a pointer value as resolved by the alias commands (instructions and arguments of the function or named globals), empty if not resolvable
-            auto valueName = [&](Value const* V) -> std::string {
-                if (!V->getType()->isPointerTy()) return "";
-                if (isa<Instruction>(V) || isa<Argument>(V)) {
-                    if (V->hasName()) return "%" + V->getName().str();
-                    if (MST.getLocalSlot(V) >= 0) return std::format("%{}", MST.getLocalSlot(V));
-                }
-                if (isa<GlobalVariable>(V) && V->hasName()) return "@" + V->getName().str();
-                return "";
-            };
-            for (auto const [index, entry] : std::views::enumerate(InteractiveUtils::getBlockEntries(block))) {
-                Instruction* I = entry->loc;
-                if (I->getFunction() != cur_func) {
-                    cur_func = I->getFunction();
-                    MST.incorporateFunction(*cur_func);
-                }
-                std::string ir;
-                raw_string_ostream strstream(ir);
-                I->print(strstream, MST);
-                ir.erase(0, ir.find_first_not_of(' '));
-                std::string value = valueName(I);
-                std::vector<std::string> operands;
-                for (Use const& U : I->operands()) {
-                    std::string op = valueName(U.get());
-                    if (!op.empty() && op != value && !std::ranges::contains(operands, op)) operands.push_back(op);
-                }
-                CallBase const* CB = dyn_cast<CallBase>(I);
-                instrs.push_back({static_cast<int>(index), infoToStr(entry->analysisInfo), ir, ContractPassUtility::getInstrLocStr(I, false), value, CB && CB->isIndirectCall(),
-                                  expand_as_source ? InteractiveUtils::getSourceLine(entry, true, infoToStr) : "", operands});
-            }
-            return instrs;
-        }
+        TraceEntryView EntryView(JumpTraceEntry<T> const* entry) const { return {entry->loc, infoToStr(entry->analysisInfo)}; }
 };
 
 } // namespace InteractiveSession

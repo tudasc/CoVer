@@ -120,7 +120,7 @@ CmdResult CmdShow(std::vector<std::string> const& args, TraceSession& session, C
     if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
     bool transToSource = args[0] == "source";
     std::vector<std::string> lines = session.BlockLines(*block, transToSource)
-                                   | std::views::transform(&InteractiveUtils::BlockLine::text) | std::ranges::to<std::vector>();
+                                   | std::views::transform(&InteractiveSession::BlockLine::text) | std::ranges::to<std::vector>();
     frontend.showLines(lines, std::format("Block Preview, {}", transToSource ? "Source Approx." : "LLVM IR"));
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }

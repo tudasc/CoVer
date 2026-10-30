@@ -74,9 +74,9 @@ export bool ShowTrace(InteractiveSession::TraceSession& session) {
     while (true) {
         std::vector<ftxui::Element> full_trace;
         for (InteractiveSession::TraceBlockView const& block : session.Blocks()) {
-            full_trace.push_back(ftxui::text(std::format("{:>3}: {:^{}} - {}", block.index, block.info, InteractiveUtils::UI_ANALYSISINFO_PAD_SIZE, block.description)));
+            full_trace.push_back(ftxui::text(std::format("{:>3}: {:^{}} - {}", block.index, block.first.info, InteractiveUtils::UI_ANALYSISINFO_PAD_SIZE, block.description)));
             if (!block.expanded) continue;
-            for (InteractiveUtils::BlockLine const& line : session.BlockLines(block.index, session.ExpandAsSource())) {
+            for (InteractiveSession::BlockLine const& line : session.BlockLines(block.index, session.ExpandAsSource())) {
                 full_trace.push_back(ftxui::text(std::format("{:>3}.{:0>3}{}", block.index, line.instr, line.text)));
             }
         }

@@ -6,10 +6,8 @@ module;
 #include <functional>
 #include <map>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <system_error>
-#include <utility>
 #include <vector>
 
 #include "ContractTree.hpp"
@@ -65,16 +63,15 @@ export std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
     }
 }
 
-export template<typename T>
-std::string getSourceLine(JumpTraceEntry<T>* trace, bool translate, std::function<std::string(T)> infoToStr) {
+export std::string getSourceLine(Instruction const* I, bool translate) {
     if (translate) {
-        if (!trace->loc->getDebugLoc()) return "";
-        FileReference ref = ContractPassUtility::getFileReference(trace->loc);
+        if (!I->getDebugLoc()) return "";
+        FileReference ref = ContractPassUtility::getFileReference(I);
         return std::format("{:>15}:{:0>3} | {}", std::filesystem::path(ref.file).filename().string(), ref.line, getSpecificLine(ref.file, ref.line));
     } else {
         std::string out;
         raw_string_ostream strstream(out);
-        trace->loc->print(strstream);
+        I->print(strstream);
         return out;
     }
 }
@@ -134,24 +131,6 @@ std::vector<JumpTraceEntry<T>*> getBlockEntries(TraceBlock<T> const& block) {
     std::vector<JumpTraceEntry<T>*> entries = {block.first_entry};
     while (entries.back() != block.last_entry) entries.push_back(entries.back()->predecessors[0]);
     return entries;
-}
-
-export struct BlockLine {
-    int instr; // Index of the instruction, or index of first if aggregate due to source approx
-    std::string text;
-};
-
-export template<typename T>
-std::vector<BlockLine> getBlockLines(TraceBlock<T> const& block, bool transToSource, std::function<std::string(T)> const& infoToStr) {
-    std::vector<BlockLine> lines;
-    std::string last;
-    for (auto const [instr, entry] : std::views::enumerate(getBlockEntries(block))) {
-        std::string line = getSourceLine(entry, transToSource, infoToStr);
-        if (line.empty() || line == last) continue;
-        lines.emplace_back(instr, std::format("{:>{}} | {}", infoToStr(entry->analysisInfo), UI_ANALYSISINFO_PAD_SIZE, line));
-        last = std::move(line);
-    }
-    return lines;
 }
 
 // Leaf formula whose worklist analysis trace can be inspected
