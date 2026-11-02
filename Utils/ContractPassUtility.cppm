@@ -753,8 +753,8 @@ export bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool 
     }
     if (!isTag) {
         for (Function* F : fns) {
-            if (CB->getCalledOperand()->getName() == Target ||  // C-style match
-                CB->getCalledOperand()->getName() == Target.lower() + "_") { // Fortran-style match
+            if (F->getName() == Target ||  // C-style match
+                F->getName() == Target.lower() + "_") { // Fortran-style match
                 return true;
             }
         }

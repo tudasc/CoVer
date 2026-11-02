@@ -111,6 +111,7 @@ void ContractPostProcessingPass::checkExpErr(ContractManagerAnalysis::Contract C
     if (s == Fulfillment::UNKNOWN) {
         col = HighlightColor::Warning;
         err = "UN";
+        UN++;
     } else {
         col = HighlightColor::Error;
         if (C.Data.xres == Fulfillment::FULFILLED) {

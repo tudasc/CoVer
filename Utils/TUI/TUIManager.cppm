@@ -205,7 +205,6 @@ bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> const& F
 bool ShowContractDetails(Contract const& C) {
     std::vector<std::string> menu_entries = {"Back to Listing"};
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
-    // Same selection as the results screen, which also reports unknown formulas
     for (auto const& [kind, list] : {std::pair{"Precondition", &C.Data.Pre}, std::pair{"Postcondition", &C.Data.Post}}) {
         for (std::shared_ptr<ContractFormula> const& form : *list) {
             if (*form->Status != Fulfillment::BROKEN) continue;

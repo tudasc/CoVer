@@ -129,7 +129,7 @@ void ContractManagerAnalysis::extractFromFunction(Module& M) {
                 if (CallBase* CB = dyn_cast<CallBase>(&I)) {
                     // Only care about this intrinsic
                     #warning TODO probably should figure out a less hacky way.
-                    if (CB->getCalledFunction()->getName() != "llvm.memmove.p0.p0.i64" && CB->getCalledFunction()->getName() != "llvm.memcpy.p0.p0.i64") continue;
+                    if (CB->getCalledOperand()->getName() != "llvm.memmove.p0.p0.i64" && CB->getCalledFunction()->getName() != "llvm.memcpy.p0.p0.i64") continue;
                     std::string CallStr = ((ConstantDataArray*)((GlobalVariable*)CB->getArgOperand(1))->getInitializer())->getAsString().str();
                     // Call is from memmove -> insertvalue -> extractvalue -> funccall. on -O0, and memcpy -> funccall on -O1 and above
                     Instruction const* cur = CB->getNextNode();
