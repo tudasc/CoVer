@@ -166,13 +166,11 @@ void WriteReanalyseModule(Module const* M) {
     M->print(reanalyse_file, nullptr);
 }
 
-// Follows single predecessors up to the end of a linear part of the trace, always stopping at function entries and exits
+// Follows single predecessors up to the end of a linear part of the trace, stopping at any entry reached non-linearly
 template<typename T>
 JumpTraceEntry<T>* getLinearTraceEnd(JumpTraceEntry<T>* entry) {
-    while (entry->predecessors.size() == 1) {
+    while (entry->predecessors.size() == 1 && entry->kind != TraceKind::FUNCENTRY && entry->kind != TraceKind::FUNCEXIT)
         entry = entry->predecessors[0];
-        if (entry->kind == TraceKind::FUNCEXIT || entry->kind == TraceKind::FUNCENTRY) break;
-    }
     return entry;
 }
 
