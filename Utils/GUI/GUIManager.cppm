@@ -472,7 +472,7 @@ class CodeView : public QPlainTextEdit {
 // Contract string and formula tree, optionally allowing to launch the worklist debugger for leaf formulas
 class ContractView : public QWidget {
     public:
-        ContractView(std::function<void(std::shared_ptr<ContractExpression>)> on_debug) : on_debug{on_debug} {
+        ContractView(ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers, std::function<void(std::shared_ptr<ContractExpression>)> on_debug) : debugHandlers{debugHandlers}, on_debug{on_debug} {
             QVBoxLayout* layout = new QVBoxLayout(this);
             layout->setContentsMargins(0, 0, 0, 0);
             function = new QLabel;
@@ -541,6 +541,7 @@ class ContractView : public QWidget {
         }
 
     private:
+        ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers;
         std::function<void(std::shared_ptr<ContractExpression>)> on_debug;
         std::map<QTreeWidgetItem*, std::shared_ptr<ContractFormula>> formulas;
         QLabel* function;
@@ -560,7 +561,7 @@ class ContractView : public QWidget {
 
         QTreeWidgetItem* FindDebuggable(QTreeWidgetItem* item) {
             std::shared_ptr<ContractFormula> const& form = formulas.at(item);
-            if (*form->Status != Fulfillment::FULFILLED && InteractiveUtils::isDebuggable(*form)) return item;
+            if (*form->Status != Fulfillment::FULFILLED && debugHandlers.contains(form.get())) return item;
             for (int i = 0; i < item->childCount(); i++) {
                 if (QTreeWidgetItem* found = FindDebuggable(item->child(i))) return found;
             }
@@ -570,7 +571,7 @@ class ContractView : public QWidget {
         std::shared_ptr<ContractExpression> Selected() {
             if (!formulas.contains(tree->currentItem())) return nullptr;
             std::shared_ptr<ContractFormula> form = formulas[tree->currentItem()];
-            if (!InteractiveUtils::isDebuggable(*form)) return nullptr;
+            if (!debugHandlers.contains(form.get())) return nullptr;
             return std::static_pointer_cast<ContractExpression>(form);
         }
 
@@ -609,7 +610,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
         item->setToolTip(qstr(contract.ContractString));
     }
     splitter->addWidget(VBox({search, contracts}, "Contracts"));
-    ContractView* details = new ContractView(nullptr);
+    ContractView* details = new ContractView(DB.debugHandlers, nullptr);
     splitter->addWidget(VBox({details}, "Contract Details"));
     splitter->setStretchFactor(1, 2);
     layout->addWidget(splitter, 1);
@@ -637,7 +638,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     }
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, double runtime) {
+export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers, double runtime) {
     std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
     GetWindow(); // Sets up the application
     QWidget* page = new QWidget;
@@ -672,8 +673,8 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
 
     bool reanalyse = false;
     std::optional<PageRun> run;
-    ContractView* contract = new ContractView([&](std::shared_ptr<ContractExpression> expr) {
-        if (expr->WorklistInfo->handleDebug()) {
+    ContractView* contract = new ContractView(debugHandlers, [&](std::shared_ptr<ContractExpression> expr) {
+        if (debugHandlers.at(expr.get())()) {
             reanalyse = true;
             run->Finish();
         }

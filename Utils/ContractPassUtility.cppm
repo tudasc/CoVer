@@ -82,7 +82,7 @@ struct TraceDB : std::shared_ptr<DenseMap<Instruction*, std::unique_ptr<JumpTrac
     }
 };
 export template<typename T>
-struct WorklistResult : GenericWLRes {
+struct WorklistResult {
     DenseMap<Instruction*, T> AnalysisInfo;
     TraceDB<T> JumpTraces;
     std::function<std::string(T)> AnalysisInfoToStr = nullptr;
@@ -349,7 +349,7 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
         next_iter:
         todoList.pop();
     }
-    return {{}, postAccess, jumptraces, nullptr};
+    return {postAccess, jumptraces, nullptr};
 }
 
 Function const* getParentFunction(Value const* V) {

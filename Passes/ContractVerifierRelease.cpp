@@ -209,9 +209,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
                 data.err.clear();
                 // Error states only arise from a forbidden operation
                 if (data.forbidden) {
-                    ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, const_cast<Instruction*>(data.forbidden));
-                    WLRes.handleDebug = handleDebug_inst;
-                    Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<ReleaseStatus>>(WLRes);
+                    DB->debugHandlers[&Expr] = std::bind(&ContractVerifierReleasePass::handleDebug, WLRes, const_cast<Instruction*>(data.forbidden));
                     return ReleaseStatus::ERROR;
                 }
             }

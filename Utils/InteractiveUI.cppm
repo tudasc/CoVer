@@ -50,11 +50,11 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     TUIManager::StartMenu(DB, parse_time);
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, double runtime) {
+export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers, double runtime) {
 #ifdef COVER_HAS_GUI
-    if (mode == InteractMode::GUI) return GUIManager::ResultsScreen(ViolatedContracts, reports, runtime);
+    if (mode == InteractMode::GUI) return GUIManager::ResultsScreen(ViolatedContracts, reports, debugHandlers, runtime);
 #endif
-    return TUIManager::ResultsScreen(ViolatedContracts, reports, runtime);
+    return TUIManager::ResultsScreen(ViolatedContracts, reports, debugHandlers, runtime);
 }
 
 bool ShowTrace(InteractiveSession::TraceSession& session) {

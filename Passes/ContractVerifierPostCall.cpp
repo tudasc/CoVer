@@ -124,9 +124,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPost
                 for (auto const& x : WLRes.AnalysisInfo) {
                     if (isa<ReturnInst>(x.first) && x.first->getFunction()->getName() == "main" && x.second == CallStatus::NOTCALLED) {
                         appendDebugStr(cOP->Function, isTag, data.callsite, data.dbg_candidates, DB->reports[&Expr], x.first);
-                        ContractPassUtility::DebugHdlr handleDebug_inst = std::bind(&ContractVerifierPostCallPass::handleDebug, WLRes, C);
-                        WLRes.handleDebug = handleDebug_inst;
-                        Expr.WorklistInfo = std::make_shared<const ContractPassUtility::WorklistResult<CallStatus>>(WLRes);
+                        DB->debugHandlers[&Expr] = std::bind(&ContractVerifierPostCallPass::handleDebug, WLRes, C);
                         return CallStatus::NOTCALLED;
                     }
                 }

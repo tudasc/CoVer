@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <functional>
 #include <json/value.h>
 #include <map>
 #include <memory>
@@ -22,6 +23,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         static inline llvm::AnalysisKey Key;
 
         using FormulaReports = std::map<const ContractFormula*, std::vector<ErrorMessage>>;
+        using FormulaDebugHandlers = std::map<const ContractFormula*, std::function<bool()>>;
 
         struct Contract {
             Function* F;
@@ -40,6 +42,7 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         //Result Type
         struct Result {
             FormulaReports reports;
+            FormulaDebugHandlers debugHandlers;
             std::vector<Contract> Contracts; // For postprocessing only
             std::vector<LinearizedContract> LinearizedContracts; // For verification passes
             std::map<Function*, std::vector<TagUnit>> Tags;

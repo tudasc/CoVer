@@ -106,10 +106,4 @@ export std::string getSourceLine(Instruction const* I, bool translate) {
     }
 }
 
-// Leaf formula whose worklist analysis trace can be inspected
-export bool isDebuggable(ContractTree::ContractFormula const& form) {
-    if (!form.Children.empty()) return false;
-    return static_cast<ContractTree::ContractExpression const&>(form).WorklistInfo != nullptr;
-}
-
 } // namespace InteractiveUtils
