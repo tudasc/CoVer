@@ -39,7 +39,6 @@ module;
 #include <format>
 #include <functional>
 #include <map>
-#include <memory>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -58,7 +57,6 @@ import InteractiveSession;
 import GUIManager;
 import MCPServer;
 import MCPControl;
-import LLMChat;
 import GUIChat;
 import GUISettings;
 
@@ -675,10 +673,7 @@ class TraceDebugger {
                 .selectMultiple = GUIManager::SelectMultiple,
                 .showHistory = [this](History const&) { bottom_tabs->setCurrentWidget(history_table); },
             };
-            frontend.openChat = [this] {
-                if (!chat) chat = std::make_unique<LLMChat::ChatSession>(this->session, GUIManager::Post);
-                GUIChat::OpenChat(*chat);
-            };
+            frontend.openChat = GUIChat::ChatCommand(session);
             frontend.openSettings = GUISettings::OpenSettings;
             frontend.openMCP = [this]() -> CmdResult { return StartMCP(); };
             graph = new TraceGraph({
@@ -713,7 +708,6 @@ class TraceDebugger {
         History const& history;
         std::vector<CmdInfo> const& commands;
         CmdFrontend frontend;
-        std::unique_ptr<LLMChat::ChatSession> chat; // Kept while debugging, so the conversation continues when reopened
 
         std::map<int, std::vector<TraceInstrView>> instr_cache;
         int selected = 0;
@@ -779,12 +773,11 @@ class TraceDebugger {
         // Shows the effect of tool calls of MCP clients and performs the navigation they requested
         void ShowMCP(std::vector<MCPServer::Activity> const& done) {
             mcp_panel->Show(done);
-            MCPControl::Action action = MCPControl::PendingAction();
-            if (action.kind == MCPControl::Action::Kind::REANALYSE) {
-                MCPControl::TakeAction();
-                return RunCommand("reanalyse"); // Recorded in the history like the user's commands
+            switch (MCPControl::NavigateTrace([this](std::string const& cmd) { RunCommand(cmd); })) {
+                case MCPControl::TraceNavigation::REANALYSED: return;
+                case MCPControl::TraceNavigation::CLOSE: return run->Finish();
+                case MCPControl::TraceNavigation::STAY: break;
             }
-            if (action.kind == MCPControl::Action::Kind::OPEN_REPORT) return run->Finish(); // Opened by the results page
             if (static_cast<int>(history.size()) == history_table->rowCount()) return; // No commands were run
             Refresh();
             UpdateHistory();

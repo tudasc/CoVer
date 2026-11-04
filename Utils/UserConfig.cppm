@@ -9,9 +9,6 @@ module;
 #include <filesystem>
 #include <format>
 #include <fstream>
-#include <json/value.h>
-#include <memory>
-#include <sstream>
 #include <string>
 #include <sys/stat.h>
 #include <system_error>
@@ -24,6 +21,17 @@ export module UserConfig;
 // CoVer's per-user settings: a JSON value per key, kept in $XDG_CONFIG_HOME/cover/settings.json.
 // The file is readable by the user only, so settings may hold secrets.
 namespace UserConfig {
+
+// The value as compact JSON, with UTF-8 unescaped
+export std::string JsonString(Json::Value const& value) {
+    static Json::StreamWriterBuilder const builder = [] {
+        Json::StreamWriterBuilder b;
+        b["indentation"] = "";
+        b["emitUTF8"] = true;
+        return b;
+    }();
+    return Json::writeString(builder, value);
+}
 
 std::filesystem::path Path() {
     char const* config = std::getenv("XDG_CONFIG_HOME");
@@ -39,14 +47,9 @@ std::expected<Json::Value, std::string> Load() {
     if (stat(path.c_str(), &st) != 0) return Json::Value(Json::objectValue);
     if (st.st_mode & (S_IRWXG | S_IRWXO)) return std::unexpected(std::format("{} is accessible by other users, so it is not used. Restrict its permissions or delete it.", path.string()));
     std::ifstream file(path);
-    std::stringstream content;
-    content << file.rdbuf();
-    std::string text = content.str();
     Json::Value settings;
-    Json::CharReaderBuilder builder;
     std::string errs;
-    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-    if (!file || !reader->parse(text.data(), text.data() + text.size(), &settings, &errs) || !settings.isObject())
+    if (!file || !Json::parseFromStream(Json::CharReaderBuilder(), file, &settings, &errs) || !settings.isObject())
         return std::unexpected(std::format("Could not read {}, it is no JSON object. Fix or delete it.", path.string()));
     return settings;
 }
@@ -59,10 +62,7 @@ std::expected<void, std::string> Save(Json::Value const& settings) {
     bool created_dir = std::filesystem::create_directories(path.parent_path(), ec);
     if (ec) return std::unexpected(std::format("Could not create {}: {}", path.parent_path().string(), ec.message()));
     if (created_dir) std::filesystem::permissions(path.parent_path(), std::filesystem::perms::owner_all, ec);
-    Json::StreamWriterBuilder writer;
-    writer["indentation"] = "    ";
-    writer["emitUTF8"] = true;
-    std::string content = Json::writeString(writer, settings) + "\n";
+    std::string content = JsonString(settings) + "\n";
     std::filesystem::path tmp = path;
     tmp += ".tmp";
     std::filesystem::remove(tmp, ec);

@@ -19,6 +19,7 @@ module;
 #include <netinet/in.h>
 #include <poll.h>
 #include <set>
+#include <sstream>
 #include <string>
 #include <sys/random.h>
 #include <sys/socket.h>
@@ -38,6 +39,8 @@ namespace MCPServer {
 
 using TraceTools::ToolResult;
 using TraceTools::ToolSpec;
+using UserConfig::JsonString;
+using TraceTools::Trim;
 
 export constexpr int DEFAULT_PORT = 7341;
 
@@ -77,12 +80,6 @@ std::string Lower(std::string s) {
     return s;
 }
 
-std::string Trim(std::string const& s) {
-    size_t begin = s.find_first_not_of(" \t");
-    if (begin == std::string::npos) return "";
-    return s.substr(begin, s.find_last_not_of(" \t\r") - begin + 1);
-}
-
 // Comparison taking the same time for all inputs of the same length
 bool SecretEquals(std::string const& a, std::string const& b) {
     if (a.size() != b.size()) return false;
@@ -104,13 +101,6 @@ bool SendAll(int fd, std::string const& data) {
 void SendResponse(int fd, int status, std::string const& reason, std::string const& body, std::string const& extra_headers = "") {
     SendAll(fd, std::format("HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
                             status, reason, body.size(), extra_headers, body));
-}
-
-std::string JsonString(Json::Value const& value) {
-    Json::StreamWriterBuilder writer;
-    writer["indentation"] = "";
-    writer["emitUTF8"] = true;
-    return Json::writeString(writer, value);
 }
 
 Json::Value RpcError(Json::Value const& id, int code, std::string const& message) {
@@ -303,10 +293,9 @@ export class Server {
             if (req.method != "POST") return SendResponse(fd, 405, "Method Not Allowed", "", "Allow: POST\r\n");
 
             Json::Value message;
-            Json::CharReaderBuilder builder;
             std::string errs;
-            std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-            if (!reader->parse(req.body.data(), req.body.data() + req.body.size(), &message, &errs))
+            std::istringstream body(req.body);
+            if (!Json::parseFromStream(Json::CharReaderBuilder(), body, &message, &errs))
                 return SendResponse(fd, 400, "Bad Request", JsonString(RpcError(Json::Value(), -32700, "Parse error: " + errs)));
 
             Json::Value responses = Json::arrayValue;

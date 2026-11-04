@@ -1,5 +1,6 @@
 module;
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -18,6 +19,7 @@ module;
 
 export module LLMChat;
 import InteractiveSession;
+import InteractiveUtils;
 import InteractiveCmds;
 import TraceTools;
 import LLMClient;
@@ -45,10 +47,7 @@ std::string const CHAT_PROMPT = R"(You are an assistant built into CoVer's trace
 
 export class ChatSession {
     public:
-        using PostFn = std::function<void(std::function<void()>)>;
-
-        // post runs a task on the UI thread, it is called from a worker thread and must stay valid for the program's lifetime
-        ChatSession(TraceSession& session, PostFn post) : session{session}, tools{session}, post{std::move(post)} {
+        ChatSession(TraceSession& session, InteractiveUtils::PostFn post) : session{session}, tools{session}, post{std::move(post)} {
             LLMClient::Init();
             // Fixed for the whole conversation, so servers can cache it
             system_prompt = CHAT_PROMPT + "\n\n" + TraceTools::GUIDANCE + "\n\n" + tools.Context();
@@ -110,7 +109,7 @@ export class ChatSession {
     private:
         TraceSession& session;
         TraceTools::TraceTools tools;
-        PostFn post;
+        InteractiveUtils::PostFn post;
         std::optional<LLMClient::Config> config;
         std::string system_prompt;
         std::vector<ToolSpec> tool_specs;
@@ -243,6 +242,44 @@ export class ConnectionTest {
         std::shared_ptr<State> state;
 };
 
+// Texts of the chat, shown by both frontends
+export std::string const CHAT_INTRO = "Ask the LLM about this trace, e.g. why the error is reported or whether it is a false positive. "
+                                      "It can inspect the trace, the IR and the source code, and add annotations.";
+export std::string const CHAT_ANNOTATIONS_HINT = "Annotations added by the LLM are recorded in the command history and shown in the trace once the chat is closed. "
+                                                 "Reanalyse afterwards to check their effect.";
+
+// A field of the settings form with its value
+export struct SettingsField {
+    std::string label;
+    std::string placeholder;
+    bool password = false;
+    std::string value;
+};
+
+export std::string const SETTINGS_INTRO = "The chat works with servers implementing the OpenAI Chat Completions API, e.g. vLLM, llama.cpp, Ollama or SGLang. "
+                                          "The model must support tool use. The settings are saved in your CoVer user settings, which only you can read.";
+
+// Indices of the fields in SettingsForm, in the order the form shows them
+export enum SettingsFieldIndex : size_t { FIELD_URL, FIELD_MODEL, FIELD_API_KEY, FIELD_EFFORT, FIELD_MAX_TOKENS, NUM_SETTINGS_FIELDS };
+
+export using SettingsForm = std::array<SettingsField, NUM_SETTINGS_FIELDS>;
+
+// The settings form, filled with the settings
+export SettingsForm MakeSettingsForm(LLMClient::Config const& config) {
+    SettingsForm form;
+    form[FIELD_URL] = {.label = "Server URL", .placeholder = "e.g. http://localhost:8000/v1 (vLLM), http://localhost:11434/v1 (Ollama), http://localhost:8080/v1 (llama.cpp)", .value = config.base_url};
+    form[FIELD_MODEL] = {.label = "Model", .placeholder = "Name of the model, as the server knows it", .value = config.model};
+    form[FIELD_API_KEY] = {.label = "API key", .placeholder = "Only if the server requires one", .password = true, .value = config.api_key};
+    form[FIELD_EFFORT] = {.label = "Reasoning effort", .placeholder = "Server default, e.g. low, medium, high", .value = config.effort};
+    form[FIELD_MAX_TOKENS] = {.label = "Max response tokens", .placeholder = "Server default", .value = config.max_tokens > 0 ? std::to_string(config.max_tokens) : ""};
+    return form;
+}
+
+// Settings from the values of the settings form, or what is wrong with them
+export std::expected<LLMClient::Config, std::string> ConfigFromForm(SettingsForm const& form) {
+    return LLMClient::MakeConfig(form[FIELD_URL].value, form[FIELD_MODEL].value, form[FIELD_API_KEY].value, form[FIELD_EFFORT].value, form[FIELD_MAX_TOKENS].value);
+}
+
 // The screens of the chat and its settings, which differ between the frontends
 export struct ChatUI {
     // Lets the user edit the settings. The error tells why they are needed, it is empty if the user asked for them. False if cancelled.
@@ -288,6 +325,16 @@ export void Open(ChatSession& chat, ChatUI const& ui) {
     if (!error.empty() && !EditUntilConnected(config, error, ui)) return;
     chat.SetConfig(config);
     ui.chat();
+}
+
+// The chat command of a trace debugger: shows the chat with open, creating it on first use. post runs tasks on the
+// frontend's UI thread. The conversation lasts as long as the returned function and its copies, i.e. while the trace is open.
+export std::function<void()> ChatCommand(TraceSession& session, InteractiveUtils::PostFn post, std::function<void(ChatSession&)> open) {
+    std::shared_ptr<std::optional<ChatSession>> chat = std::make_shared<std::optional<ChatSession>>();
+    return [&session, post = std::move(post), open = std::move(open), chat] {
+        if (!*chat) chat->emplace(session, post);
+        open(**chat);
+    };
 }
 
 // Lets the user edit the saved settings, returns the outcome. Open chats pick them up when opened again.

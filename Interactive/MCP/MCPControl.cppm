@@ -28,16 +28,14 @@ using namespace llvm;
 
 // MCP for the whole interactive session: owns the server, and dispatches tool calls depending on what is shown.
 // Besides the trace tools, MCP clients can list the reports, open their traces and reanalyse, so they can work through all reports.
-// The frontends declare what is shown with the scopes below and perform the requested navigation (TakeAction).
+// The frontends declare what is shown with the scopes below and perform the requested navigation (OpenPendingReport, NavigateTrace).
 namespace MCPControl {
 
+using InteractiveUtils::PostFn;
 using InteractiveUtils::ReportedFormula;
 using MCPServer::Activity;
 using TraceTools::ToolResult;
 using TraceTools::ToolSpec;
-
-// Runs a task on the UI thread, callable from any thread
-export using PostFn = std::function<void(std::function<void()>)>;
 
 // Navigation requested by a tool call, performed by the frontend
 export struct Action {
@@ -217,7 +215,7 @@ export std::string AuthHeader() { return state.server ? state.server->AuthHeader
 export std::vector<Activity> const& Log() { return state.log; }
 
 // Starts the server unless running and enters MCP mode, returns an error message on failure.
-// post runs tasks on the UI thread, from the server thread. It must stay valid for the program's lifetime.
+// post is called from the server thread.
 export std::string Start(PostFn post) {
     if (!state.server) {
         MCPServer::StartResult started = MCPServer::Start(TraceTools::SpecsOf(Tools()), [post] { post(RunWaiting); });
@@ -246,10 +244,21 @@ export bool OpenPendingReport() {
     return (*state.result_debug_handlers)[leaf.get()](ContractManagerAnalysis::DebugContext(*report.contract, *report.formula, *leaf, *state.result_texts));
 }
 
-export Action TakeAction() {
-    Action action = state.pending;
-    state.pending = {};
-    return action;
+// What a trace screen does after tool calls ran, see NavigateTrace
+export enum struct TraceNavigation { STAY, REANALYSED, CLOSE };
+
+// Performs the navigation requested by tool calls while a trace is open. A reanalysis is run with run_command, so it is
+// recorded in the history like the user's commands. CLOSE: the screen closes the trace, the results screen opens the requested report.
+export TraceNavigation NavigateTrace(std::function<void(std::string const&)> const& run_command) {
+    switch (state.pending.kind) {
+        case Action::Kind::NONE: return TraceNavigation::STAY;
+        case Action::Kind::OPEN_REPORT: return TraceNavigation::CLOSE;
+        case Action::Kind::REANALYSE:
+            state.pending = {};
+            run_command("reanalyse");
+            return TraceNavigation::REANALYSED;
+    }
+    return TraceNavigation::STAY;
 }
 
 // The results of the current analysis are shown. Requests to open the trace debugged before the reanalysis

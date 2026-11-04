@@ -17,6 +17,7 @@ module;
 #include <ftxui/screen/color.hpp>
 
 export module TUIChat;
+import InteractiveSession;
 import TUIManager;
 import LLMChat;
 import LLMClient;
@@ -83,10 +84,7 @@ void ShowChat(LLMChat::ChatSession& chat) {
         if (chat.Busy()) screen.RequestAnimationFrame(); // Render again soon, to update the waiting time in the status
         std::vector<ftxui::Element> lines;
         if (chat.Transcript().empty()) {
-            lines.push_back(ftxui::paragraph("Ask the LLM about this trace, e.g. why the error is reported or whether it is a false positive. "
-                                             "It can inspect the trace, IR and source code, and add annotations. "
-                                             "Annotations it adds are recorded in the command history and shown in the trace once you close the chat. "
-                                             "Run \"reanalyse\" afterwards to check their effect.") | ftxui::dim);
+            lines.push_back(ftxui::paragraph(LLMChat::CHAT_INTRO + " " + LLMChat::CHAT_ANNOTATIONS_HINT) | ftxui::dim);
         }
         for (ChatEntry const& entry : chat.Transcript()) AddEntry(lines, entry);
         if (chat.Busy()) lines.push_back(ftxui::text("Waiting for the model...") | ftxui::dim);
@@ -125,13 +123,12 @@ void ShowChat(LLMChat::ChatSession& chat) {
 // Form for the connection settings, the error tells why it is shown. False if cancelled.
 bool EditSettings(LLMClient::Config& config, std::string const& error) {
     ftxui::App& screen = TUIManager::Screen();
-    std::string url = config.base_url, model = config.model, api_key = config.api_key, effort = config.effort;
-    std::string max_tokens = config.max_tokens > 0 ? std::to_string(config.max_tokens) : "";
+    LLMChat::SettingsForm form = LLMChat::MakeSettingsForm(config); // The inputs refer to its values
     std::string message = error;
     bool saved = false;
 
     auto submit = [&] {
-        std::expected<LLMClient::Config, std::string> made = LLMClient::MakeConfig(url, model, api_key, effort, max_tokens);
+        std::expected<LLMClient::Config, std::string> made = LLMChat::ConfigFromForm(form);
         if (!made) {
             message = made.error();
             return;
@@ -141,36 +138,31 @@ bool EditSettings(LLMClient::Config& config, std::string const& error) {
         screen.Exit();
     };
     std::vector<std::unique_ptr<int>> cursors; // Start at the end of the prefilled text
-    auto field = [&](std::string& content, std::string const& placeholder, bool password = false) {
-        cursors.push_back(std::make_unique<int>(content.size()));
+    ftxui::Components fields; // Input with its label
+    for (LLMChat::SettingsField& field : form) {
+        cursors.push_back(std::make_unique<int>(field.value.size()));
         ftxui::InputOption options = ftxui::InputOption::Default();
-        options.content = &content;
+        options.content = &field.value;
         options.cursor_position = cursors.back().get();
-        options.placeholder = placeholder;
-        options.password = password;
+        options.placeholder = field.placeholder;
+        options.password = field.password;
         options.multiline = false;
         options.on_enter = submit;
-        return ftxui::Input(options);
-    };
-    std::vector<std::pair<std::string, ftxui::Component>> fields = {
-        {"Server URL", field(url, "e.g. http://localhost:8000/v1 (vLLM), http://localhost:11434/v1 (Ollama), http://localhost:8080/v1 (llama.cpp)")},
-        {"Model", field(model, "name of the model, as the server knows it")},
-        {"API key", field(api_key, "only if the server requires one", true)},
-        {"Reasoning effort", field(effort, "server default, e.g. low, medium, high")},
-        {"Max response tokens", field(max_tokens, "server default")},
-    };
+        ftxui::Component input = ftxui::Input(options);
+        fields.push_back(ftxui::Renderer(input, [&field, input] {
+            return ftxui::hbox({ftxui::text(field.label) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, 22), input->Render() | ftxui::flex});
+        }));
+    }
     ftxui::Component save = ftxui::Button("Save and connect", submit, ftxui::ButtonOption::Ascii());
     ftxui::Component cancel = ftxui::Button("Cancel", [&] { screen.Exit(); }, ftxui::ButtonOption::Ascii());
-    ftxui::Components rows;
-    for (std::pair<std::string, ftxui::Component> const& f : fields) rows.push_back(f.second);
+    ftxui::Components rows = fields;
     rows.push_back(ftxui::Container::Horizontal({save, cancel}));
     ftxui::Component container = ftxui::Container::Vertical(rows);
 
     ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(container, [&] {
         std::vector<ftxui::Element> lines = {
             TUIManager::getHeader("LLM Chat Settings"),
-            ftxui::paragraph("The chat works with servers implementing the OpenAI Chat Completions API, e.g. vLLM, llama.cpp, Ollama or SGLang. "
-                             "The model must support tool use. The settings are saved in your CoVer user settings, which only you can read.") | ftxui::dim,
+            ftxui::paragraph(LLMChat::SETTINGS_INTRO) | ftxui::dim,
             ftxui::text(""),
         };
         if (!message.empty()) {
@@ -178,8 +170,7 @@ bool EditSettings(LLMClient::Config& config, std::string const& error) {
             for (std::string line; std::getline(stream, line);) lines.push_back(ftxui::paragraph(line) | ftxui::color(ftxui::Color::Red));
             lines.push_back(ftxui::text(""));
         }
-        for (std::pair<std::string, ftxui::Component> const& f : fields)
-            lines.push_back(ftxui::hbox({ftxui::text(f.first) | ftxui::size(ftxui::WIDTH, ftxui::EQUAL, 22), f.second->Render() | ftxui::flex}));
+        for (ftxui::Component const& field : fields) lines.push_back(field->Render());
         lines.push_back(ftxui::text(""));
         lines.push_back(ftxui::hbox({save->Render(), ftxui::text("  "), cancel->Render()}));
         lines.push_back(ftxui::filler());
@@ -221,8 +212,13 @@ bool WaitForTest(LLMChat::ConnectionTest const& test, LLMClient::Config const& c
 }
 
 // Tests the connection and shows the chat, asking for the settings first if needed
-export void OpenChat(LLMChat::ChatSession& chat) {
+void OpenChat(LLMChat::ChatSession& chat) {
     LLMChat::Open(chat, {.settings = EditSettings, .testing = WaitForTest, .chat = [&] { ShowChat(chat); }});
+}
+
+// The chat command of the trace debugger, see LLMChat::ChatCommand
+export std::function<void()> ChatCommand(InteractiveSession::TraceSession& session) {
+    return LLMChat::ChatCommand(session, TUIManager::Post, OpenChat);
 }
 
 // Lets the user edit and test the settings, returns the outcome

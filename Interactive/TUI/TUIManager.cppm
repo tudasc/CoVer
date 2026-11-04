@@ -26,6 +26,7 @@ export module TUIManager;
 import LLVMModule;
 import ErrorMessage;
 import InteractiveUtils;
+import MCPServer;
 import MCPControl;
 
 using namespace llvm;
@@ -295,6 +296,58 @@ export void ShowMessage(std::string const& title, std::string const& text) {
     ShowLines({ftxui::paragraph(text)}, title);
 }
 
+// MCP mode: a view serving tool calls of MCP clients. Tool calls are posted to the view's event loop (see MCPControl::Start).
+// While MCP mode is active (MCPControl::Active), the results screen and the debugger show this view instead of their own.
+
+std::string const MCP_REFUSAL = "CoVer's terminal UI only runs tool calls in MCP mode. Ask the user to start it in CoVer, "
+                                "with the mcp command of the trace debugger or the MCP entry of the report list, then try again.";
+
+// Starts the server if needed and enters MCP mode, returns an error message on failure
+export std::string ActivateMCP() {
+    return MCPControl::Start(Post);
+}
+
+ftxui::Element MCPDocument(std::string const& state) {
+    std::vector<MCPServer::Activity> const& log = MCPControl::Log();
+    std::vector<ftxui::Element> lines;
+    if (log.empty()) lines.push_back(ftxui::text("No tool calls yet.") | ftxui::dim);
+    for (MCPServer::Activity const& entry : log)
+        lines.push_back(ftxui::paragraph("> " + entry.summary) | ftxui::color(entry.error ? ftxui::Color::Red : ftxui::Color::Blue));
+    lines.back() = lines.back() | ftxui::focus; // Show the latest entries
+    return ftxui::vbox({
+        getHeader("MCP Mode"),
+        ftxui::text("URL:    " + MCPControl::Url()) | ftxui::bold,
+        ftxui::text("Header: " + MCPControl::AuthHeader()) | ftxui::bold,
+        ftxui::paragraph("Set up your MCP client once with this URL and header (Streamable HTTP transport, see the documentation). "
+                         "The token is kept in your CoVer user settings, remove it there to generate a new one (see the documentation). "
+                         "MCP clients can now work through the reports: open their traces, add annotations and reanalyse. "
+                         "MCP mode stays active across reanalyses."),
+        ftxui::text(state) | ftxui::dim,
+        ftxui::separator(),
+        ftxui::vbox(lines) | ftxui::vscroll_indicator | ftxui::yframe | ftxui::flex,
+        ftxui::separator(),
+        ftxui::text(std::to_string(log.size()) + " tool calls | Esc or q: leave MCP mode and take over, tool calls are refused until MCP mode is started again"),
+    });
+}
+
+// Serves tool calls until one requests navigation (see MCPControl::PendingAction), or the user leaves MCP mode with Esc or q.
+// state describes what is shown, e.g. the open trace.
+export void ShowMCP(std::string const& state) {
+    if (MCPControl::PendingAction().kind != MCPControl::Action::Kind::NONE) return;
+    // Tool calls run while the view is shown, it closes once one of them requests navigation
+    MCPControl::ScreenScope screen_scope([&](std::vector<MCPServer::Activity> const&) {
+        if (MCPControl::PendingAction().kind != MCPControl::Action::Kind::NONE) screen.Exit();
+    });
+    ftxui::Component view = ftxui::CatchEvent(ftxui::Renderer([&] { return MCPDocument(state); }), [&](ftxui::Event event) {
+        if (event != ftxui::Event::Escape && event != ftxui::Event::Character('q')) return false;
+        MCPControl::Leave(MCP_REFUSAL);
+        screen.Exit();
+        return true;
+    });
+    Post(MCPControl::RunWaiting); // Tool calls may have arrived before the view was shown
+    screen.Loop(view);
+}
+
 void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line) {
     std::ifstream filestream(file);
     std::string out;
@@ -358,19 +411,30 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, Contract
     return choice == 1; // Debug or no debug
 }
 
-export enum struct ResultsChoice { EXIT, REANALYSE, MCP, CONTINUE };
-
-export ResultsChoice ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
+// The results of the analysis: shows the results menu, or the MCP view while MCP mode is active, and opens the reports
+// requested by tool calls. Returns whether to reanalyse.
+export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::vector<std::string> violations = {"Exit Tool", "Start MCP mode"};
     for (InteractiveUtils::ReportedFormula const& formula : formulas) violations.push_back(formula.Summary());
     std::string title = InteractiveUtils::resultsTitle(!formulas.empty(), runtime);
     while (true) {
+        // Also requested from the debugger, once MCP mode was started there
+        if (MCPControl::PendingAction().kind == MCPControl::Action::Kind::OPEN_REPORT) {
+            if (MCPControl::OpenPendingReport()) return true;
+            continue;
+        }
+        if (MCPControl::Active()) {
+            ShowMCP(std::format("Results of the analysis: {} reports, no trace open", formulas.size()));
+            continue;
+        }
         int choice = RenderMenu(violations, title);
-        if (choice == 0) return ResultsChoice::EXIT;
-        if (choice == 1) return ResultsChoice::MCP;
+        if (choice == 0) return false;
+        if (choice == 1) {
+            if (std::string err = ActivateMCP(); !err.empty()) ShowMessage("MCP Mode", err);
+            continue;
+        }
         if (!ShowViolationDetails(formulas[choice-2].formula, reports)) continue;
-        if (ShowContractDetails(*formulas[choice-2].contract, reports, debugHandlers)) return ResultsChoice::REANALYSE;
-        if (MCPControl::PendingAction().kind != MCPControl::Action::Kind::NONE) return ResultsChoice::CONTINUE;
+        if (ShowContractDetails(*formulas[choice-2].contract, reports, debugHandlers)) return true;
     }
 }
 

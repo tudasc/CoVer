@@ -64,7 +64,6 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Interactive/TUI/TUISettings.cppm
   Interactive/MCP/MCPServer.cppm
   Interactive/MCP/MCPControl.cppm
-  Interactive/TUI/TUIMCP.cppm
   Interactive/TUI/TUITrace.cppm
   Interactive/TUI/TUIManager.cppm
 )

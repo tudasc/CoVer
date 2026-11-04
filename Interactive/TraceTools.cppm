@@ -85,6 +85,13 @@ std::string Truncate(std::string text, size_t max) {
     return text + std::format("\n[Output truncated, {} more characters omitted]", omitted);
 }
 
+// The text without leading and trailing whitespace
+export std::string Trim(std::string const& text) {
+    size_t first = text.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos) return "";
+    return text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
+}
+
 export std::string FirstLine(std::string const& text, size_t max = 160) {
     std::string line = text.substr(0, text.find('\n'));
     if (line.size() > max) line = line.substr(0, max) + "...";

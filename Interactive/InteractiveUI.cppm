@@ -1,6 +1,5 @@
 module;
 
-#include <format>
 #include <functional>
 #include <string>
 #include <utility>
@@ -16,7 +15,6 @@ import InteractiveUtils;
 import TraceTools;
 import MCPControl;
 import TUIManager;
-import TUIMCP;
 import TUITrace;
 #ifdef COVER_HAS_GUI
 import GUIManager;
@@ -57,7 +55,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
         if (mode == InteractMode::GUI) err = GUIManager::StartMCP();
         else
 #endif
-        err = TUIMCP::Activate();
+        err = TUIManager::ActivateMCP();
         if (err.empty()) return; // Skips the start menu
         errs() << "CoVer: " << err << "\n";
     }
@@ -73,25 +71,7 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
 #ifdef COVER_HAS_GUI
     if (mode == InteractMode::GUI) return GUIManager::ResultsScreen(formulas, reports, debugHandlers, runtime);
 #endif
-    while (true) {
-        MCPControl::Action action = MCPControl::PendingAction();
-        if (action.kind == MCPControl::Action::Kind::OPEN_REPORT) {
-            if (MCPControl::OpenPendingReport()) return true;
-            continue;
-        }
-        if (MCPControl::Active()) {
-            TUIMCP::Show(std::format("Results of the analysis: {} reports, no trace open", formulas.size()));
-            continue;
-        }
-        switch (TUIManager::ResultsScreen(formulas, reports, debugHandlers, runtime)) {
-            case TUIManager::ResultsChoice::EXIT: return false;
-            case TUIManager::ResultsChoice::REANALYSE: return true;
-            case TUIManager::ResultsChoice::CONTINUE: break;
-            case TUIManager::ResultsChoice::MCP:
-                if (std::string err = TUIMCP::Activate(); !err.empty()) TUIManager::ShowMessage("MCP Mode", err);
-                break;
-        }
-    }
+    return TUIManager::ResultsScreen(formulas, reports, debugHandlers, runtime);
 }
 
 bool ShowTrace(InteractiveSession::TraceSession& session) {

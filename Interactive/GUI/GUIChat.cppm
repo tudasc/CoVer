@@ -29,6 +29,7 @@ module;
 #include "ContractTree.hpp"
 
 export module GUIChat;
+import InteractiveSession;
 import GUIManager;
 import LLMChat;
 import LLMClient;
@@ -78,7 +79,7 @@ class ChatDialog : public QDialog {
             layout->addWidget(input);
 
             QHBoxLayout* buttons = new QHBoxLayout;
-            QLabel* hint = new QLabel("Annotations added by the LLM are recorded in the command history and shown in the trace once this window is closed. Reanalyse to check their effect.");
+            QLabel* hint = new QLabel(qstr(LLMChat::CHAT_ANNOTATIONS_HINT));
             hint->setWordWrap(true);
             buttons->addWidget(hint, 1);
             stop = new QPushButton("Stop");
@@ -166,8 +167,7 @@ class ChatDialog : public QDialog {
                 cursor.insertText(text, format);
             };
             if (chat.Transcript().empty()) {
-                block("Ask the LLM about this trace, e.g. why the error is reported or whether it is a false positive. "
-                      "It can inspect the trace, the IR and the source code, and add annotations.", muted, false, true);
+                block(qstr(LLMChat::CHAT_INTRO), muted, false, true);
             }
             std::vector<ChatEntry> const& entries = chat.Transcript();
             for (int i = 0; i < entries.size(); i++) {
@@ -222,8 +222,7 @@ bool EditSettings(LLMClient::Config& config, std::string const& error) {
     QDialog dialog(GUIManager::Window());
     dialog.setWindowTitle("LLM Chat Settings");
     QVBoxLayout* layout = new QVBoxLayout(&dialog);
-    QLabel* intro = new QLabel(qstr("The chat works with servers implementing the OpenAI Chat Completions API, e.g. vLLM, llama.cpp, Ollama or SGLang. "
-                                    "The model must support tool use. The settings are saved in your CoVer user settings."));
+    QLabel* intro = new QLabel(qstr(LLMChat::SETTINGS_INTRO));
     intro->setWordWrap(true);
     layout->addWidget(intro);
     QLabel* message = new QLabel(qstr(error));
@@ -235,28 +234,23 @@ bool EditSettings(LLMClient::Config& config, std::string const& error) {
     message->setVisible(!error.empty());
     layout->addWidget(message);
 
-    QFormLayout* form = new QFormLayout;
-    auto field = [&](char const* label, std::string const& value, char const* placeholder) {
-        QLineEdit* edit = new QLineEdit(qstr(value));
-        edit->setPlaceholderText(placeholder);
-        form->addRow(label, edit);
-        return edit;
-    };
-    QLineEdit* url = field("Server URL", config.base_url, "e.g. http://localhost:8000/v1 (vLLM), http://localhost:11434/v1 (Ollama), http://localhost:8080/v1 (llama.cpp)");
-    QLineEdit* model = field("Model", config.model, "Name of the model, as the server knows it");
-    QLineEdit* api_key = field("API key", config.api_key, "Only if the server requires one");
-    api_key->setEchoMode(QLineEdit::Password);
-    QLineEdit* effort = field("Reasoning effort", config.effort, "Server default, e.g. low, medium, high");
-    QLineEdit* max_tokens = field("Max response tokens", config.max_tokens > 0 ? std::to_string(config.max_tokens) : "", "Server default");
-    layout->addLayout(form);
+    LLMChat::SettingsForm form = LLMChat::MakeSettingsForm(config);
+    QFormLayout* rows = new QFormLayout; // A row per field, in the order of the form
+    for (LLMChat::SettingsField& field : form) {
+        QLineEdit* edit = new QLineEdit(qstr(field.value));
+        edit->setPlaceholderText(qstr(field.placeholder));
+        if (field.password) edit->setEchoMode(QLineEdit::Password);
+        QObject::connect(edit, &QLineEdit::textChanged, &dialog, [&field](QString const& text) { field.value = text.toStdString(); });
+        rows->addRow(qstr(field.label), edit);
+    }
+    layout->addLayout(rows);
 
     QDialogButtonBox* buttons = new QDialogButtonBox(QDialogButtonBox::Cancel);
     layout->addWidget(buttons); // Before setting the default button, which only takes effect within the dialog
     buttons->addButton("Save and Connect", QDialogButtonBox::AcceptRole)->setDefault(true);
     QObject::connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
     QObject::connect(buttons, &QDialogButtonBox::accepted, &dialog, [&] {
-        std::expected<LLMClient::Config, std::string> made = LLMClient::MakeConfig(url->text().toStdString(), model->text().toStdString(), api_key->text().toStdString(),
-                                                                                  effort->text().toStdString(), max_tokens->text().toStdString());
+        std::expected<LLMClient::Config, std::string> made = LLMChat::ConfigFromForm(form);
         if (!made) {
             message->setText(qstr(made.error()));
             message->setVisible(true);
@@ -266,7 +260,8 @@ bool EditSettings(LLMClient::Config& config, std::string const& error) {
         dialog.accept();
     });
     dialog.resize(750, dialog.sizeHint().height());
-    (error.empty() || !config.base_url.empty() ? model : url)->setFocus();
+    int focus = !error.empty() && config.base_url.empty() ? LLMChat::FIELD_URL : LLMChat::FIELD_MODEL; // The server URL if it is missing, otherwise the model
+    rows->itemAt(focus, QFormLayout::FieldRole)->widget()->setFocus();
     return dialog.exec() == QDialog::Accepted;
 }
 
@@ -295,8 +290,13 @@ bool WaitForTest(LLMChat::ConnectionTest const& test, LLMClient::Config const& c
 }
 
 // Tests the connection and shows the chat, asking for the settings first if needed
-export void OpenChat(LLMChat::ChatSession& chat) {
+void OpenChat(LLMChat::ChatSession& chat) {
     LLMChat::Open(chat, {.settings = EditSettings, .testing = WaitForTest, .chat = [&] { ShowChat(chat); }});
+}
+
+// The chat command of the trace debugger, see LLMChat::ChatCommand
+export std::function<void()> ChatCommand(InteractiveSession::TraceSession& session) {
+    return LLMChat::ChatCommand(session, GUIManager::Post, OpenChat);
 }
 
 // Lets the user edit and test the settings, returns the outcome

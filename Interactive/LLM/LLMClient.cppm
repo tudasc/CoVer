@@ -9,8 +9,8 @@ module;
 #include <cstdlib>
 #include <expected>
 #include <format>
-#include <memory>
 #include <mutex>
+#include <sstream>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -28,6 +28,8 @@ import UserConfig;
 namespace LLMClient {
 
 using TraceTools::ToolSpec;
+using UserConfig::JsonString;
+using TraceTools::Trim;
 
 export struct ToolCall {
     std::string id;
@@ -83,12 +85,6 @@ export std::string Validate(Config const& config) {
     return "";
 }
 
-std::string Trim(std::string const& text) {
-    size_t first = text.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos) return "";
-    return text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
-}
-
 // Settings from the fields of a settings form, or what is wrong with them
 export std::expected<Config, std::string> MakeConfig(std::string const& base_url, std::string const& model, std::string const& api_key, std::string const& effort, std::string const& max_tokens) {
     Config config = {.base_url = Trim(base_url), .model = Trim(model), .api_key = Trim(api_key), .effort = Trim(effort)};
@@ -107,10 +103,9 @@ export std::expected<Config, std::string> MakeConfig(std::string const& base_url
 
 std::expected<Json::Value, std::string> ParseJson(std::string const& text) {
     Json::Value json;
-    Json::CharReaderBuilder builder;
     std::string errs;
-    std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
-    if (!reader->parse(text.data(), text.data() + text.size(), &json, &errs)) return std::unexpected(errs);
+    std::istringstream stream(text);
+    if (!Json::parseFromStream(Json::CharReaderBuilder(), stream, &json, &errs)) return std::unexpected(errs);
     return json;
 }
 
@@ -194,13 +189,6 @@ bool Wait(std::chrono::milliseconds duration, std::atomic<bool> const& cancel) {
 export void Init() {
     static std::once_flag flag;
     std::call_once(flag, [] { curl_global_init(CURL_GLOBAL_DEFAULT); });
-}
-
-std::string JsonString(Json::Value const& value) {
-    Json::StreamWriterBuilder writer;
-    writer["indentation"] = "";
-    writer["emitUTF8"] = true;
-    return Json::writeString(writer, value);
 }
 
 // POSTs the body as JSON, or GETs if it is null, and returns the parsed response. Retries rate limits, server errors and connection errors.

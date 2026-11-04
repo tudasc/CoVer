@@ -2,6 +2,7 @@ module;
 
 #include <filesystem>
 #include <format>
+#include <functional>
 #include <fstream>
 #include <memory>
 #include <string>
@@ -23,6 +24,10 @@ namespace InteractiveUtils {
 using Contract = ContractManagerAnalysis::Contract;
 
 export constexpr int UI_ANALYSISINFO_PAD_SIZE = 15;
+
+// Runs a task on the frontend's UI thread, callable from any thread (TUIManager::Post, GUIManager::Post).
+// Worker threads may call it after the object they were started by is gone, so it must stay valid for the program's lifetime.
+export using PostFn = std::function<void(std::function<void()>)>;
 
 // Files of the interactive mode, in the working directory. The compile wrappers refer to REANALYSE_FILE by name.
 export constexpr char const* INTERACT_START_FILE = "CoVer_InteractStart.ll"; // Module before any annotation, base of the diff command
