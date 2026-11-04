@@ -2,6 +2,7 @@ module;
 
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../Passes/ContractManager.hpp"
@@ -50,7 +51,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     TUIManager::StartMenu(DB, parse_time);
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers, double runtime) {
+export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
 #ifdef COVER_HAS_GUI
     if (mode == InteractMode::GUI) return GUIManager::ResultsScreen(ViolatedContracts, reports, debugHandlers, runtime);
 #endif
@@ -65,9 +66,9 @@ bool ShowTrace(InteractiveSession::TraceSession& session) {
 }
 
 export template<typename T>
-bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) {
+bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, ContractManagerAnalysis::DebugContext context) {
     if (!trace) return false;
-    InteractiveSession::TraceSessionImpl<T> session(traceDB, trace, infoToStr);
+    InteractiveSession::TraceSessionImpl<T> session(traceDB, trace, infoToStr, std::move(context));
     bool reanalyse = ShowTrace(session);
     if (reanalyse) session.SaveHistory();
     return reanalyse;

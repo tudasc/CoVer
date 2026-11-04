@@ -472,7 +472,7 @@ class CodeView : public QPlainTextEdit {
 // Contract string and formula tree, optionally allowing to launch the worklist debugger for leaf formulas
 class ContractView : public QWidget {
     public:
-        ContractView(ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers, std::function<void(std::shared_ptr<ContractExpression>)> on_debug) : debugHandlers{debugHandlers}, on_debug{on_debug} {
+        ContractView(ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, std::function<void(std::shared_ptr<ContractExpression>)> on_debug) : debugHandlers{debugHandlers}, on_debug{on_debug} {
             QVBoxLayout* layout = new QVBoxLayout(this);
             layout->setContentsMargins(0, 0, 0, 0);
             function = new QLabel;
@@ -541,7 +541,7 @@ class ContractView : public QWidget {
         }
 
     private:
-        ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers;
+        ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers;
         std::function<void(std::shared_ptr<ContractExpression>)> on_debug;
         std::map<QTreeWidgetItem*, std::shared_ptr<ContractFormula>> formulas;
         QLabel* function;
@@ -638,7 +638,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     }
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers, double runtime) {
+export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
     GetWindow(); // Sets up the application
     QWidget* page = new QWidget;
@@ -674,7 +674,9 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
     bool reanalyse = false;
     std::optional<PageRun> run;
     ContractView* contract = new ContractView(debugHandlers, [&](std::shared_ptr<ContractExpression> expr) {
-        if (debugHandlers.at(expr.get())()) {
+        int row = violations->currentRow();
+        if (row < 0 || row >= formulas.size()) return;
+        if (debugHandlers[expr.get()](ContractManagerAnalysis::DebugContext(*formulas[row].contract, *formulas[row].formula, *expr, reports))) {
             reanalyse = true;
             run->Finish();
         }

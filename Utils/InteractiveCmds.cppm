@@ -42,11 +42,17 @@ export struct CmdFrontend {
     std::function<void(InteractiveSession::History const& history)> showHistory;
 };
 
+export enum struct CmdAccess {
+    ANY,
+    USER, // Only the user: ends session, touches files chosen by user, needs interactive selection, or changes the view
+};
+
 export struct CmdInfo {
     std::string_view name;
     std::string_view usage;
     std::string_view helptext;
     int num_params;
+    CmdAccess access;
     std::function<CmdResult(std::vector<std::string> const&, TraceSession&, CmdFrontend const&)> handler;
 };
 
@@ -323,27 +329,27 @@ CmdResult CmdHelp(std::vector<std::string> const&, TraceSession& session, CmdFro
 }
 
 std::vector<CmdInfo> const TraceCommands = {
-    {"collapse",      "[block num]",                                              "Hide IR for block, making it unavailable for annotation", 1, CmdCollapse},
-    {"expand",        "[block num]",                                              "Show IR for block, and make available for annotation", 1, CmdExpand},
-    {"child",         "[block num] [child num]",                                  "Show different predecessor blocks", 2, CmdChild},
-    {"show",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdShow},
-    {"toggle-view",   "",                                                         "Toggle whether expanded blocks are shown as IR or a source code approximation", 0, CmdToggleView},
-    {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdFpTarget},
-    {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAliasCreate},
-    {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAliasAdd},
-    {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAliasType},
-    {"alias-rm",      "[group num] [value num|e<epoch num>]",                     "Remove a value or an epoch (prefixed with e) from an existing alias group (by index in group, see alias-get)", 2, CmdAliasRm},
-    {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAliasEpoch},
-    {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAliasGet},
-    {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size)", 3, CmdAllocCreate},
-    {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdReanalyse},
-    {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdDiff},
-    {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdPatch},
-    {"dump",          "[filepath]",                                               "Write module to file", 1, CmdDump},
-    {"history",       "",                                                         "Print the current commands applied", 0, CmdHistory},
-    {"exit",          "",                                                         "Exit the debugger", 0, CmdExit},
-    {"quit",          "",                                                         "Exit the debugger", 0, CmdExit},
-    {"help",          "",                                                         "Show this help text", 0, CmdHelp},
+    {"collapse",      "[block num]",                                              "Hide IR for block, making it unavailable for annotation", 1, CmdAccess::USER, CmdCollapse},
+    {"expand",        "[block num]",                                              "Show IR for block, and make available for annotation", 1, CmdAccess::USER, CmdExpand},
+    {"child",         "[block num] [child num]",                                  "Show different predecessor blocks", 2, CmdAccess::ANY, CmdChild},
+    {"show",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdAccess::USER, CmdShow},
+    {"toggle-view",   "",                                                         "Toggle whether expanded blocks are shown as IR or a source code approximation", 0, CmdAccess::USER, CmdToggleView},
+    {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdAccess::USER, CmdFpTarget},
+    {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAccess::ANY, CmdAliasCreate},
+    {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAccess::ANY, CmdAliasAdd},
+    {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAccess::ANY, CmdAliasType},
+    {"alias-rm",      "[group num] [value num|e<epoch num>]",                     "Remove a value or an epoch (prefixed with e) from an existing alias group (by index in group, see alias-get)", 2, CmdAccess::ANY, CmdAliasRm},
+    {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAccess::ANY, CmdAliasEpoch},
+    {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAccess::ANY, CmdAliasGet},
+    {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size)", 3, CmdAccess::ANY, CmdAllocCreate},
+    {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdAccess::USER, CmdReanalyse},
+    {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdAccess::USER, CmdDiff},
+    {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdAccess::USER, CmdPatch},
+    {"dump",          "[filepath]",                                               "Write module to file", 1, CmdAccess::USER, CmdDump},
+    {"history",       "",                                                         "Print the current commands applied", 0, CmdAccess::ANY, CmdHistory},
+    {"exit",          "",                                                         "Exit the debugger", 0, CmdAccess::USER, CmdExit},
+    {"quit",          "",                                                         "Exit the debugger", 0, CmdAccess::USER, CmdExit},
+    {"help",          "",                                                         "Show this help text", 0, CmdAccess::USER, CmdHelp},
 };
 
 std::vector<CmdInfo> const& GetTraceCommands() { return TraceCommands; }
@@ -359,13 +365,19 @@ std::optional<std::vector<std::string>> SplitArgs(std::string const& input, int 
     return args;
 }
 
-// Runs a command line, records it in the history, and refreshes the session unless the command ends it
-export CmdResult ExecuteCommand(TraceSession& session, std::string const& input_command, CmdFrontend const& frontend) {
-    std::vector<CmdInfo>::const_iterator used_cmd = std::ranges::find_if(TraceCommands, [&](CmdInfo const& cmd) {
+// The command a command line runs, null if unknown
+export CmdInfo const* FindCommand(std::string_view input_command) {
+    std::vector<CmdInfo>::const_iterator cmd = std::ranges::find_if(TraceCommands, [&](CmdInfo const& cmd) {
         return input_command == cmd.name || input_command.starts_with(std::format("{} ", cmd.name));
     });
+    return cmd == TraceCommands.end() ? nullptr : &*cmd;
+}
+
+// Runs a command line, records it in the history, and refreshes the session unless the command ends it
+export CmdResult ExecuteCommand(TraceSession& session, std::string const& input_command, CmdFrontend const& frontend) {
+    CmdInfo const* used_cmd = FindCommand(input_command);
     CmdResult result;
-    if (used_cmd == TraceCommands.end()) {
+    if (!used_cmd) {
         result = {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
     } else if (std::optional<std::vector<std::string>> args = SplitArgs(input_command, used_cmd->num_params)) {
         result = used_cmd->handler(*args, session, frontend);

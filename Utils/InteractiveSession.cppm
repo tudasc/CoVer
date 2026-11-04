@@ -17,6 +17,8 @@ module;
 #include <utility>
 #include <vector>
 
+#include "../Passes/ContractManager.hpp"
+
 export module InteractiveSession;
 import LLVMModule;
 import ContractPassUtility;
@@ -102,6 +104,7 @@ export struct BlockLine {
 // Views are rebuilt by Refresh, which the trace commands call after every command except for those ending the session
 export class TraceSession {
     public:
+        explicit TraceSession(ContractManagerAnalysis::DebugContext context) : context{std::move(context)} {}
         virtual ~TraceSession() = default;
         virtual void Refresh() = 0;
         virtual std::vector<TraceBlockView> const& Blocks() const = 0;
@@ -137,6 +140,9 @@ export class TraceSession {
         bool ExpandAsSource() const { return expand_as_source; }
         void SetExpandAsSource(bool source) { expand_as_source = source; }
 
+        // The report being debugged
+        ContractManagerAnalysis::DebugContext const& Context() const { return context; }
+
         History const& GetHistory() const { return history; }
         void AddHistory(std::string const& cmd, CmdResult const& res) { history.push_back({cmd, res}); }
         void SaveHistory() const {
@@ -155,6 +161,7 @@ export class TraceSession {
         }
 
     protected:
+        ContractManagerAnalysis::DebugContext context;
         bool expand_as_source = false;
         History history = LoadHistoryCache();
 };
@@ -177,7 +184,8 @@ JumpTraceEntry<T>* getLinearTraceEnd(JumpTraceEntry<T>* entry) {
 export template<typename T>
 class TraceSessionImpl : public TraceSession {
     public:
-        TraceSessionImpl(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr) : traceDB{traceDB}, trace{trace}, infoToStr{infoToStr} {
+        TraceSessionImpl(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, ContractManagerAnalysis::DebugContext context)
+            : TraceSession(std::move(context)), traceDB{traceDB}, trace{trace}, infoToStr{infoToStr} {
             Refresh();
         }
 

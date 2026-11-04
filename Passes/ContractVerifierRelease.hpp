@@ -34,9 +34,9 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
             }
         }
 
-        static bool handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, Instruction* Forbidden) {
+        static bool handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, Instruction* Forbidden, ContractManagerAnalysis::DebugContext const& context) {
             // Start trace right after the first forbidden operation found
-            return InteractiveUI::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, ContractPassUtility::getTraceAfter(WLRes.JumpTraces, Forbidden), releaseStatusToStr);
+            return InteractiveUI::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, ContractPassUtility::getTraceAfter(WLRes.JumpTraces, Forbidden), releaseStatusToStr, context);
         }
 };
 

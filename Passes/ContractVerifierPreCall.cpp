@@ -154,7 +154,7 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
             if (CB->getCalledOperand() == C.F) {
                 res = std::max(AI.second.CurVal, res);
                 if (AI.second.CurVal == CallStatusVal::ERROR) {
-                    DB->debugHandlers[&Expr] = std::bind(&ContractVerifierPreCallPass::handleDebug, WLRes, C);
+                    DB->debugHandlers[&Expr] = std::bind(&ContractVerifierPreCallPass::handleDebug, WLRes, C, std::placeholders::_1);
                 }
             }
         }

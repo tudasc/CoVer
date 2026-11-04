@@ -23,7 +23,6 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
         static inline llvm::AnalysisKey Key;
 
         using FormulaReports = std::map<const ContractFormula*, std::vector<ErrorMessage>>;
-        using FormulaDebugHandlers = std::map<const ContractFormula*, std::function<bool()>>;
 
         struct Contract {
             Function* F;
@@ -31,6 +30,22 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
             const ContractData Data;
             std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
         };
+
+        // What a trace session debugs
+        struct DebugContext {
+            DebugContext(Contract const& C, ContractFormula const& top, ContractFormula const& form, FormulaReports const& reports)
+                : function{C.F->getName().str()}, contract{C.ContractString}, report{top.ExprStr}, formula{form.ExprStr}, status{FulfillmentStr(*form.Status)},
+                  errors{reports.contains(&top) ? reports.at(&top) : std::vector<ErrorMessage>()} {}
+
+            std::string function; // Contract supplier
+            std::string contract;
+            std::string report; // Reported top level formula
+            std::string formula; // Formula whose trace is debugged
+            std::string status;
+            std::vector<ErrorMessage> errors;
+        };
+        using FormulaDebugHandlers = std::map<const ContractFormula*, std::function<bool(DebugContext const&)>>;
+
         struct LinearizedContract {
             Function* F;
             const std::string ContractString;

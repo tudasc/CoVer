@@ -170,7 +170,8 @@ export std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string
     return *input_options.content;
 }
 
-bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> const& Form, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers, std::string const& title) {
+// top is the reported formula, Form one of its subformulas
+bool ShowContractFormula(Contract const& C, ContractTree::ContractFormula const& top, std::shared_ptr<ContractTree::ContractFormula> const& Form, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, std::string const& title) {
     int selected = 0;
     bool debuggable = debugHandlers.contains(Form.get());
     std::vector<std::string> menu_entries = {"Exit debugger"};
@@ -198,11 +199,11 @@ bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> const& F
     );
     screen.Loop(render);
     if (selected == 0) return false;
-    if (debuggable) return debugHandlers.at(Form.get())();
-    return ShowContractFormula(Form->Children[selected - 1], debugHandlers, title);
+    if (debuggable) return debugHandlers[Form.get()](ContractManagerAnalysis::DebugContext(C, top, *Form, reports));
+    return ShowContractFormula(C, top, Form->Children[selected - 1], reports, debugHandlers, title);
 }
 
-bool ShowContractDetails(Contract const& C, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers) {
+bool ShowContractDetails(Contract const& C, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers) {
     std::vector<std::string> menu_entries = {"Back to Listing"};
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
     for (auto const& [kind, scope] : {std::pair{"Precondition", C.Data.Pre}, std::pair{"Postcondition", C.Data.Post}}) {
@@ -234,7 +235,8 @@ bool ShowContractDetails(Contract const& C, ContractManagerAnalysis::FormulaDebu
     );
     screen.Loop(render);
     if (*menu_options.selected == 0) return false;
-    return ShowContractFormula(violated_formulas[*menu_options.selected-1], debugHandlers, "Inspecting Contract Subformula for Function: " + C.F->getName().str());
+    std::shared_ptr<ContractFormula> const& form = violated_formulas[*menu_options.selected-1];
+    return ShowContractFormula(C, *form, form, reports, debugHandlers, "Inspecting Contract Subformula for Function: " + C.F->getName().str());
 }
 
 export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double parse_time) {
@@ -248,7 +250,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     do {
         choice = RenderMenu(contr_funcs, InteractiveUtils::startMenuTitle(DB.Contracts.size(), parse_time));
         // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
-        if (choice != 0) ShowContractDetails(DB.Contracts[choice-1], DB.debugHandlers);
+        if (choice != 0) ShowContractDetails(DB.Contracts[choice-1], DB.reports, DB.debugHandlers);
     } while (choice != 0);
 }
 
@@ -342,7 +344,7 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, Contract
     return choice == 1; // Debug or no debug
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers, double runtime) {
+export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
     std::vector<std::string> violations = {"Exit Tool"};
     for (InteractiveUtils::ReportedFormula const& formula : formulas) violations.push_back(formula.Summary());
@@ -353,7 +355,7 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
         if (choice != 0) {
             bool debug = ShowViolationDetails(formulas[choice-1].formula, reports);
             if (debug) {
-                bool reanalyse = ShowContractDetails(*formulas[choice-1].contract, debugHandlers);
+                bool reanalyse = ShowContractDetails(*formulas[choice-1].contract, reports, debugHandlers);
                 if (reanalyse) return true;
             }
         }
