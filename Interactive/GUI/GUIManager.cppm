@@ -1,6 +1,7 @@
 module;
 
 #include <QApplication>
+#include <QClipboard>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDialog>
@@ -28,6 +29,7 @@ module;
 #include <QSplitter>
 #include <QStackedWidget>
 #include <QTextBlock>
+#include <QTimer>
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
@@ -51,6 +53,8 @@ export module GUIManager;
 import LLVMModule;
 import ErrorMessage;
 import InteractiveUtils;
+import MCPControl;
+import MCPServer;
 
 using namespace llvm;
 
@@ -198,6 +202,83 @@ MainWindow* GetWindow() {
 }
 
 export QWidget* Window() { return GetWindow(); }
+
+// Starts the MCP server for the rest of the session unless running, returns an error message on failure
+export std::string StartMCP() {
+    GetWindow(); // Sets up the application, which runs the posted tool calls
+    return MCPControl::Start(Post);
+}
+
+// Status and controls of the MCP server, shown below the reports and in the trace debugger
+export class MCPPanel : public QWidget {
+    public:
+        // with_log adds the list of tool calls. start is run by the start button, by default it calls Start.
+        MCPPanel(bool with_log, std::function<void()> start = nullptr) {
+            status = new QLabel("Start the MCP server to let MCP clients (e.g. coding agents) work through the reports: inspect traces, add annotations and reanalyse.");
+            status->setWordWrap(true);
+            status->setTextFormat(Qt::RichText);
+            status->setTextInteractionFlags(Qt::TextSelectableByMouse);
+            start_button = new QPushButton("Start MCP server");
+            QObject::connect(start_button, &QPushButton::clicked, this, start ? start : [this] { Start(); });
+            copy_button = new QPushButton("Copy header");
+            copy_button->setToolTip("Copy the authorization header for the MCP client");
+            QObject::connect(copy_button, &QPushButton::clicked, this, [] { QApplication::clipboard()->setText(qstr(MCPControl::AuthHeader())); });
+            QHBoxLayout* head = new QHBoxLayout;
+            head->addWidget(status, 1);
+            head->addWidget(start_button, 0, Qt::AlignTop);
+            head->addWidget(copy_button, 0, Qt::AlignTop);
+            QVBoxLayout* layout = new QVBoxLayout(this);
+            layout->setContentsMargins(0, 0, 0, 0);
+            layout->addLayout(head);
+            if (with_log) {
+                log = new QPlainTextEdit;
+                log->setReadOnly(true);
+                log->setFont(MonoFont());
+                log->setPlaceholderText("Tool calls of MCP clients are listed here");
+                layout->addWidget(log, 1);
+                for (MCPServer::Activity const& entry : MCPControl::Log()) AddActivity(entry); // Earlier tool calls of this session
+            }
+            Update();
+        }
+
+        // Starts the server and shows its status, returns an error message on failure
+        std::string Start() {
+            std::string err = StartMCP();
+            if (!err.empty()) status->setText(qstr(err).toHtmlEscaped());
+            Update();
+            return err;
+        }
+
+        // Shows the status once the server runs
+        void Update() {
+            start_button->setVisible(!MCPControl::Running());
+            copy_button->setVisible(MCPControl::Running());
+            if (!MCPControl::Running()) return;
+            status->setText(QString("<b>URL:</b> %1<br><b>Header:</b> %2<br>Set up your MCP client once with this URL and header (Streamable HTTP transport, see the documentation). "
+                                    "The token is kept in your CoVer user settings, remove it there to generate a new one (see the documentation). MCP clients can work through all reports until CoVer is closed. %3 tool calls so far.")
+                                .arg(qstr(MCPControl::Url()).toHtmlEscaped(), qstr(MCPControl::AuthHeader()).toHtmlEscaped())
+                                .arg(MCPControl::Log().size()));
+        }
+
+        void AddActivity(MCPServer::Activity const& entry) {
+            if (!log) return;
+            QColor color = entry.error ? FulfillmentColor(Fulfillment::UNKNOWN) : QColor();
+            QString text = qstr(entry.summary).toHtmlEscaped();
+            log->appendHtml(color.isValid() ? QString("<span style=\"color:%1\">%2</span>").arg(color.name(), text) : text);
+        }
+
+        // Shows the effect of tool calls, see MCPControl::ScreenScope
+        void Show(std::vector<MCPServer::Activity> const& done) {
+            for (MCPServer::Activity const& entry : done) AddActivity(entry);
+            Update();
+        }
+
+    private:
+        QLabel* status;
+        QPushButton* start_button;
+        QPushButton* copy_button;
+        QPlainTextEdit* log = nullptr;
+};
 
 // Set once the user closed the main window, all pages return as soon as possible
 export bool Quitting() { return main_window && main_window->quitting; }
@@ -644,8 +725,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     }
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
-    std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
+export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
     GetWindow(); // Sets up the application
     QWidget* page = new QWidget;
     QVBoxLayout* layout = new QVBoxLayout(page);
@@ -679,13 +759,33 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
 
     bool reanalyse = false;
     std::optional<PageRun> run;
+
+    // MCP clients work through the reports: they open them, also from within the debugger of another report
+    bool navigating = false; // A debugger is open. Its teardown runs events, which must not open the next one before it is gone.
+    std::function<void()> open_requested = [&] {
+        if (navigating) return; // Picked up by the loop below once the debugger closed
+        navigating = true;
+        while (run && !reanalyse && MCPControl::PendingAction().kind == MCPControl::Action::Kind::OPEN_REPORT) {
+            violations->setCurrentRow(MCPControl::PendingAction().report);
+            if (MCPControl::OpenPendingReport()) {
+                reanalyse = true;
+                run->Finish();
+            }
+        }
+        navigating = false;
+    };
     ContractView* contract = new ContractView(debugHandlers, [&](std::shared_ptr<ContractExpression> expr) {
         int row = violations->currentRow();
         if (row < 0 || row >= formulas.size()) return;
-        if (debugHandlers[expr.get()](ContractManagerAnalysis::DebugContext(*formulas[row].contract, *formulas[row].formula, *expr, reports))) {
+        navigating = true;
+        bool debug_reanalyse = debugHandlers[expr.get()](ContractManagerAnalysis::DebugContext(*formulas[row].contract, *formulas[row].formula, *expr, reports));
+        navigating = false;
+        if (debug_reanalyse) {
             reanalyse = true;
             run->Finish();
+            return;
         }
+        open_requested(); // An MCP client may have requested another report from within the debugger
     });
 
     QSplitter* details = new QSplitter(Qt::Vertical);
@@ -699,11 +799,11 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
     layout->addWidget(splitter, 1);
 
     QHBoxLayout* buttons = new QHBoxLayout;
-    buttons->addStretch();
+    MCPPanel* mcp = new MCPPanel(false);
+    buttons->addWidget(mcp, 1);
     QPushButton* exit = new QPushButton("Exit Tool");
-    buttons->addWidget(exit);
+    buttons->addWidget(exit, 0, Qt::AlignTop);
     layout->addLayout(buttons);
-
     std::vector<FileReference> cur_refs;
     QObject::connect(refs, &QListWidget::currentRowChanged, page, [&](int row) {
         if (row < 0 || row >= cur_refs.size()) return;
@@ -735,7 +835,18 @@ export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, Contra
     run.emplace(page, InteractiveUtils::resultsTitle(!formulas.empty(), runtime));
     QObject::connect(exit, &QPushButton::clicked, page, [&] { run->Finish(); });
     if (!formulas.empty()) violations->setCurrentRow(0);
-    run->Exec();
+    QTimer::singleShot(0, page, [&] {
+        open_requested(); // E.g. the report debugged before the reanalysis, see MCPControl::ResultsScope
+        MCPControl::RunWaiting(); // Tool calls which arrived during the analysis
+    });
+    {
+        // Only while the page runs: its teardown deletes the widgets and processes events
+        MCPControl::ScreenScope mcp_screen([&](std::vector<MCPServer::Activity> const& done) {
+            mcp->Show(done);
+            open_requested();
+        });
+        run->Exec();
+    }
     run.reset();
     Suspend();
     return reanalyse && !Quitting();

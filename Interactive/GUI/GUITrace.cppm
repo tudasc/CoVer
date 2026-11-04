@@ -56,6 +56,8 @@ import InteractiveUtils;
 import InteractiveCmds;
 import InteractiveSession;
 import GUIManager;
+import MCPServer;
+import MCPControl;
 import LLMChat;
 import GUIChat;
 import GUISettings;
@@ -678,6 +680,7 @@ class TraceDebugger {
                 GUIChat::OpenChat(*chat);
             };
             frontend.openSettings = GUISettings::OpenSettings;
+            frontend.openMCP = [this]() -> CmdResult { return StartMCP(); };
             graph = new TraceGraph({
                 .command = [this](std::string const& cmd) { Execute(cmd); },
                 .select = [this](int block) { SelectBlock(block, false); },
@@ -695,7 +698,11 @@ class TraceDebugger {
             UpdateHistory();
             SelectBlock(0, true);
             console->setFocus();
-            page_run.Exec();
+            {
+                MCPControl::ScreenScope mcp_screen([this](std::vector<MCPServer::Activity> const& done) { ShowMCP(done); });
+                MCPControl::RunWaiting(); // Tool calls waiting for the trace
+                page_run.Exec();
+            }
             run = nullptr;
             return reanalyse && !GUIManager::Quitting();
         }
@@ -729,6 +736,7 @@ class TraceDebugger {
         QTableWidget* history_table;
         CommandLine* console;
         QLabel* last_result;
+        GUIManager::MCPPanel* mcp_panel;
 
         std::vector<TraceInstrView> const& Instrs(int block) {
             if (!instr_cache.contains(block)) instr_cache[block] = BuildInstructions(session, block);
@@ -758,6 +766,28 @@ class TraceDebugger {
                 return run->Finish();
             }
             Refresh();
+            MCPControl::RunWaiting(); // Tool calls that arrived during the command
+        }
+
+        CmdResult StartMCP() {
+            bottom_tabs->setCurrentWidget(mcp_panel);
+            std::string err = mcp_panel->Start();
+            if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};
+            return {CmdResultCode::SUCCESS_CONTINUE, "MCP server listening at " + MCPControl::Url() + ", see the MCP tab for the authorization header"};
+        }
+
+        // Shows the effect of tool calls of MCP clients and performs the navigation they requested
+        void ShowMCP(std::vector<MCPServer::Activity> const& done) {
+            mcp_panel->Show(done);
+            MCPControl::Action action = MCPControl::PendingAction();
+            if (action.kind == MCPControl::Action::Kind::REANALYSE) {
+                MCPControl::TakeAction();
+                return RunCommand("reanalyse"); // Recorded in the history like the user's commands
+            }
+            if (action.kind == MCPControl::Action::Kind::OPEN_REPORT) return run->Finish(); // Opened by the results page
+            if (static_cast<int>(history.size()) == history_table->rowCount()) return; // No commands were run
+            Refresh();
+            UpdateHistory();
         }
 
         void Refresh() {
@@ -1174,6 +1204,8 @@ class TraceDebugger {
             bottom_tabs = new QTabWidget;
             bottom_tabs->addTab(output, "Output");
             bottom_tabs->addTab(history_table, "History");
+            mcp_panel = new GUIManager::MCPPanel(true, [this] { Execute("mcp"); });
+            bottom_tabs->addTab(mcp_panel, "MCP");
 
             console = new CommandLine(history);
             console->setPlaceholderText("Type \"help\" for help");

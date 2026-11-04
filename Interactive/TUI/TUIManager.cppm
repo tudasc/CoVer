@@ -26,6 +26,7 @@ export module TUIManager;
 import LLVMModule;
 import ErrorMessage;
 import InteractiveUtils;
+import MCPControl;
 
 using namespace llvm;
 
@@ -290,6 +291,10 @@ export void ShowLines(std::vector<ftxui::Element> lines, std::string title, int 
     screen.Loop(render);
 }
 
+export void ShowMessage(std::string const& title, std::string const& text) {
+    ShowLines({ftxui::paragraph(text)}, title);
+}
+
 void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus_line) {
     std::ifstream filestream(file);
     std::string out;
@@ -353,23 +358,20 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, Contract
     return choice == 1; // Debug or no debug
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
-    std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
-    std::vector<std::string> violations = {"Exit Tool"};
+export enum struct ResultsChoice { EXIT, REANALYSE, MCP, CONTINUE };
+
+export ResultsChoice ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
+    std::vector<std::string> violations = {"Exit Tool", "Start MCP mode"};
     for (InteractiveUtils::ReportedFormula const& formula : formulas) violations.push_back(formula.Summary());
     std::string title = InteractiveUtils::resultsTitle(!formulas.empty(), runtime);
-    int choice = 0;
-    do {
-        choice = RenderMenu(violations, title);
-        if (choice != 0) {
-            bool debug = ShowViolationDetails(formulas[choice-1].formula, reports);
-            if (debug) {
-                bool reanalyse = ShowContractDetails(*formulas[choice-1].contract, reports, debugHandlers);
-                if (reanalyse) return true;
-            }
-        }
-    } while (choice != 0);
-    return false;
+    while (true) {
+        int choice = RenderMenu(violations, title);
+        if (choice == 0) return ResultsChoice::EXIT;
+        if (choice == 1) return ResultsChoice::MCP;
+        if (!ShowViolationDetails(formulas[choice-2].formula, reports)) continue;
+        if (ShowContractDetails(*formulas[choice-2].contract, reports, debugHandlers)) return ResultsChoice::REANALYSE;
+        if (MCPControl::PendingAction().kind != MCPControl::Action::Kind::NONE) return ResultsChoice::CONTINUE;
+    }
 }
 
 }

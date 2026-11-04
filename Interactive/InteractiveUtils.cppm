@@ -27,7 +27,7 @@ export constexpr int UI_ANALYSISINFO_PAD_SIZE = 15;
 // Files of the interactive mode, in the working directory. The compile wrappers refer to REANALYSE_FILE by name.
 export constexpr char const* INTERACT_START_FILE = "CoVer_InteractStart.ll"; // Module before any annotation, base of the diff command
 export constexpr char const* REANALYSE_FILE = "CoVer_Reanalyse.ll"; // Current module, input of the reanalysis
-export constexpr char const* HISTORY_CACHE_FILE = "CoVer_HistoryCache"; // Command history, carried over to the reanalysis
+export constexpr char const* HISTORY_CACHE_FILE = "CoVer_HistoryCache"; // Command history and MCP mode, carried over to the reanalysis
 export constexpr char const* DIFF_TMP_FILE = "CoVer_Diff.tmp";
 
 export void removeInteractiveFiles() {

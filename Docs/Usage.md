@@ -84,6 +84,30 @@ and the selected model must support tool use.
 Note that the chat sends the trace, IR and source code requested by the model to the configured server.
 The target server can be configured in CoVer's settings, accessed via the GUI or the `settings` command.
 
+### MCP Server
+
+Instead of the built-in chat, external agents supporting the [Model Context Protocol](https://modelcontextprotocol.io) can work on the reports.
+Unlike the chat, they can work through all reports by themselves: list the reports, open their traces, add annotations and reanalyse, until only real bugs are left.
+Annotations are issued as trace commands, so they are recorded in the command history and patch files like your own.
+
+MCP mode is started with the `mcp` command of the trace debugger, the "Start MCP server" button below the reports (GUI), or the "Start MCP mode" entry of the report list (TUI).
+This starts the server on localhost (port 7341, or the `mcp_port` entry of CoVer's user settings) and shows its URL and the authorization header clients have to send.
+The server only listens on `localhost`, but other users of the machine can reach it as well, hence the token.
+It is generated on first use and stored as the `mcp_token` entry of CoVer's user settings,
+remove the entry to generate a new token.
+For example, for Claude Code (after starting MCP mode once, so the token exists; or copy the header CoVer shows):
+
+```sh
+claude mcp add --scope user --transport http cover http://127.0.0.1:7341/mcp --header "Authorization: Bearer $(jq -r .mcp_token ~/.config/cover/settings.json)"
+```
+
+Then ask the agent to fix the false positives reported by CoVer. Agents should call the `get_debug_context` tool first, which explains traces, annotations and the workflow.
+MCP mode lasts until CoVer exits, also across reanalyses: CoVer then skips the start menu, and opens the trace of the report debugged before if it is still reported.
+
+In the GUI, tool calls are run right away and the trace is updated live, also while you use the GUI. The "MCP" tab of the debugger lists all tool calls.
+In the TUI, MCP mode shows a view listing the tool calls instead of the reports and traces. Leave it with Escape to take over:
+you then see the current report list or trace, and tool calls are refused until MCP mode is started again.
+
 ## Runtime Analysis
 
 Runtime analysis depends on the `addr2line` utility.

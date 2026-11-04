@@ -46,6 +46,7 @@ export struct CmdFrontend {
     std::function<void(InteractiveSession::History const& history)> showHistory;
     std::function<void()> openChat;
     std::function<CmdResult(std::string const& page)> openSettings;
+    std::function<CmdResult()> openMCP;
 };
 
 export enum struct CmdAccess {
@@ -329,6 +330,10 @@ CmdResult CmdSettings(std::vector<std::string> const& args, TraceSession&, CmdFr
     return frontend.openSettings(args[0]);
 }
 
+CmdResult CmdMCP(std::vector<std::string> const&, TraceSession&, CmdFrontend const& frontend) {
+    return frontend.openMCP();
+}
+
 CmdResult CmdReanalyse(std::vector<std::string> const&, TraceSession&, CmdFrontend const& frontend) {
     return {CmdResultCode::SUCCESS_REANALYSE, "Re-running analysis..."};
 }
@@ -372,6 +377,7 @@ std::vector<CmdInfo> const TraceCommands = {
     {"history",       "",                                                         "Print the current commands applied", 0, CmdAccess::ANY, CmdHistory},
     {"chat",          "",                                                         "Ask an LLM about the trace. It can add annotations, which are shown once the chat is closed", 0, CmdAccess::FRONTEND, CmdChat},
     {"settings",      "[llm]",                                                    "Open a settings page. llm: the connection to the LLM server used by the chat", 1, CmdAccess::FRONTEND, CmdSettings},
+    {"mcp",           "",                                                         "Let MCP clients inspect the trace and add annotations", 0, CmdAccess::FRONTEND, CmdMCP},
     {"exit",          "",                                                         "Exit the debugger", 0, CmdAccess::USER, CmdExit},
     {"quit",          "",                                                         "Exit the debugger", 0, CmdAccess::USER, CmdExit},
     {"help",          "",                                                         "Show this help text", 0, CmdAccess::USER, CmdHelp},
@@ -398,6 +404,11 @@ export CmdInfo const* FindCommand(std::string_view input_command) {
     return cmd == TraceCommands.end() ? nullptr : &*cmd;
 }
 
+int running_commands = 0; // Nesting depth of ExecuteCommand
+
+// Whether a command is running. Commands may run event loops (e.g. dialogs), tool calls of MCP clients wait for them.
+export bool CommandRunning() { return running_commands > 0; }
+
 // Runs a command line, records it in the history, and refreshes the session unless the command ends it
 export CmdResult ExecuteCommand(TraceSession& session, std::string const& input_command, CmdFrontend const& frontend) {
     CmdInfo const* used_cmd = FindCommand(input_command);
@@ -405,7 +416,9 @@ export CmdResult ExecuteCommand(TraceSession& session, std::string const& input_
     if (!used_cmd) {
         result = {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
     } else if (std::optional<std::vector<std::string>> args = SplitArgs(input_command, used_cmd->num_params)) {
+        running_commands++;
         result = used_cmd->handler(*args, session, frontend);
+        running_commands--;
     } else {
         result = {CmdResultCode::INVALID_SYNTAX, std::format("Invalid syntax. Usage: {} {}", used_cmd->name, used_cmd->usage)};
     }

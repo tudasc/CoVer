@@ -13,6 +13,8 @@ import InteractiveUtils;
 import InteractiveCmds;
 import InteractiveSession;
 import TUIManager;
+import MCPControl;
+import TUIMCP;
 import LLMChat;
 import TUIChat;
 import TUISettings;
@@ -75,9 +77,25 @@ export bool ShowTrace(InteractiveSession::TraceSession& session) {
             TUIChat::OpenChat(*chat);
         },
         .openSettings = TUISettings::OpenSettings,
+        .openMCP = []() -> CmdResult {
+            std::string err = TUIMCP::Activate();
+            if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};
+            return {CmdResultCode::SUCCESS_CONTINUE, "Started MCP mode"}; // The loop below shows the MCP view
+        },
     };
     std::string last_res = "";
     while (true) {
+        if (MCPControl::Active()) {
+            TUIMCP::Show(std::format("Trace open for {}: {}", session.Context().function, session.Context().formula));
+            MCPControl::Action action = MCPControl::PendingAction();
+            if (action.kind == MCPControl::Action::Kind::REANALYSE) {
+                MCPControl::TakeAction();
+                InteractiveCmds::ExecuteCommand(session, "reanalyse", frontend); // Recorded in the history like the user's commands
+                return true;
+            }
+            if (action.kind == MCPControl::Action::Kind::OPEN_REPORT) return false; // Opened by the results screen
+            last_res = "Left MCP mode, MCP clients are refused until you enter \"mcp\" again";
+        }
         std::vector<ftxui::Element> full_trace;
         for (InteractiveSession::TraceBlockView const& block : session.Blocks()) {
             full_trace.push_back(ftxui::text(std::format("{:>3}: {:^{}} - {}", block.index, block.first.info, InteractiveUtils::UI_ANALYSISINFO_PAD_SIZE, block.description)));
