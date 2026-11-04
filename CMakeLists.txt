@@ -50,15 +50,15 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Passes/AnalysisCleanup.cppm
   Passes/BasicTypes.cppm
   Utils/ContractPassUtility.cppm
-  Utils/InteractiveUI.cppm
-  Utils/InteractiveUtils.cppm
-  Utils/InteractiveCmds.cppm
-  Utils/InteractiveSession.cppm
-  Utils/TraceTools.cppm
-  Utils/TUI/TUITrace.cppm
-  Utils/TUI/TUIManager.cppm
   Utils/LLVMModule.cppm
   Utils/ErrorMessage.cppm
+  Interactive/InteractiveUI.cppm
+  Interactive/InteractiveUtils.cppm
+  Interactive/InteractiveCmds.cppm
+  Interactive/InteractiveSession.cppm
+  Interactive/TraceTools.cppm
+  Interactive/TUI/TUITrace.cppm
+  Interactive/TUI/TUIManager.cppm
 )
 
 # Helper library for IR patch application
@@ -88,8 +88,8 @@ if (ENABLE_GUI)
   if (Qt6Widgets_FOUND)
     message("Found Qt ${Qt6Widgets_VERSION}, the GUI for the interactive mode will be built.")
     target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
-      Utils/GUI/GUIManager.cppm
-      Utils/GUI/GUITrace.cppm
+      Interactive/GUI/GUIManager.cppm
+      Interactive/GUI/GUITrace.cppm
     )
     target_link_libraries(CoVerPlugin PRIVATE Qt6::Widgets)
     target_compile_definitions(CoVerPlugin PRIVATE COVER_HAS_GUI QT_NO_KEYWORDS)
@@ -231,7 +231,7 @@ function(create_compile_wrapper WRAPPER_NAME TARGET_NAME FILE_ENDINGS PREMADE_CO
   add_executable(${WRAPPER_NAME} "${WRAPPER_NAME}.cpp")
   target_link_libraries(${WRAPPER_NAME} LLVM CoVerIRPatch)
   install(TARGETS ${WRAPPER_NAME})
-  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Utils/bash-autocomplete.sh" "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/completions/${WRAPPER_NAME}" @ONLY)
+  configure_file("${CMAKE_CURRENT_SOURCE_DIR}/Scripts/bash-autocomplete.sh" "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/completions/${WRAPPER_NAME}" @ONLY)
   install(DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/bash-completion/" DESTINATION share/bash-completion)
 endfunction()
 
