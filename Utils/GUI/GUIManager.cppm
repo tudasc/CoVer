@@ -522,13 +522,13 @@ class ContractView : public QWidget {
             function->setText(qstr("Function: " + C.F->getName().str()));
             contract->setText(qstr(C.ContractString));
             QTreeWidgetItem* focus_item = nullptr;
-            for (auto const& [name, list] : {std::pair{"Preconditions", &C.Data.Pre}, std::pair{"Postconditions", &C.Data.Post}}) {
-                if (list->empty()) continue;
+            for (auto const& [name, scope] : {std::pair{"Preconditions", C.Data.Pre}, std::pair{"Postconditions", C.Data.Post}}) {
+                if (!scope || scope->Children.empty()) continue;
                 QTreeWidgetItem* root = new QTreeWidgetItem(tree, {name});
                 QFont font = root->font(0);
                 font.setBold(true);
                 root->setFont(0, font);
-                for (std::shared_ptr<ContractFormula> const& form : *list) AddFormula(root, form, focus, focus_item);
+                for (std::shared_ptr<ContractFormula> const& form : scope->Children) AddFormula(root, form, focus, focus_item);
             }
             tree->expandAll();
             if (focus_item) {

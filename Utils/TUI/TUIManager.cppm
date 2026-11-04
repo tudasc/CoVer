@@ -205,8 +205,9 @@ bool ShowContractFormula(std::shared_ptr<ContractTree::ContractFormula> const& F
 bool ShowContractDetails(Contract const& C, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers) {
     std::vector<std::string> menu_entries = {"Back to Listing"};
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
-    for (auto const& [kind, list] : {std::pair{"Precondition", &C.Data.Pre}, std::pair{"Postcondition", &C.Data.Post}}) {
-        for (std::shared_ptr<ContractFormula> const& form : *list) {
+    for (auto const& [kind, scope] : {std::pair{"Precondition", C.Data.Pre}, std::pair{"Postcondition", C.Data.Post}}) {
+        if (!scope) continue;
+        for (std::shared_ptr<ContractFormula> const& form : scope->Children) {
             if (*form->Status != Fulfillment::BROKEN) continue;
             menu_entries.push_back(std::format("Inspect {} {} Subformula: {}", FulfillmentStr(*form->Status), kind, form->ExprStr));
             violated_formulas.push_back(form);

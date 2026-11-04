@@ -67,8 +67,9 @@ export struct ReportedFormula {
 export std::vector<ReportedFormula> getReportedFormulas(std::vector<Contract> const& ViolatedContracts) {
     std::vector<ReportedFormula> formulas;
     for (Contract const& C : ViolatedContracts) {
-        for (std::vector<std::shared_ptr<ContractTree::ContractFormula>> const* list : {&C.Data.Pre, &C.Data.Post}) {
-            for (std::shared_ptr<ContractTree::ContractFormula> const& form : *list) {
+        for (std::shared_ptr<ContractTree::ContractFormula> const& scope : {C.Data.Pre, C.Data.Post}) {
+            if (!scope) continue;
+            for (std::shared_ptr<ContractTree::ContractFormula> const& form : scope->Children) {
                 if (*form->Status != ContractTree::Fulfillment::FULFILLED) formulas.push_back({form, &C});
             }
         }
