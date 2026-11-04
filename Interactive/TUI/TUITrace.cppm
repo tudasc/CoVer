@@ -1,6 +1,8 @@
 module;
 
 #include <format>
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 #include <ftxui/dom/elements.hpp>
@@ -11,6 +13,9 @@ import InteractiveUtils;
 import InteractiveCmds;
 import InteractiveSession;
 import TUIManager;
+import LLMChat;
+import TUIChat;
+import TUISettings;
 
 namespace TUITrace {
 
@@ -55,17 +60,22 @@ void ShowHistory(History const& history) {
     TUIManager::ShowLines(lines, "Command History");
 }
 
-CmdFrontend const TUIFrontend = {
-    .showLines = [](std::vector<std::string> const& lines, std::string const& title) {
-        std::vector<ftxui::Element> elems;
-        for (std::string const& line : lines) elems.push_back(ftxui::text(line));
-        TUIManager::ShowLines(elems, title);
-    },
-    .selectMultiple = TUIManager::RenderMultiMenu,
-    .showHistory = ShowHistory,
-};
-
 export bool ShowTrace(InteractiveSession::TraceSession& session) {
+    std::unique_ptr<LLMChat::ChatSession> chat; // Kept while debugging, so the conversation continues when reopened
+    CmdFrontend const frontend = {
+        .showLines = [](std::vector<std::string> const& lines, std::string const& title) {
+            std::vector<ftxui::Element> elems;
+            for (std::string const& line : lines) elems.push_back(ftxui::text(line));
+            TUIManager::ShowLines(elems, title);
+        },
+        .selectMultiple = TUIManager::RenderMultiMenu,
+        .showHistory = ShowHistory,
+        .openChat = [&] {
+            if (!chat) chat = std::make_unique<LLMChat::ChatSession>(session, TUIManager::Post);
+            TUIChat::OpenChat(*chat);
+        },
+        .openSettings = TUISettings::OpenSettings,
+    };
     std::string last_res = "";
     while (true) {
         std::vector<ftxui::Element> full_trace;
@@ -79,7 +89,7 @@ export bool ShowTrace(InteractiveSession::TraceSession& session) {
 
         std::string input_command = TUIManager::RenderTxtEntry(full_trace, "JumpTrace", last_res);
 
-        CmdResult res = InteractiveCmds::ExecuteCommand(session, input_command, TUIFrontend);
+        CmdResult res = InteractiveCmds::ExecuteCommand(session, input_command, frontend);
         last_res = res.res;
 
         if (res.code == CmdResultCode::SUCCESS_EXIT) return false;

@@ -11,6 +11,7 @@ See [Usage](./Docs/Usage.md)
 ## Prerequisites
 
 - LLVM 22 or newer
+- libcurl
 - Java (Build dependency only)
 
 Optionally:

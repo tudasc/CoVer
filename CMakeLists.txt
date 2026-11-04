@@ -52,11 +52,16 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Utils/ContractPassUtility.cppm
   Utils/LLVMModule.cppm
   Utils/ErrorMessage.cppm
+  Utils/UserConfig.cppm
   Interactive/InteractiveUI.cppm
   Interactive/InteractiveUtils.cppm
   Interactive/InteractiveCmds.cppm
   Interactive/InteractiveSession.cppm
   Interactive/TraceTools.cppm
+  Interactive/LLM/LLMClient.cppm
+  Interactive/LLM/LLMChat.cppm
+  Interactive/TUI/TUIChat.cppm
+  Interactive/TUI/TUISettings.cppm
   Interactive/TUI/TUITrace.cppm
   Interactive/TUI/TUIManager.cppm
 )
@@ -66,6 +71,10 @@ add_library(CoVerIRPatch STATIC)
 target_sources(CoVerIRPatch PUBLIC FILE_SET CXX_MODULES FILES Utils/IRPatch.cppm)
 set_target_properties(CoVerIRPatch PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(CoVerPlugin PRIVATE CoVerIRPatch)
+
+# LLM chat uses libcurl for communication
+find_package(CURL REQUIRED)
+target_link_libraries(CoVerPlugin PRIVATE CURL::libcurl)
 
 target_include_directories(CoVerPlugin
   PUBLIC
@@ -90,6 +99,8 @@ if (ENABLE_GUI)
     target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
       Interactive/GUI/GUIManager.cppm
       Interactive/GUI/GUITrace.cppm
+      Interactive/GUI/GUIChat.cppm
+      Interactive/GUI/GUISettings.cppm
     )
     target_link_libraries(CoVerPlugin PRIVATE Qt6::Widgets)
     target_compile_definitions(CoVerPlugin PRIVATE COVER_HAS_GUI QT_NO_KEYWORDS)

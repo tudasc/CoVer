@@ -16,6 +16,7 @@ module;
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "../../Passes/ContractManager.hpp"
@@ -42,7 +43,15 @@ ftxui::Decorator FulfillmentColor(Fulfillment f) {
 
 static ftxui::App screen = ftxui::App::FullscreenPrimaryScreen();
 
-static ftxui::Element getHeader(std::string cur_title) {
+export ftxui::App& Screen() { return screen; }
+
+// Runs a task on the TUI thread, usable from any thread. It runs in the next screen's event loop, and the screen is redrawn afterwards.
+export void Post(std::function<void()> task) {
+    screen.Post(std::move(task));
+    screen.PostEvent(ftxui::Event::Custom); // Tasks do not redraw the screen by themselves, events do
+}
+
+export ftxui::Element getHeader(std::string cur_title) {
     ftxui::Element header = ftxui::vbox({
         ftxui::separator(),
         ftxui::hbox({ftxui::text("CoVer (Interactive mode) "), ftxui::separator(), ftxui::text(" " + cur_title), ftxui::filler()}),

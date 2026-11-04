@@ -34,6 +34,7 @@ class Cover(CMakePackage):
     depends_on("llvm@22:")
     depends_on("libffi")
     depends_on("mpi")
+    depends_on("curl")
     depends_on("jsoncpp", when="~bundled_jsoncpp")
     depends_on("qt-base +gui +widgets", when="+gui")
 

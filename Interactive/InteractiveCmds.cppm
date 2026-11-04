@@ -1,6 +1,7 @@
 module;
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
@@ -35,16 +36,22 @@ using InteractiveSession::CmdResult;
 using InteractiveSession::CmdResultCode;
 using InteractiveSession::TraceSession;
 
+// Pages of the settings command
+export constexpr std::array SETTINGS_PAGES = std::to_array<std::string_view>({"llm"});
+
 // Display hooks for commands that present something to the user, implemented by the TUI and GUI respectively
 export struct CmdFrontend {
     std::function<void(std::vector<std::string> const& lines, std::string const& title)> showLines;
     std::function<std::vector<std::string>(std::vector<std::string> const& choices, std::string const& title, std::set<std::string> const& preselected)> selectMultiple;
     std::function<void(InteractiveSession::History const& history)> showHistory;
+    std::function<void()> openChat;
+    std::function<CmdResult(std::string const& page)> openSettings;
 };
 
 export enum struct CmdAccess {
     ANY,
     USER, // Only the user: ends session, touches files chosen by user, needs interactive selection, or changes the view
+    FRONTEND, // Only the user: opens a feature of the frontend instead of working on the trace
 };
 
 export struct CmdInfo {
@@ -310,6 +317,18 @@ CmdResult CmdHistory(std::vector<std::string> const&, TraceSession& session, Cmd
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
+CmdResult CmdChat(std::vector<std::string> const&, TraceSession&, CmdFrontend const& frontend) {
+    frontend.openChat();
+    return {CmdResultCode::SUCCESS_CONTINUE, "Closed LLM chat"};
+}
+
+CmdResult CmdSettings(std::vector<std::string> const& args, TraceSession&, CmdFrontend const& frontend) {
+    if (!std::ranges::contains(SETTINGS_PAGES, args[0])) {
+        return {CmdResultCode::INVALID_INPUT, std::format("Unknown settings page {}", args[0])};
+    }
+    return frontend.openSettings(args[0]);
+}
+
 CmdResult CmdReanalyse(std::vector<std::string> const&, TraceSession&, CmdFrontend const& frontend) {
     return {CmdResultCode::SUCCESS_REANALYSE, "Re-running analysis..."};
 }
@@ -351,6 +370,8 @@ std::vector<CmdInfo> const TraceCommands = {
     {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdAccess::USER, CmdPatch},
     {"dump",          "[filepath]",                                               "Write module to file", 1, CmdAccess::USER, CmdDump},
     {"history",       "",                                                         "Print the current commands applied", 0, CmdAccess::ANY, CmdHistory},
+    {"chat",          "",                                                         "Ask an LLM about the trace. It can add annotations, which are shown once the chat is closed", 0, CmdAccess::FRONTEND, CmdChat},
+    {"settings",      "[llm]",                                                    "Open a settings page. llm: the connection to the LLM server used by the chat", 1, CmdAccess::FRONTEND, CmdSettings},
     {"exit",          "",                                                         "Exit the debugger", 0, CmdAccess::USER, CmdExit},
     {"quit",          "",                                                         "Exit the debugger", 0, CmdAccess::USER, CmdExit},
     {"help",          "",                                                         "Show this help text", 0, CmdAccess::USER, CmdHelp},

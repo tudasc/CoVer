@@ -68,6 +68,22 @@ Loops are shown as dotted edges to the repeated block.
 Nodes can be dragged with the mouse, double-clicking a block shows its instructions, and right-clicking offers the annotation actions.
 All GUI actions are issued as trace commands, so they appear in the command history and patch files just as in the TUI, and the command line is available in the GUI as well.
 
+### LLM Chat
+
+While debugging a trace, the `chat` command (or "Ask LLM..." in the GUI toolbar) opens a chat with a language model about the trace.
+The model knows the contract, the violated formula and the error report, and can inspect the trace, the LLVM IR and the program's source files.
+It can explain why an error is reported, judge whether it is a false positive, and add annotations.
+Annotations added by the model are issued as trace commands, so they are recorded in the command history and patch files like your own,
+and they are shown in the trace once the chat is closed. Reanalyse afterwards to check their effect, which the model cannot do itself.
+The conversation is kept alive even when close.
+This allows continuing after reopening the chat,
+and the model is told about commands you ran in between.
+
+The server must support the Chat Completions API,
+and the selected model must support tool use.
+Note that the chat sends the trace, IR and source code requested by the model to the configured server.
+The target server can be configured in CoVer's settings, accessed via the GUI or the `settings` command.
+
 ## Runtime Analysis
 
 Runtime analysis depends on the `addr2line` utility.

@@ -39,6 +39,7 @@ module;
 #include <format>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <set>
@@ -55,6 +56,9 @@ import InteractiveUtils;
 import InteractiveCmds;
 import InteractiveSession;
 import GUIManager;
+import LLMChat;
+import GUIChat;
+import GUISettings;
 
 using namespace llvm;
 
@@ -669,6 +673,11 @@ class TraceDebugger {
                 .selectMultiple = GUIManager::SelectMultiple,
                 .showHistory = [this](History const&) { bottom_tabs->setCurrentWidget(history_table); },
             };
+            frontend.openChat = [this] {
+                if (!chat) chat = std::make_unique<LLMChat::ChatSession>(this->session, GUIManager::Post);
+                GUIChat::OpenChat(*chat);
+            };
+            frontend.openSettings = GUISettings::OpenSettings;
             graph = new TraceGraph({
                 .command = [this](std::string const& cmd) { Execute(cmd); },
                 .select = [this](int block) { SelectBlock(block, false); },
@@ -697,6 +706,7 @@ class TraceDebugger {
         History const& history;
         std::vector<CmdInfo> const& commands;
         CmdFrontend frontend;
+        std::unique_ptr<LLMChat::ChatSession> chat; // Kept while debugging, so the conversation continues when reopened
 
         std::map<int, std::vector<TraceInstrView>> instr_cache;
         int selected = 0;
@@ -1056,6 +1066,13 @@ class TraceDebugger {
                 {"Reset graph layout", [this] { graph->ResetLayout(); Refresh(); }},
                 {"", nullptr},
                 {"Toggle Block IR/Source", [this] { Execute("toggle-view"); }},
+            });
+            toolbar->addSeparator();
+            QAction* ask = toolbar->addAction("Ask LLM...");
+            ask->setToolTip("Chat with an LLM about this trace. It can inspect the trace and add annotations.");
+            QObject::connect(ask, &QAction::triggered, [this] { Execute("chat"); });
+            MenuButton(toolbar, "Settings", {
+                {"LLM Chat...", [this] { Execute("settings llm"); }},
             });
             QObject::connect(toolbar->addAction("Help"), &QAction::triggered, [this] { Execute("help"); });
             QWidget* spacer = new QWidget;

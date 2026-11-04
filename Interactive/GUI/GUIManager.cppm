@@ -16,6 +16,7 @@ module;
 #include <QIcon>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMetaObject>
 #include <QListWidget>
 #include <QMainWindow>
 #include <QPainter>
@@ -62,6 +63,11 @@ export bool IsAvailable() {
 }
 
 export QString qstr(std::string const& s) { return QString::fromStdString(s); }
+
+// Runs a task on the GUI thread, usable from any thread
+export void Post(std::function<void()> task) {
+    QMetaObject::invokeMethod(QCoreApplication::instance(), std::move(task), Qt::QueuedConnection);
+}
 
 export QFont MonoFont() { return QFontDatabase::systemFont(QFontDatabase::FixedFont); }
 
