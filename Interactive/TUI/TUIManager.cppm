@@ -4,12 +4,12 @@ module;
 #include <format>
 #include <functional>
 #include <fstream>
+#include <ftxui/component/app.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_base.hpp>
 #include <ftxui/component/component_options.hpp>
 #include <ftxui/component/event.hpp>
 #include <ftxui/component/mouse.hpp>
-#include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
 #include <map>
@@ -40,7 +40,7 @@ ftxui::Decorator FulfillmentColor(Fulfillment f) {
     }
 }
 
-static ftxui::ScreenInteractive screen = ftxui::ScreenInteractive::FullscreenPrimaryScreen();
+static ftxui::App screen = ftxui::App::FullscreenPrimaryScreen();
 
 static ftxui::Element getHeader(std::string cur_title) {
     ftxui::Element header = ftxui::vbox({
