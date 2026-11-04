@@ -43,13 +43,14 @@ void ContractPostProcessingPass::outputSubformulaErrs(std::string type, const Co
         printMsg() << "--> " << type << " Subformula Status: " << FulfillmentStr(*form->Status) << "\n";
         if (*form->Status > Fulfillment::FULFILLED) {
             printMsg() << "    --> Formula String: " << form->ExprStr << "\n";
+            std::string message = reasons.contains(form) ? reasons.at(form).text : ""; // Only formulas with a message (MSG) have a reason
             if (reasons.contains(form))
-                printMsg() << "    --> Message: " << reasons.at(form).text << "\n";
+                printMsg() << "    --> Message: " << message << "\n";
             printMsg() << "    --> Error Info:\n";
             for (ErrorMessage errinfo : DB->reports[form.get()]) {
                 printMsg() << "        " << errinfo.text << "\n";
                 Json::Value j;
-                j["type"] = reasons.at(form).text;
+                j["type"] = message;
                 j["error_id"] = errinfo.error_id;
                 j["text"] = errinfo.text;
                 j["references"] = Json::arrayValue;
