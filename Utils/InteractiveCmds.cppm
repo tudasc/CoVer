@@ -150,8 +150,12 @@ CmdResult CmdFpTarget(std::vector<std::string> const& args, TraceSession& sessio
     }
     std::set<std::string> previously_selected = ContractPassUtility::getFPAnnots(CB)
                                               | std::views::transform([](Function* F) { return F->getName().str(); }) | std::ranges::to<std::set>();
-    std::set<Function*> selected_func = frontend.selectMultiple(funcs, "Select Function Target", previously_selected)
-                                      | std::views::transform([&](std::string const& name) { return M->getFunction(name); }) | std::ranges::to<std::set>();
+    std::set<Function*> selected_func;
+    for (std::string const& name : frontend.selectMultiple(funcs, "Select Function Target", previously_selected)) {
+        Function* F = M->getFunction(name);
+        if (!F || !std::ranges::contains(funcs, name)) return {CmdResultCode::INVALID_INPUT, "Unknown function target " + name};
+        selected_func.insert(F);
+    }
     ContractPassUtility::setFPTarget(CB, selected_func);
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("{}.{} now has {} possible target(s)", *block, args[1], selected_func.size())};
 }

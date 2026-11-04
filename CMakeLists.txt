@@ -54,6 +54,7 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Utils/InteractiveUtils.cppm
   Utils/InteractiveCmds.cppm
   Utils/InteractiveSession.cppm
+  Utils/TraceTools.cppm
   Utils/TUI/TUITrace.cppm
   Utils/TUI/TUIManager.cppm
   Utils/LLVMModule.cppm
