@@ -10,3 +10,6 @@
 [submodule "Externals/CoVerLang"]
 	path = Externals/CoVerLang
 	url = git@github.com:tudasc/CoVerLang
+[submodule "Externals/cpp-httplib"]
+	path = Externals/cpp-httplib
+	url = https://github.com/yhirose/cpp-httplib

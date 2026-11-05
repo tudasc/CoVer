@@ -1,18 +1,13 @@
 module;
 
-#include <arpa/inet.h>
 #include <cerrno>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <poll.h>
 #include <sys/random.h>
-#include <sys/socket.h>
-#include <unistd.h>
 
 #include <json/json.h>
 
 export module MCPServer;
 import std;
+import httplib;
 import TraceTools;
 import UserConfig;
 
@@ -23,7 +18,6 @@ namespace MCPServer {
 using TraceTools::ToolResult;
 using TraceTools::ToolSpec;
 using UserConfig::JsonString;
-using TraceTools::Trim;
 
 export constexpr int DEFAULT_PORT = 7341;
 
@@ -37,8 +31,8 @@ std::string const INSTRUCTIONS = "Tools for CoVer's interactive mode, in which c
 std::set<std::string> const PROTOCOL_VERSIONS = {"2025-11-25", "2025-06-18", "2025-03-26"};
 std::string const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 
-constexpr std::size_t MAX_HEADER_SIZE = 64 * 1024;
 constexpr std::size_t MAX_BODY_SIZE = 16 * 1024 * 1024;
+constexpr std::time_t TIMEOUT_SECONDS = 10; // For reading requests and writing responses
 
 export struct Activity {
     std::string summary;
@@ -51,39 +45,12 @@ struct Job {
     std::promise<ToolResult> result;
 };
 
-struct Request {
-    std::string method;
-    std::string path;
-    std::map<std::string, std::string> headers; // Lower case names
-    std::string body;
-};
-
-std::string Lower(std::string s) {
-    std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return std::tolower(c); });
-    return s;
-}
-
 // Comparison taking the same time for all inputs of the same length
 bool SecretEquals(std::string const& a, std::string const& b) {
     if (a.size() != b.size()) return false;
     unsigned char diff = 0;
     for (std::size_t i = 0; i < a.size(); i++) diff |= a[i] ^ b[i];
     return diff == 0;
-}
-
-bool SendAll(int fd, std::string const& data) {
-    std::size_t sent = 0;
-    while (sent < data.size()) {
-        ssize_t n = send(fd, data.data() + sent, data.size() - sent, MSG_NOSIGNAL); // A vanished client must not raise SIGPIPE
-        if (n <= 0) return false;
-        sent += n;
-    }
-    return true;
-}
-
-void SendResponse(int fd, int status, std::string const& reason, std::string const& body, std::string const& extra_headers = "") {
-    SendAll(fd, std::format("HTTP/1.1 {} {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n{}\r\n{}",
-                            status, reason, body.size(), extra_headers, body));
 }
 
 Json::Value RpcError(Json::Value const& id, int code, std::string const& message) {
@@ -95,91 +62,39 @@ Json::Value RpcError(Json::Value const& id, int code, std::string const& message
     return response;
 }
 
-// Reads one HTTP request, returns false on malformed or oversized requests
-bool ReadRequest(int fd, Request& req) {
-    std::string data;
-    char buf[8192];
-    std::size_t header_end;
-    while ((header_end = data.find("\r\n\r\n")) == std::string::npos) {
-        if (data.size() > MAX_HEADER_SIZE) return false;
-        ssize_t n = recv(fd, buf, sizeof(buf), 0);
-        if (n <= 0) return false;
-        data.append(buf, n);
-    }
-    std::string head = data.substr(0, header_end);
-    std::string rest = data.substr(header_end + 4);
-    std::size_t line_end = head.find("\r\n");
-    std::string request_line = head.substr(0, line_end);
-    std::size_t sp1 = request_line.find(' ');
-    std::size_t sp2 = request_line.find(' ', sp1 + 1);
-    if (sp1 == std::string::npos || sp2 == std::string::npos) return false;
-    req.method = request_line.substr(0, sp1);
-    req.path = request_line.substr(sp1 + 1, sp2 - sp1 - 1);
-    for (std::size_t pos = line_end; pos != std::string::npos && pos < head.size();) {
-        std::size_t next = head.find("\r\n", pos + 2);
-        std::string line = head.substr(pos + 2, next == std::string::npos ? std::string::npos : next - pos - 2);
-        std::size_t colon = line.find(':');
-        if (colon != std::string::npos) req.headers[Lower(Trim(line.substr(0, colon)))] = Trim(line.substr(colon + 1));
-        pos = next;
-    }
-
-    auto readMore = [&]() {
-        ssize_t n = recv(fd, buf, sizeof(buf), 0);
-        if (n <= 0) return false;
-        rest.append(buf, n);
-        return rest.size() <= MAX_BODY_SIZE + MAX_HEADER_SIZE;
-    };
-    if (Lower(req.headers["transfer-encoding"]).find("chunked") != std::string::npos) {
-        std::size_t pos = 0;
-        while (true) {
-            std::size_t size_end;
-            while ((size_end = rest.find("\r\n", pos)) == std::string::npos) if (!readMore()) return false;
-            std::size_t chunk = std::strtoul(rest.substr(pos, size_end - pos).c_str(), nullptr, 16);
-            if (chunk == 0) return true;
-            if (req.body.size() + chunk > MAX_BODY_SIZE) return false;
-            while (rest.size() < size_end + 2 + chunk + 2) if (!readMore()) return false;
-            req.body += rest.substr(size_end + 2, chunk);
-            pos = size_end + 2 + chunk + 2;
-        }
-    }
-    std::size_t length = std::strtoul(req.headers["content-length"].c_str(), nullptr, 10);
-    if (length > MAX_BODY_SIZE) return false;
-    while (rest.size() < length) if (!readMore()) return false;
-    req.body = rest.substr(0, length);
-    return true;
+void SetJson(httplib::Response& res, int status, Json::Value const& body) {
+    res.status = status;
+    res.set_content(JsonString(body), "application/json");
 }
 
 export class Server {
     public:
-        // wake is called from the server thread whenever a tool call waits for ProcessPending
+        // wake is called from a server thread whenever a tool call waits for ProcessPending
         Server(int port, std::string token, std::vector<ToolSpec> specs, std::function<void()> wake) : port{port}, token{std::move(token)}, specs{std::move(specs)}, wake{std::move(wake)} {
-            if (pipe2(stop_pipe, O_CLOEXEC) != 0) {
-                error = std::format("Could not create pipe: {}", std::strerror(errno));
+            http.set_read_timeout(TIMEOUT_SECONDS, 0);
+            http.set_write_timeout(TIMEOUT_SECONDS, 0);
+            http.set_payload_max_length(MAX_BODY_SIZE);
+            http.set_pre_routing_handler([this](httplib::Request const& req, httplib::Response& res) { return CheckRequest(req, res); });
+            http.Post("/mcp", [this](httplib::Request const& req, httplib::Response& res) { HandleRequest(req, res); });
+            // Errors detected by httplib itself (malformed or oversized requests) get a JSON-RPC error as well
+            http.set_error_handler([](httplib::Request const&, httplib::Response& res) {
+                if (!res.body.empty()) return httplib::Server::HandlerResponse::Unhandled;
+                SetJson(res, res.status, RpcError(Json::Value(), -32600, std::format("Invalid HTTP request ({})", httplib::status_message(res.status))));
+                return httplib::Server::HandlerResponse::Handled;
+            });
+            errno = 0;
+            if (!http.bind_to_port("127.0.0.1", port)) { // Never reachable from other hosts
+                error = std::format("Could not listen on 127.0.0.1:{}: {}", port, errno ? std::strerror(errno) : "unknown error");
                 return;
             }
-            listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
-            int one = 1;
-            setsockopt(listen_fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
-            sockaddr_in addr = {};
-            addr.sin_family = AF_INET;
-            addr.sin_port = htons(port);
-            addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK); // Never reachable from other hosts
-            if (listen_fd < 0 || bind(listen_fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0 || listen(listen_fd, 16) != 0) {
-                error = std::format("Could not listen on 127.0.0.1:{}: {}", port, std::strerror(errno));
-                return;
-            }
-            thread = std::thread([this] { Serve(); });
+            thread = std::thread([this] { http.listen_after_bind(); });
         }
 
         ~Server() {
-            stopping = true;
-            if (thread.joinable()) {
-                char c = 0;
-                [[maybe_unused]] ssize_t n = write(stop_pipe[1], &c, 1);
-                thread.join();
-            }
+            stopping = true; // Before stopping the server, so tool calls waiting for the UI return
+            http.stop();
+            if (thread.joinable()) thread.join();
             FailPending(RESTARTING);
-            for (int fd : {listen_fd, stop_pipe[0], stop_pipe[1]}) if (fd >= 0) close(fd);
         }
 
         Server(Server const&) = delete;
@@ -220,8 +135,7 @@ export class Server {
         std::vector<ToolSpec> specs;
         std::function<void()> wake;
         std::string error;
-        int listen_fd = -1;
-        int stop_pipe[2] = {-1, -1};
+        httplib::Server http;
         std::thread thread;
         std::atomic<bool> stopping = false;
         std::mutex mutex; // Guards the members below
@@ -238,48 +152,37 @@ export class Server {
             for (std::shared_ptr<Job> const& job : jobs) job->result.set_value({message, true, job->tool});
         }
 
-        void Serve() {
-            while (!stopping) {
-                pollfd fds[2] = {{listen_fd, POLLIN, 0}, {stop_pipe[0], POLLIN, 0}};
-                if (poll(fds, 2, -1) < 0) {
-                    if (errno == EINTR) continue;
-                    break;
-                }
-                if (fds[1].revents) break;
-                if (!(fds[0].revents & POLLIN)) continue;
-                int fd = accept4(listen_fd, nullptr, nullptr, SOCK_CLOEXEC);
-                if (fd < 0) continue;
-                timeval timeout = {.tv_sec = 10, .tv_usec = 0};
-                setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-                setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, sizeof(timeout));
-                HandleConnection(fd);
-                close(fd);
-            }
-        }
-
-        void HandleConnection(int fd) {
-            Request req;
-            if (!ReadRequest(fd, req)) return SendResponse(fd, 400, "Bad Request", JsonString(RpcError(Json::Value(), -32600, "Malformed HTTP request")));
-            if (req.path.substr(0, req.path.find('?')) != "/mcp") return SendResponse(fd, 404, "Not Found", JsonString(RpcError(Json::Value(), -32600, "The MCP endpoint is /mcp")));
+        // Runs before routing, answers requests that must not reach the endpoint
+        httplib::Server::HandlerResponse CheckRequest(httplib::Request const& req, httplib::Response& res) {
+            auto refuse = [&](int status, std::string const& message) {
+                SetJson(res, status, RpcError(Json::Value(), -32600, message));
+                return httplib::Server::HandlerResponse::Handled;
+            };
+            if (req.path != "/mcp") return refuse(404, "The MCP endpoint is /mcp");
             // Protection against DNS rebinding, browsers must not be able to reach the server from other origins
-            std::string host = req.headers["host"];
-            if (host != std::format("127.0.0.1:{}", port) && host != std::format("localhost:{}", port))
-                return SendResponse(fd, 403, "Forbidden", JsonString(RpcError(Json::Value(), -32600, "Invalid Host header")));
-            if (req.headers.contains("origin")) {
-                std::string origin = req.headers["origin"];
-                if (!origin.starts_with("http://127.0.0.1") && !origin.starts_with("http://localhost"))
-                    return SendResponse(fd, 403, "Forbidden", JsonString(RpcError(Json::Value(), -32600, "Invalid Origin header")));
+            std::string host = req.get_header_value("Host");
+            if (host != std::format("127.0.0.1:{}", port) && host != std::format("localhost:{}", port)) return refuse(403, "Invalid Host header");
+            if (req.has_header("Origin")) {
+                std::string origin = req.get_header_value("Origin");
+                if (!origin.starts_with("http://127.0.0.1") && !origin.starts_with("http://localhost")) return refuse(403, "Invalid Origin header");
             }
             // Other users of the machine can reach localhost as well. 403 instead of 401, so clients do not attempt an OAuth flow.
-            if (!SecretEquals(req.headers["authorization"], "Bearer " + token))
-                return SendResponse(fd, 403, "Forbidden", JsonString(RpcError(Json::Value(), -32600, "Missing or wrong bearer token, see the mcp command in CoVer's trace debugger")));
-            if (req.method != "POST") return SendResponse(fd, 405, "Method Not Allowed", "", "Allow: POST\r\n");
+            if (!SecretEquals(req.get_header_value("Authorization"), "Bearer " + token))
+                return refuse(403, "Missing or wrong bearer token, see the mcp command in CoVer's trace debugger");
+            if (req.method != "POST") {
+                res.status = 405;
+                res.set_header("Allow", "POST");
+                return httplib::Server::HandlerResponse::Handled;
+            }
+            return httplib::Server::HandlerResponse::Unhandled;
+        }
 
+        void HandleRequest(httplib::Request const& req, httplib::Response& res) {
             Json::Value message;
             std::string errs;
             std::istringstream body(req.body);
             if (!Json::parseFromStream(Json::CharReaderBuilder(), body, &message, &errs))
-                return SendResponse(fd, 400, "Bad Request", JsonString(RpcError(Json::Value(), -32700, "Parse error: " + errs)));
+                return SetJson(res, 400, RpcError(Json::Value(), -32700, "Parse error: " + errs));
 
             Json::Value responses = Json::arrayValue;
             if (message.isArray()) {
@@ -287,8 +190,11 @@ export class Server {
             } else {
                 HandleMessage(message, responses);
             }
-            if (responses.empty()) return SendResponse(fd, 202, "Accepted", ""); // Only notifications or responses
-            SendResponse(fd, 200, "OK", JsonString(message.isArray() ? responses : responses[0]));
+            if (responses.empty()) { // Only notifications or responses
+                res.status = 202;
+                return;
+            }
+            SetJson(res, 200, message.isArray() ? responses : responses[0]);
         }
 
         void HandleMessage(Json::Value const& msg, Json::Value& responses) {

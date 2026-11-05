@@ -111,6 +111,17 @@ if((NOT JSONCPP_FOUND) OR BUNDLED_JSONCPP)
     target_link_libraries(CoVerCore PUBLIC jsoncpp_static)
 endif((NOT JSONCPP_FOUND) OR BUNDLED_JSONCPP)
 
+# httlib for MCP communication. Local only, so no TLS/Compression
+foreach(feature OPENSSL ZLIB BROTLI ZSTD)
+    set(HTTPLIB_USE_${feature}_IF_AVAILABLE OFF)
+endforeach()
+set(HTTPLIB_COMPILE ON)
+set(HTTPLIB_BUILD_MODULES ON)
+set(HTTPLIB_INSTALL OFF)
+add_subdirectory(Externals/cpp-httplib)
+set_target_properties(httplib PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(CoVerCore PRIVATE httplib::httplib)
+
 ##
 ## Frontends of the interactive mode, loaded by the core on demand (see Interactive/InteractiveFrontend.cppm)
 ##
