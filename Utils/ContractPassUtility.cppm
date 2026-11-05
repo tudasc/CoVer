@@ -339,7 +339,7 @@ ContractPassUtility::WorklistResult<T> GenericWorklist(Instruction* Start, bool 
         next_iter:
         todoList.pop();
     }
-    return {postAccess, jumptraces, nullptr};
+    return {std::move(postAccess), jumptraces, nullptr};
 }
 
 Function const* getParentFunction(Value const* V) {
