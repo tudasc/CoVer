@@ -2,15 +2,7 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 
-#include <algorithm>
-#include <any>
-#include <memory>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <vector>
-
-
+import std;
 import LLVMModule;
 import ContractPassUtility;
 import ErrorMessage;

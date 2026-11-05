@@ -1,18 +1,9 @@
 #include "ContractPostProcess.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include <algorithm>
 #include <json/value.h>
-#include <fstream>
-#include <memory>
-#include <optional>
-#include <sstream>
-#include <string>
-#include <utility>
-#include <system_error>
-#include <vector>
 
-
+import std;
 import LLVMModule;
 import ContractPassUtility;
 import InteractiveUI;

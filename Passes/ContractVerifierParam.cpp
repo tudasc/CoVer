@@ -2,14 +2,7 @@
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 
-#include <format>
-#include <vector>
-#include <memory>
-#include <optional>
-#include <string>
-#include <utility>
-
-
+import std;
 import BasicTypes;
 import ContractPassUtility;
 import LLVMModule;

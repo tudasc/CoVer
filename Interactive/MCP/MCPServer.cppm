@@ -1,35 +1,18 @@
 module;
 
-#include <algorithm>
 #include <arpa/inet.h>
-#include <atomic>
-#include <cctype>
 #include <cerrno>
-#include <chrono>
-#include <cstdlib>
-#include <cstring>
-#include <expected>
 #include <fcntl.h>
-#include <format>
-#include <functional>
-#include <future>
-#include <map>
-#include <memory>
-#include <mutex>
 #include <netinet/in.h>
 #include <poll.h>
-#include <set>
-#include <sstream>
-#include <string>
 #include <sys/random.h>
 #include <sys/socket.h>
-#include <thread>
 #include <unistd.h>
-#include <vector>
 
 #include <json/json.h>
 
 export module MCPServer;
+import std;
 import TraceTools;
 import UserConfig;
 
@@ -54,8 +37,8 @@ std::string const INSTRUCTIONS = "Tools for CoVer's interactive mode, in which c
 std::set<std::string> const PROTOCOL_VERSIONS = {"2025-11-25", "2025-06-18", "2025-03-26"};
 std::string const DEFAULT_PROTOCOL_VERSION = "2025-06-18";
 
-constexpr size_t MAX_HEADER_SIZE = 64 * 1024;
-constexpr size_t MAX_BODY_SIZE = 16 * 1024 * 1024;
+constexpr std::size_t MAX_HEADER_SIZE = 64 * 1024;
+constexpr std::size_t MAX_BODY_SIZE = 16 * 1024 * 1024;
 
 export struct Activity {
     std::string summary;
@@ -84,12 +67,12 @@ std::string Lower(std::string s) {
 bool SecretEquals(std::string const& a, std::string const& b) {
     if (a.size() != b.size()) return false;
     unsigned char diff = 0;
-    for (size_t i = 0; i < a.size(); i++) diff |= a[i] ^ b[i];
+    for (std::size_t i = 0; i < a.size(); i++) diff |= a[i] ^ b[i];
     return diff == 0;
 }
 
 bool SendAll(int fd, std::string const& data) {
-    size_t sent = 0;
+    std::size_t sent = 0;
     while (sent < data.size()) {
         ssize_t n = send(fd, data.data() + sent, data.size() - sent, MSG_NOSIGNAL); // A vanished client must not raise SIGPIPE
         if (n <= 0) return false;
@@ -116,7 +99,7 @@ Json::Value RpcError(Json::Value const& id, int code, std::string const& message
 bool ReadRequest(int fd, Request& req) {
     std::string data;
     char buf[8192];
-    size_t header_end;
+    std::size_t header_end;
     while ((header_end = data.find("\r\n\r\n")) == std::string::npos) {
         if (data.size() > MAX_HEADER_SIZE) return false;
         ssize_t n = recv(fd, buf, sizeof(buf), 0);
@@ -125,17 +108,17 @@ bool ReadRequest(int fd, Request& req) {
     }
     std::string head = data.substr(0, header_end);
     std::string rest = data.substr(header_end + 4);
-    size_t line_end = head.find("\r\n");
+    std::size_t line_end = head.find("\r\n");
     std::string request_line = head.substr(0, line_end);
-    size_t sp1 = request_line.find(' ');
-    size_t sp2 = request_line.find(' ', sp1 + 1);
+    std::size_t sp1 = request_line.find(' ');
+    std::size_t sp2 = request_line.find(' ', sp1 + 1);
     if (sp1 == std::string::npos || sp2 == std::string::npos) return false;
     req.method = request_line.substr(0, sp1);
     req.path = request_line.substr(sp1 + 1, sp2 - sp1 - 1);
-    for (size_t pos = line_end; pos != std::string::npos && pos < head.size();) {
-        size_t next = head.find("\r\n", pos + 2);
+    for (std::size_t pos = line_end; pos != std::string::npos && pos < head.size();) {
+        std::size_t next = head.find("\r\n", pos + 2);
         std::string line = head.substr(pos + 2, next == std::string::npos ? std::string::npos : next - pos - 2);
-        size_t colon = line.find(':');
+        std::size_t colon = line.find(':');
         if (colon != std::string::npos) req.headers[Lower(Trim(line.substr(0, colon)))] = Trim(line.substr(colon + 1));
         pos = next;
     }
@@ -147,11 +130,11 @@ bool ReadRequest(int fd, Request& req) {
         return rest.size() <= MAX_BODY_SIZE + MAX_HEADER_SIZE;
     };
     if (Lower(req.headers["transfer-encoding"]).find("chunked") != std::string::npos) {
-        size_t pos = 0;
+        std::size_t pos = 0;
         while (true) {
-            size_t size_end;
+            std::size_t size_end;
             while ((size_end = rest.find("\r\n", pos)) == std::string::npos) if (!readMore()) return false;
-            size_t chunk = std::strtoul(rest.substr(pos, size_end - pos).c_str(), nullptr, 16);
+            std::size_t chunk = std::strtoul(rest.substr(pos, size_end - pos).c_str(), nullptr, 16);
             if (chunk == 0) return true;
             if (req.body.size() + chunk > MAX_BODY_SIZE) return false;
             while (rest.size() < size_end + 2 + chunk + 2) if (!readMore()) return false;
@@ -159,7 +142,7 @@ bool ReadRequest(int fd, Request& req) {
             pos = size_end + 2 + chunk + 2;
         }
     }
-    size_t length = std::strtoul(req.headers["content-length"].c_str(), nullptr, 10);
+    std::size_t length = std::strtoul(req.headers["content-length"].c_str(), nullptr, 10);
     if (length > MAX_BODY_SIZE) return false;
     while (rest.size() < length) if (!readMore()) return false;
     req.body = rest.substr(0, length);
@@ -368,7 +351,7 @@ export class Server {
 
 std::expected<std::string, std::string> GenerateToken() {
     unsigned char bytes[32];
-    for (size_t got = 0; got < sizeof(bytes);) {
+    for (std::size_t got = 0; got < sizeof(bytes);) {
         ssize_t n = getrandom(bytes + got, sizeof(bytes) - got, 0);
         if (n < 0 && errno != EINTR) return std::unexpected(std::format("Could not generate a token: {}", std::strerror(errno)));
         if (n > 0) got += n;

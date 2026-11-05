@@ -1,8 +1,8 @@
 #pragma once
 
 #include "ContractTree.hpp"
-#include <set>
 
+import std;
 import LLVMModule;
 import BasicTypes;
 

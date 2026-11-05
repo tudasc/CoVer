@@ -1,18 +1,11 @@
-#include <cstdio>
 #include <cstdlib>
-#include <iostream>
-#include <regex>
-#include <string>
-#include <filesystem>
-#include <array>
 #include <unistd.h>
-#include <utility>
-#include <vector>
 
 #include <llvm/ADT/SmallVector.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/CommandLine.h>
 
+import std;
 import IRPatch;
 
 #define SET_FROM_ENV(x,y) (std::getenv(y) ? std::getenv(y) : x)

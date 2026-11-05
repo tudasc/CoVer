@@ -1,23 +1,11 @@
 module;
 
-#include <algorithm>
-#include <expected>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <functional>
-#include <optional>
-#include <ranges>
-#include <set>
-#include <string>
-#include <tuple>
-#include <vector>
-
 #include <json/json.h>
 
 #include "ContractTree.hpp"
 
 export module TraceTools;
+import std;
 import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
@@ -71,7 +59,7 @@ std::vector<ToolSpec> SpecsOf(std::vector<Tool<Target>> const& tools) {
     return tools | std::views::transform([](Tool<Target> const& tool) { return tool.spec; }) | std::ranges::to<std::vector>();
 }
 
-constexpr size_t MAX_TOOL_OUTPUT = 60000; // Characters
+constexpr std::size_t MAX_TOOL_OUTPUT = 60000; // Characters
 constexpr int MAX_SOURCE_LINES = 400;
 
 // Whether the model may run the command line. Others are run by the user only (see CmdAccess); show_block and get_trace
@@ -81,21 +69,21 @@ bool ModelMayRun(std::string const& command) {
     return !cmd || cmd->access == InteractiveCmds::CmdAccess::ANY; // Unknown commands fail like the user's
 }
 
-std::string Truncate(std::string text, size_t max) {
+std::string Truncate(std::string text, std::size_t max) {
     if (text.size() <= max) return text;
-    size_t omitted = text.size() - max;
+    std::size_t omitted = text.size() - max;
     text.resize(max);
     return text + std::format("\n[Output truncated, {} more characters omitted]", omitted);
 }
 
 // The text without leading and trailing whitespace
 export std::string Trim(std::string const& text) {
-    size_t first = text.find_first_not_of(" \t\r\n");
+    std::size_t first = text.find_first_not_of(" \t\r\n");
     if (first == std::string::npos) return "";
     return text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
 }
 
-export std::string FirstLine(std::string const& text, size_t max = 160) {
+export std::string FirstLine(std::string const& text, std::size_t max = 160) {
     std::string line = text.substr(0, text.find('\n'));
     if (line.size() > max) line = line.substr(0, max) + "...";
     return line;

@@ -1,15 +1,9 @@
 module;
 
 #include <dlfcn.h>
-#include <expected>
-#include <filesystem>
-#include <format>
-#include <functional>
-#include <string>
-#include <utility>
-#include <vector>
 
 export module InteractiveUI;
+import std;
 import LLVMModule;
 import AnalysisReports;
 import ContractPassUtility;

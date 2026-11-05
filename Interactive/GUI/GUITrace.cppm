@@ -34,21 +34,10 @@ module;
 #include <QVBoxLayout>
 #include <QWheelEvent>
 
-#include <algorithm>
-#include <cmath>
-#include <format>
-#include <functional>
-#include <map>
-#include <optional>
-#include <ranges>
-#include <set>
-#include <string>
-#include <utility>
-#include <vector>
-
 #include "ContractTree.hpp"
 
 export module GUITrace;
+import std;
 import LLVMModule;
 import ContractPassUtility;
 import InteractiveUtils;
@@ -377,7 +366,7 @@ class BlockNode : public NodeItem {
             lines = {qstr("from " + block.start_loc), qstr("to " + block.end_loc)};
             if (block.jump_to) lines << QString("then jump to block %1").arg(*block.jump_to);
 
-            size_t info_width = 0;
+            std::size_t info_width = 0;
             for (TraceInstrView const& instr : this->instrs) info_width = std::max(info_width, instr.info.size());
             for (TraceInstrView const& instr : this->instrs)
                 instr_lines << qstr(std::format("{:0>3} {:<{}} {}", instr.index, instr.info, info_width, as_source ? instr.source : instr.ir));

@@ -1,8 +1,5 @@
-module;
-
-#include <map>
-
 export module BasicTypes;
+import std;
 import LLVMModule;
 
 using namespace llvm;

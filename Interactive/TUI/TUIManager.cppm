@@ -1,9 +1,5 @@
 module;
 
-#include <algorithm>
-#include <format>
-#include <functional>
-#include <fstream>
 #include <ftxui/component/app.hpp>
 #include <ftxui/component/component.hpp>
 #include <ftxui/component/component_base.hpp>
@@ -12,16 +8,11 @@ module;
 #include <ftxui/component/mouse.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
-#include <map>
-#include <memory>
-#include <set>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "ContractTree.hpp"
 
 export module TUIManager;
+import std;
 import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;

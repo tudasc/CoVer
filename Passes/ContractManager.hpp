@@ -1,16 +1,10 @@
 #pragma once
 
-#include <chrono>
-#include <functional>
 #include <json/value.h>
-#include <map>
-#include <memory>
-#include <set>
-#include <string>
-#include <vector>
 
 #include "ContractTree.hpp"
 
+import std;
 import LLVMModule;
 import ErrorMessage;
 import AnalysisReports;

@@ -2,23 +2,9 @@ module;
 
 #include "ContractTree.hpp"
 #include <cassert>
-#include <charconv>
 #include <climits>
 #include <cstdlib>
-#include <format>
-#include <functional>
-#include <iterator>
-#include <map>
-#include <memory>
-#include <queue>
-#include <set>
-#include <string>
-#include <string_view>
-#include <optional>
 #include <sys/types.h>
-#include <stack>
-#include <utility>
-#include <vector>
 
 #include "dsa/DSNode.h"
 #include "dsa/DSSupport.h"
@@ -26,6 +12,7 @@ module;
 #include "dsa/DSGraph.h"
 
 export module ContractPassUtility;
+import std;
 import LLVMModule;
 import ErrorMessage;
 
@@ -568,7 +555,6 @@ void determinizeModule() {
         return CA->getFile()->getFilename() < CB->getFile()->getFilename();
     });
 
-
     CUs->clearOperands();
     for (MDNode *N : Nodes)
         CUs->addOperand(N);
@@ -596,8 +582,6 @@ export StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* F
     }
     return nullptr;
 }
-
-
 
 export void Initialize(Module& M, bool _outputIR) {
 
@@ -637,7 +621,7 @@ export void Initialize(Module& M, bool _outputIR) {
     }
 }
 
-export std::optional<uint> getLineNumber(const Instruction* I) {
+export std::optional<unsigned int> getLineNumber(const Instruction* I) {
     if (const DebugLoc& N = I->getDebugLoc()) {
         return N.getLine();
     }
@@ -1016,7 +1000,7 @@ export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
 }
 
 // Annotate the pointer produced by I as allocated with at least size bytes (0: size unknown). Returns error message, empty on success
-export std::string setAllocAnnot(Instruction* I, uint64_t size) {
+export std::string setAllocAnnot(Instruction* I, std::uint64_t size) {
     if (!I->getType()->isPointerTy()) return "Instruction does not produce a pointer value!";
     Instruction* insertPt;
     if (InvokeInst* II = dyn_cast<InvokeInst>(I)) {

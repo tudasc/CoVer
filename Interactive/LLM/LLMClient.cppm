@@ -1,26 +1,10 @@
 module;
 
-#include <algorithm>
-#include <atomic>
-#include <cctype>
-#include <charconv>
-#include <chrono>
-#include <cstdint>
-#include <cstdlib>
-#include <expected>
-#include <format>
-#include <mutex>
-#include <sstream>
-#include <string>
-#include <system_error>
-#include <thread>
-#include <utility>
-#include <vector>
-
 #include <curl/curl.h>
 #include <json/json.h>
 
 export module LLMClient;
+import std;
 import TraceTools;
 import UserConfig;
 
@@ -62,10 +46,10 @@ export struct Reply {
     Stop stop = Stop::DONE;
     std::vector<std::string> notices; // Events worth showing to the user
     std::string refusal; // Reason given for a refusal, may be empty
-    uint64_t input_tokens = 0; // Including cached tokens
-    uint64_t cached_tokens = 0;
-    uint64_t output_tokens = 0; // Including reasoning tokens
-    uint64_t reasoning_tokens = 0; // Zero if the server does not report them
+    std::uint64_t input_tokens = 0; // Including cached tokens
+    std::uint64_t cached_tokens = 0;
+    std::uint64_t output_tokens = 0; // Including reasoning tokens
+    std::uint64_t reasoning_tokens = 0; // Zero if the server does not report them
 };
 
 // Settings of the connection, kept in the user's configuration
@@ -74,7 +58,7 @@ export struct Config {
     std::string model;
     std::string api_key; // Empty if the server needs none
     std::string effort; // Reasoning effort, empty for the server's default
-    uint64_t max_tokens = 0; // Maximum length of a response, 0 for the server's default
+    std::uint64_t max_tokens = 0; // Maximum length of a response, 0 for the server's default
 };
 
 // Error message if the settings are incomplete, otherwise empty
@@ -147,12 +131,12 @@ struct Transfer {
     std::atomic<bool> const* cancel;
 };
 
-size_t WriteCallback(char* data, size_t size, size_t nmemb, void* userdata) {
+std::size_t WriteCallback(char* data, std::size_t size, std::size_t nmemb, void* userdata) {
     static_cast<Transfer*>(userdata)->response.append(data, size * nmemb);
     return size * nmemb;
 }
 
-size_t HeaderCallback(char* data, size_t size, size_t nmemb, void* userdata) {
+std::size_t HeaderCallback(char* data, std::size_t size, std::size_t nmemb, void* userdata) {
     std::string header(data, size * nmemb);
     std::string const name = "retry-after:";
     if (header.size() > name.size() && std::equal(name.begin(), name.end(), header.begin(), [](char a, char b) { return a == std::tolower(b); }))

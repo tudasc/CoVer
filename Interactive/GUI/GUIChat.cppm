@@ -20,15 +20,10 @@ module;
 #include <QUrl>
 #include <QVBoxLayout>
 
-#include <expected>
-#include <functional>
-#include <sstream>
-#include <string>
-#include <vector>
-
 #include "ContractTree.hpp"
 
 export module GUIChat;
+import std;
 import InteractiveSession;
 import GUIManager;
 import LLMChat;

@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.28)
+cmake_minimum_required(VERSION 4.5)
 
 # Work around issues when LLVM installs to lib/ but system libdir is lib64/
 set(CMAKE_INSTALL_LIBDIR "lib" CACHE PATH "Library install directory" FORCE)

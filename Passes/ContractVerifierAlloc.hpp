@@ -2,14 +2,8 @@
 
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
-#include <algorithm>
-#include <flat_map>
-#include <map>
-#include <memory>
-#include <ranges>
-#include <set>
-#include <utility>
 
+import std;
 import LLVMModule;
 
 using namespace ContractTree;
@@ -59,7 +53,7 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
                 AllocStatusVal CurVal = AllocStatusVal::UNDEF;
                 AllocInfo const& getAllocInfo(Value const* V) const { return *candidate_set->at(V); }
                 bool hasAllocInfo(Value const* V) const { return candidate_set->contains(V); }
-                size_t size() const { return candidate_set->size(); }
+                std::size_t size() const { return candidate_set->size(); }
                 CandidateMap const& candidates() const { return *candidate_set; }
                 bool sameCandidates(AllocStatus const& other) const { return candidate_set == other.candidate_set; }
                 void addCopy(Value const* Copy, Value const* Parent, ParamAccess acc) {

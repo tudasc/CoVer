@@ -1,26 +1,9 @@
 module;
 
-#include <algorithm>
-#include <array>
-#include <charconv>
-#include <cstdint>
-#include <cstdlib>
-#include <expected>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <functional>
-#include <optional>
-#include <ranges>
-#include <set>
-#include <sstream>
-#include <string>
-#include <string_view>
-#include <system_error>
-#include <utility>
-#include <vector>
+#include <sys/wait.h>
 
 export module InteractiveCmds;
+import std;
 import LLVMModule;
 import ContractPassUtility;
 import IRPatch;
@@ -277,7 +260,7 @@ CmdResult CmdAllocCreate(std::vector<std::string> const& args, TraceSession& ses
     std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[1], *block, session);
     if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
     if (args[2].starts_with("-")) return {CmdResultCode::INVALID_INPUT, "Size argument must not be negative!"};
-    std::expected<uint64_t, std::string> size = ParseIntArg(args[2], "Size");
+    std::expected<std::uint64_t, std::string> size = ParseIntArg(args[2], "Size");
     if (!size) return {CmdResultCode::INVALID_INPUT, size.error()};
     std::string err = ContractPassUtility::setAllocAnnot(*selected, *size);
     if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};

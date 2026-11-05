@@ -1,11 +1,10 @@
 #pragma once
 
-#include <memory>
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 #include <json/json.h>
-#include <optional>
 
+import std;
 import LLVMModule;
 import ErrorMessage;
 

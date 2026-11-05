@@ -1,16 +1,9 @@
 module;
 
-#include <filesystem>
-#include <format>
-#include <functional>
-#include <fstream>
-#include <memory>
-#include <string>
-#include <vector>
-
 #include "ContractTree.hpp"
 
 export module InteractiveUtils;
+import std;
 import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
@@ -55,7 +48,7 @@ export std::string formatDuration(double seconds) {
     return seconds < 1 ? std::format("{:.1f}ms", seconds * 1000) : std::format("{:.2f}s", seconds);
 }
 
-export std::string startMenuTitle(size_t num_contracts, double parse_time) {
+export std::string startMenuTitle(std::size_t num_contracts, double parse_time) {
     return std::format("Start Menu ({} contracts to be analysed, parsed in {})", num_contracts, formatDuration(parse_time));
 }
 

@@ -2,9 +2,8 @@
 
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
-#include <format>
-#include <functional>
 
+import std;
 import LLVMModule;
 import ContractPassUtility;
 import ErrorMessage;

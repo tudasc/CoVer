@@ -1,15 +1,5 @@
-module;
-
-#include <algorithm>
-#include <cctype>
-#include <format>
-#include <fstream>
-#include <map>
-#include <string>
-#include <string_view>
-#include <vector>
-
 export module IRPatch;
+import std;
 
 // Applies context diffs (diff -c) of LLVM IR files, as written by the TUI "diff" command.
 // Unlike patch(1), context lines are compared with metadata IDs, attribute group IDs and numeric suffixes
@@ -20,7 +10,7 @@ namespace IRPatch {
 struct NormLine {
     std::string norm;
     std::vector<std::string> tokens; // Masked out parts, in order of appearance
-    std::vector<size_t> positions;
+    std::vector<std::size_t> positions;
 };
 
 struct PatchLine {
@@ -45,7 +35,7 @@ inline bool isNumber(std::string_view s) {
 // ".str.20.7" -> ".str", "struct.foo.27" -> "struct.foo", "0" -> ""
 inline std::string stripNumSuffix(std::string_view name) {
     if (isNumber(name)) return "";
-    for (size_t dot = name.find_last_of('.'); dot != std::string_view::npos && dot != 0 && isNumber(name.substr(dot + 1)); dot = name.find_last_of('.')) {
+    for (std::size_t dot = name.find_last_of('.'); dot != std::string_view::npos && dot != 0 && isNumber(name.substr(dot + 1)); dot = name.find_last_of('.')) {
         name = name.substr(0, dot);
     }
     return std::string(name);
@@ -53,10 +43,10 @@ inline std::string stripNumSuffix(std::string_view name) {
 
 inline NormLine normalize(std::string_view line) {
     NormLine res;
-    size_t i = 0;
+    std::size_t i = 0;
     while (i < line.size()) {
         char c = line[i];
-        size_t end = i + 1;
+        std::size_t end = i + 1;
         if ((c == '!' || c == '#') && end < line.size() && std::isdigit((unsigned char)line[end])) {
             while (end < line.size() && std::isdigit((unsigned char)line[end])) end++;
             res.norm += c;
@@ -76,19 +66,19 @@ inline NormLine normalize(std::string_view line) {
 }
 
 // Returns the kind of the metadata attachment whose value starts at pos (e.g. "dbg" for ", !dbg !12"), or an empty string
-inline std::string attachmentKind(std::string_view line, size_t pos) {
+inline std::string attachmentKind(std::string_view line, std::size_t pos) {
     if (pos < 2 || line[pos - 1] != ' ') return "";
-    size_t k = pos - 2;
+    std::size_t k = pos - 2;
     while (k > 0 && isIdentChar(line[k])) k--;
     if (line[k] != '!' || k + 1 == pos - 1 || k < 2 || line.substr(k - 2, 2) != ", ") return "";
     return std::string(line.substr(k + 1, pos - 1 - (k + 1)));
 }
 
 inline std::string findDbg(std::string_view line) {
-    size_t pos = line.find("!dbg !");
+    std::size_t pos = line.find("!dbg !");
     if (pos == std::string_view::npos) return "";
     pos += 5;
-    size_t end = pos + 1;
+    std::size_t end = pos + 1;
     while (end < line.size() && std::isdigit((unsigned char)line[end])) end++;
     return std::string(line.substr(pos, end - pos));
 }
@@ -96,8 +86,8 @@ inline std::string findDbg(std::string_view line) {
 inline std::string translateLine(std::string const& line, std::map<std::string, std::string> const& tokmap, std::string const& fallback_dbg, std::string& err) {
     NormLine nl = normalize(line);
     std::string res;
-    size_t copied = 0;
-    for (size_t t = 0; t < nl.tokens.size(); t++) {
+    std::size_t copied = 0;
+    for (std::size_t t = 0; t < nl.tokens.size(); t++) {
         std::string const& tok = nl.tokens[t];
         res += line.substr(copied, nl.positions[t] - copied);
         copied = nl.positions[t] + tok.size();
@@ -172,7 +162,7 @@ export std::string applyPatch(std::string const& target_path, std::string const&
     long const tsize = target.size();
     long copied = 0;
     long offset = 0;
-    for (size_t h_idx = 0; h_idx < hunks.size(); h_idx++) {
+    for (std::size_t h_idx = 0; h_idx < hunks.size(); h_idx++) {
         Hunk const& h = hunks[h_idx];
         std::vector<NormLine> old_norm;
         for (PatchLine const& l : h.old_lines) old_norm.push_back(normalize(l.text));
@@ -197,12 +187,12 @@ export std::string applyPatch(std::string const& target_path, std::string const&
         for (long k = 0; k < n; k++) {
             NormLine const& from = old_norm[k];
             NormLine const& to = tnorm[pos + k];
-            for (size_t t = 0; t < std::min(from.tokens.size(), to.tokens.size()); t++) tokmap.emplace(from.tokens[t], to.tokens[t]);
+            for (std::size_t t = 0; t < std::min(from.tokens.size(), to.tokens.size()); t++) tokmap.emplace(from.tokens[t], to.tokens[t]);
         }
 
         // Merge: context lines are taken from the target, inserted lines from the patch
         std::vector<std::pair<std::string, bool>> merged; // (line, is from target)
-        size_t i = 0, j = 0;
+        std::size_t i = 0, j = 0;
         while (i < h.old_lines.size() || j < h.new_lines.size()) {
             if (i < h.old_lines.size() && h.old_lines[i].kind != ' ') { i++; continue; }
             if (j < h.new_lines.size() && h.new_lines[j].kind != ' ') { merged.push_back({h.new_lines[j++].text, false}); continue; }
@@ -210,11 +200,11 @@ export std::string applyPatch(std::string const& target_path, std::string const&
             merged.push_back({target[pos + i], true});
             i++; j++;
         }
-        for (size_t k = 0; k < merged.size(); k++) {
+        for (std::size_t k = 0; k < merged.size(); k++) {
             if (merged[k].second) continue;
             std::string fallback_dbg;
-            for (size_t b = k; b-- > 0 && fallback_dbg.empty();) if (merged[b].second) fallback_dbg = findDbg(merged[b].first);
-            for (size_t f = k + 1; f < merged.size() && fallback_dbg.empty(); f++) if (merged[f].second) fallback_dbg = findDbg(merged[f].first);
+            for (std::size_t b = k; b-- > 0 && fallback_dbg.empty();) if (merged[b].second) fallback_dbg = findDbg(merged[b].first);
+            for (std::size_t f = k + 1; f < merged.size() && fallback_dbg.empty(); f++) if (merged[f].second) fallback_dbg = findDbg(merged[f].first);
             merged[k].first = translateLine(merged[k].first, tokmap, fallback_dbg, err);
             if (!err.empty()) return std::format("{}: Hunk {}: {}", patch_path, h_idx + 1, err);
         }

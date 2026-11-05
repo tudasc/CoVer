@@ -1,8 +1,5 @@
-module;
-
-#include <vector>
-
 export module AnalysisCleanup;
+import std;
 import LLVMModule;
 
 using namespace llvm;

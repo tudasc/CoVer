@@ -3,6 +3,7 @@
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
 
+import std;
 import LLVMModule;
 import ContractPassUtility;
 import InteractiveUI;

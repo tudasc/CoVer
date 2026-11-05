@@ -33,22 +33,13 @@ module;
 #include <QTreeWidget>
 #include <QVBoxLayout>
 
-#include <algorithm>
 #include <clocale>
 #include <cstdlib>
-#include <format>
-#include <functional>
-#include <map>
-#include <memory>
-#include <optional>
-#include <set>
-#include <string>
-#include <utility>
-#include <vector>
 
 #include "ContractTree.hpp"
 
 export module GUIManager;
+import std;
 import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;

@@ -1,12 +1,9 @@
 #pragma once
 
-#include <memory>
-#include <set>
-#include <unordered_set>
-#include <vector>
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
 
+import std;
 import LLVMModule;
 import BasicTypes;
 import ErrorMessage;
@@ -20,12 +17,12 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
     private:
         // Structure Creation
         Constant* createTagGlobal(Module &M); // Returns type, value
-        std::pair<Constant*, int64_t> createReferencesGlobal(Module &M);
-        std::pair<Constant*, int64_t> createContractsGlobal(Module& M); // Returns value, number of elems (type is ptr)
+        std::pair<Constant*, std::int64_t> createReferencesGlobal(Module &M);
+        std::pair<Constant*, std::int64_t> createContractsGlobal(Module& M); // Returns value, number of elems (type is ptr)
         Constant* createScopeGlobal(Module& M, std::shared_ptr<ContractFormula> forms); // Returns value, number of elems (type is ptr)
         Constant* createFormulaGlobal(Module& M, std::shared_ptr<ContractFormula> form);
         Constant* createOperationGlobal(Module& M, std::shared_ptr<const Operation> op);
-        std::pair<Constant*,int64_t> createParamList(Module& M, std::vector<CallParam> p);
+        std::pair<Constant*,std::int64_t> createParamList(Module& M, std::vector<CallParam> p);
         Constant* createMathExprGlobal(Module& M, std::shared_ptr<MathExpr> expr);
 
         // Auxiliary

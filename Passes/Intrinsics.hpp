@@ -1,7 +1,6 @@
 #pragma once
 
-#include <string>
-
+import std;
 import LLVMModule;
 import BasicTypes;
 

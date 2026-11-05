@@ -1,20 +1,11 @@
 #include "Instrument.hpp"
 #include "ContractManager.hpp"
 #include "ContractTree.hpp"
-#include <cstdint>
 #include <cstdlib>
-#include <fstream>
 #include <json/reader.h>
 #include <json/value.h>
-#include <map>
-#include <memory>
-#include <optional>
-#include <string>
-#include <tuple>
-#include <utility>
-#include <vector>
 
-
+import std;
 import LLVMModule;
 import ErrorMessage;
 import BasicTypes;
@@ -77,12 +68,12 @@ PreservedAnalyses InstrumentPass::run(Module &M,
 
     // Create reference globals
     Constant* ReferencesVal;
-    uint64_t num_refs;
+    std::uint64_t num_refs;
     std::tie(ReferencesVal, num_refs) = createReferencesGlobal(M);
 
     // Create Contract globals
     Constant* ContractsVal;
-    uint64_t num_contrs;
+    std::uint64_t num_contrs;
     std::tie(ContractsVal, num_contrs) = createContractsGlobal(M);
 
     // Package database
@@ -179,7 +170,7 @@ Constant* InstrumentPass::createTagGlobal(Module& M) {
     return TagsStruct;
 }
 
-std::pair<Constant*, int64_t> InstrumentPass::createReferencesGlobal(Module &M) {
+std::pair<Constant*, std::int64_t> InstrumentPass::createReferencesGlobal(Module &M) {
     std::vector<Constant*> crefs;
     for (ErrorMessage const& msg : err_msgs) {
         GlobalVariable* emsg = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), msg.type), "CONTR_ERROR_TYPE_" + msg.type);
@@ -194,7 +185,7 @@ std::pair<Constant*, int64_t> InstrumentPass::createReferencesGlobal(Module &M) 
     return {arrRefsGlobal, crefs.size()};
 }
 
-std::pair<Constant*, int64_t> InstrumentPass::createContractsGlobal(Module& M) {
+std::pair<Constant*, std::int64_t> InstrumentPass::createContractsGlobal(Module& M) {
     std::vector<Constant*> contractConsts;
     for (ContractManagerAnalysis::Contract C : DB->Contracts) {
         if (!C.Data.Pre && !C.Data.Post) continue;
@@ -225,14 +216,14 @@ Constant* InstrumentPass::createFormulaGlobal(Module& M, std::shared_ptr<Contrac
     Constant* msg = Basic_Types.Null_Const;
     std::string descriptor = form->Message ? *form->Message : form->ExprStr;
     msg = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), descriptor), "CONTR_MSG_" + descriptor);
-    int64_t connective;
+    std::int64_t connective;
     if (form->Children.empty()) {
         // Expression
         std::shared_ptr<const Operation> OP = static_pointer_cast<ContractExpression>(form)->OP;
         op_const = createOperationGlobal(M, OP);
-        connective = (int64_t)OP->type();
+        connective = (std::int64_t)OP->type();
     } else {
-        connective = (int64_t)form->type;
+        connective = (std::int64_t)form->type;
         std::vector<Constant*> childConsts;
         for (std::shared_ptr<ContractFormula> child : form->Children) {
             childConsts.push_back(createFormulaGlobal(M, child));
@@ -270,7 +261,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
             if (!F) WithColor::warning() << "Specified function \"" << cOP->Function << "\" in calloperation does not exist or unused in module. This may cause issues for instrumentation.\n";
             else mentioned_funcs.push_back(F);
             Constant* funcStr = ConstantDataArray::getString(M.getContext(), cOP->Function);
-            std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
+            std::pair<Constant*,std::int64_t> paramGlobal = createParamList(M, cOP->Params);
             data = ConstantStruct::get(CallOp_Type, {createConstantGlobal(M, funcStr, "CONTR_FUNC_STR_" + cOP->Function), paramGlobal.first, Basic_Types.getInt(paramGlobal.second), F ? F : Basic_Types.Null_Const});
             name = "CONTR_CALLOP";
             break;
@@ -278,7 +269,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         case FormulaType::CALLTAG: {
             std::shared_ptr<const CallOperation> cOP = static_pointer_cast<const CallOperation>(op);
             data = createConstantGlobal(M, ConstantDataArray::getString(M.getContext(), cOP->Function), "CONTR_TAG_STR_" + cOP->Function);
-            std::pair<Constant*,int64_t> paramGlobal = createParamList(M, cOP->Params);
+            std::pair<Constant*,std::int64_t> paramGlobal = createParamList(M, cOP->Params);
             data = ConstantStruct::get(CallTagOp_Type, {data, paramGlobal.first, Basic_Types.getInt(paramGlobal.second)});
             name = "CONTR_CALLTAGOP";
             break;
@@ -286,9 +277,9 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
         case FormulaType::RELEASE: {
             std::shared_ptr<const ReleaseOperation> rOP = static_pointer_cast<const ReleaseOperation>(op);
             Constant* forbidden_op = createOperationGlobal(M, rOP->Forbidden);
-            Constant* forb_type = Basic_Types.getInt((int64_t)rOP->Forbidden->type());
+            Constant* forb_type = Basic_Types.getInt((std::int64_t)rOP->Forbidden->type());
             Constant* release_op = createOperationGlobal(M, rOP->Until);
-            Constant* release_type = Basic_Types.getInt((int64_t)rOP->Until->type());
+            Constant* release_type = Basic_Types.getInt((std::int64_t)rOP->Until->type());
             data = ConstantStruct::get(ReleaseOp_Type, {release_op, release_type, forbidden_op, forb_type});
             name = "CONTR_RELEASE";
             break;
@@ -358,7 +349,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
                 deallocs_C = ConstantArray::get(deallocators_Type, deallocators);
                 deallocs_C = createConstantGlobal(M, deallocs_C, "CONTR_DEALLOCATOR_LIST");
             }
-            data = ConstantStruct::get(AllocOp_Type, {Basic_Types.getInt(allocOp->contrP), Basic_Types.getInt((int32_t)allocOp->contrParamAccess),
+            data = ConstantStruct::get(AllocOp_Type, {Basic_Types.getInt(allocOp->contrP), Basic_Types.getInt((std::int32_t)allocOp->contrParamAccess),
                                                            allocs_C, Basic_Types.getInt(allocators.size()),
                                                            deallocs_C, Basic_Types.getInt(deallocators.size())});
             name = "CONTR_ALLOCOP";
@@ -372,7 +363,7 @@ Constant* InstrumentPass::createOperationGlobal(Module& M, std::shared_ptr<const
 Constant* InstrumentPass::createMathExprGlobal(Module& M, std::shared_ptr<MathExpr> expr) {
     Constant* val = Basic_Types.getInt(expr->value);
     Constant* isArg = Basic_Types.getBool(expr->isArg);
-    Constant* type = Basic_Types.getInt((int32_t)expr->type);
+    Constant* type = Basic_Types.getInt((std::int32_t)expr->type);
     Constant* other = Basic_Types.Null_Const;
     if (expr->type != MathType::UNARY_VALUE) {
         other = createMathExprGlobal(M, expr->other);
@@ -382,10 +373,9 @@ Constant* InstrumentPass::createMathExprGlobal(Module& M, std::shared_ptr<MathEx
 }
 
 GlobalVariable* InstrumentPass::createConstantGlobalUnique(Module& M, Constant* C, std::string name) {
-    static uint64_t globals_counter = 0; // For name uniqueness
+    static std::uint64_t globals_counter = 0; // For name uniqueness
     return createConstantGlobal(M, C, name + "_" + std::to_string(globals_counter++));
 }
-
 
 GlobalVariable* InstrumentPass::createConstantGlobal(Module& M, Constant* C, std::string name) {
     GlobalVariable* GV = dyn_cast<GlobalVariable>(M.getOrInsertGlobal(name, C->getType()));
@@ -505,11 +495,11 @@ void InstrumentPass::instrumentRW(Module &M) {
     }
 }
 
-std::pair<Constant*,int64_t> InstrumentPass::createParamList(Module& M, std::vector<CallParam> params) {
+std::pair<Constant*,std::int64_t> InstrumentPass::createParamList(Module& M, std::vector<CallParam> params) {
     if (params.empty()) return { Basic_Types.Null_Const, 0 };
     std::vector<Constant*> paramConsts;
     for (CallParam param : params) {
-        Constant* pConst = ConstantStruct::get(Param_Type, {Basic_Types.getInt(param.callP), Basic_Types.getBool(param.callPisTagVar), Basic_Types.getInt(param.contrP), Basic_Types.getInt((int32_t)param.contrParamAccess)});
+        Constant* pConst = ConstantStruct::get(Param_Type, {Basic_Types.getInt(param.callP), Basic_Types.getBool(param.callPisTagVar), Basic_Types.getInt(param.contrP), Basic_Types.getInt((std::int32_t)param.contrParamAccess)});
         paramConsts.push_back(pConst);
     }
     ArrayType* paramArr_Type = ArrayType::get(Param_Type, paramConsts.size());

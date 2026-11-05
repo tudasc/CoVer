@@ -1,10 +1,5 @@
-module;
-
-#include <functional>
-#include <vector>
-#include <string>
-
 export module ErrorMessage;
+import std;
 
 export struct FileReference {
     std::string file;
@@ -17,8 +12,8 @@ export struct FileReference {
 
 template<>
 struct std::hash<FileReference> {
-    size_t operator()(FileReference const& ref) const {
-        return std::hash<uint>()(ref.line) ^ std::hash<uint>()(ref.column) ^ std::hash<std::string>()(ref.file);
+    std::size_t operator()(FileReference const& ref) const {
+        return std::hash<unsigned int>()(ref.line) ^ std::hash<unsigned int>()(ref.column) ^ std::hash<std::string>()(ref.file);
     }
 };
 

@@ -1,8 +1,5 @@
-module;
-
-#include <string>
-
 export module GUISettings;
+import std;
 import InteractiveSession;
 import GUIChat;
 

@@ -1,14 +1,9 @@
 module;
 
-#include <functional>
-#include <map>
-#include <memory>
-#include <string>
-#include <vector>
-
 #include "ContractTree.hpp"
 
 export module AnalysisReports;
+import std;
 import LLVMModule;
 import ErrorMessage;
 

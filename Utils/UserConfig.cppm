@@ -1,22 +1,14 @@
 module;
 
 #include <cerrno>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <expected>
 #include <fcntl.h>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <string>
 #include <sys/stat.h>
-#include <system_error>
 #include <unistd.h>
 
 #include <json/json.h>
 
 export module UserConfig;
+import std;
 
 // CoVer's per-user settings: a JSON value per key, kept in $XDG_CONFIG_HOME/cover/settings.json.
 // The file is readable by the user only, so settings may hold secrets.

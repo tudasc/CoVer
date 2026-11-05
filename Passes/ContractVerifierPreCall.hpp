@@ -2,10 +2,8 @@
 
 #include "ContractTree.hpp"
 #include "ContractManager.hpp"
-#include <map>
-#include <set>
-#include <vector>
 
+import std;
 import LLVMModule;
 import ContractPassUtility;
 import InteractiveUI;

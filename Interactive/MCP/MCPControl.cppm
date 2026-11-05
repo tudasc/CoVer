@@ -1,20 +1,11 @@
 module;
 
-#include <algorithm>
-#include <format>
-#include <fstream>
-#include <functional>
-#include <memory>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <vector>
-
 #include <json/json.h>
 
 #include "ContractTree.hpp"
 
 export module MCPControl;
+import std;
 import AnalysisReports;
 import ErrorMessage;
 import InteractiveUtils;

@@ -1,9 +1,5 @@
-module;
-
-#include <string>
-#include <vector>
-
 export module InteractiveFrontend;
+import std;
 import AnalysisReports;
 import InteractiveSession;
 import InteractiveUtils;

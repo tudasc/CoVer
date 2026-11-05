@@ -1,23 +1,9 @@
 module;
 
-#include <array>
-#include <atomic>
-#include <chrono>
-#include <cstdint>
-#include <expected>
-#include <format>
-#include <functional>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <string>
-#include <thread>
-#include <utility>
-#include <vector>
-
 #include <json/json.h>
 
 export module LLMChat;
+import std;
 import InteractiveSession;
 import InteractiveUtils;
 import InteractiveCmds;
@@ -117,13 +103,13 @@ export class ChatSession {
         std::vector<ChatEntry> transcript;
         std::function<void()> on_change;
         bool busy = false;
-        uint64_t generation = 0; // Identifies the pending request, responses to older ones are dropped
+        std::uint64_t generation = 0; // Identifies the pending request, responses to older ones are dropped
         std::shared_ptr<std::atomic<bool>> cancel;
         std::shared_ptr<bool> alive = std::make_shared<bool>(true); // Expires with the session, guards posted tasks
         int tool_rounds = 0;
         std::chrono::steady_clock::time_point request_start;
-        size_t seen_history = 0; // History entries the model knows about
-        uint64_t input_tokens = 0, cached_tokens = 0, output_tokens = 0, reasoning_tokens = 0;
+        std::size_t seen_history = 0; // History entries the model knows about
+        std::uint64_t input_tokens = 0, cached_tokens = 0, output_tokens = 0, reasoning_tokens = 0;
 
         void Notify() {
             if (on_change) on_change();
@@ -133,7 +119,7 @@ export class ChatSession {
         std::string NewUserCommands() {
             InteractiveSession::History const& history = session.GetHistory();
             std::string cmds;
-            for (size_t i = seen_history; i < history.size(); i++) {
+            for (std::size_t i = seen_history; i < history.size(); i++) {
                 InteractiveCmds::CmdInfo const* cmd = InteractiveCmds::FindCommand(history[i].first);
                 if (cmd && cmd->access == InteractiveCmds::CmdAccess::FRONTEND) continue;
                 cmds += std::format("{} -> {}\n", history[i].first, history[i].second.res.empty() ? InteractiveSession::resultCodeStr(history[i].second.code) : TraceTools::FirstLine(history[i].second.res));
@@ -145,7 +131,7 @@ export class ChatSession {
         void Request() {
             busy = true;
             request_start = std::chrono::steady_clock::now();
-            uint64_t id = ++generation;
+            std::uint64_t id = ++generation;
             cancel = std::make_shared<std::atomic<bool>>(false);
             std::weak_ptr<bool> guard = alive;
             // The worker only uses copies, the session may be gone when it finishes
@@ -158,7 +144,7 @@ export class ChatSession {
             Notify();
         }
 
-        void HandleReply(uint64_t id, std::expected<Reply, std::string> const& res) {
+        void HandleReply(std::uint64_t id, std::expected<Reply, std::string> const& res) {
             if (id != generation || !busy) return; // Cancelled
             busy = false;
             if (!res) {
@@ -260,7 +246,7 @@ export std::string const SETTINGS_INTRO = "The chat works with servers implement
                                           "The model must support tool use. The settings are saved in your CoVer user settings, which only you can read.";
 
 // Indices of the fields in SettingsForm, in the order the form shows them
-export enum SettingsFieldIndex : size_t { FIELD_URL, FIELD_MODEL, FIELD_API_KEY, FIELD_EFFORT, FIELD_MAX_TOKENS, NUM_SETTINGS_FIELDS };
+export enum SettingsFieldIndex : std::size_t { FIELD_URL, FIELD_MODEL, FIELD_API_KEY, FIELD_EFFORT, FIELD_MAX_TOKENS, NUM_SETTINGS_FIELDS };
 
 export using SettingsForm = std::array<SettingsField, NUM_SETTINGS_FIELDS>;
 

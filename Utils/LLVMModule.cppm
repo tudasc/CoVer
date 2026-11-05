@@ -1,6 +1,5 @@
 module;
 
-#include <cstdint>
 #include <llvm/Config/llvm-config.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
@@ -44,6 +43,7 @@ module;
 #include <llvm/Plugins/PassPlugin.h>
 
 export module LLVMModule;
+import std;
 
 export namespace llvm {
     using llvm::Value;
@@ -180,6 +180,6 @@ export namespace llvm::Intrinsic {
 
 // Values of LLVM macros, which cannot be exported themselves
 export namespace LLVMModule {
-    constexpr uint32_t PLUGIN_API_VERSION = LLVM_PLUGIN_API_VERSION;
+    constexpr std::uint32_t PLUGIN_API_VERSION = LLVM_PLUGIN_API_VERSION;
     constexpr char const* VERSION_STRING = LLVM_VERSION_STRING;
 }

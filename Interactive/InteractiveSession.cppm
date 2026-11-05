@@ -1,25 +1,9 @@
 module;
 
-#include <charconv>
-#include <filesystem>
-#include <format>
-#include <fstream>
-#include <functional>
-#include <map>
-#include <optional>
-#include <ostream>
-#include <ranges>
-#include <set>
-#include <string>
-#include <string_view>
-#include <system_error>
-#include <type_traits>
-#include <utility>
-#include <vector>
-
 #include "ContractTree.hpp"
 
 export module InteractiveSession;
+import std;
 import AnalysisReports;
 import LLVMModule;
 import ContractPassUtility;
