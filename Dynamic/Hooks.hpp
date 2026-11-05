@@ -122,6 +122,11 @@ namespace {
                 break;
             case OR:
                 if (num_fulfilled) contract_status[parent] = Fulfillment::FULFILLED;
+                else if (!has_unknown) {
+                    contract_status[parent] = Fulfillment::VIOLATED;
+                    validateState(parent);
+                }
+                break;
             case XOR:
                 if (num_fulfilled > 1) {
                     contract_status[parent] = Fulfillment::VIOLATED;
