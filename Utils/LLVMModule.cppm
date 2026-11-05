@@ -20,6 +20,9 @@ module;
 #include <llvm/IR/ModuleSlotTracker.h>
 #include <llvm/Support/WithColor.h>
 #include <llvm/IR/PassManager.h>
+#include <llvm/Analysis/MemorySSA.h>
+#include <llvm/IR/Dominators.h>
+#include <llvm/Support/ModRef.h>
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/InstIterator.h>
@@ -154,6 +157,13 @@ export namespace llvm {
     using llvm::MDTuple;
     using llvm::PHINode;
     using llvm::PassPluginLibraryInfo;
+    using llvm::MemorySSA;
+    using llvm::MemorySSAAnalysis;
+    using llvm::MemoryAccess;
+    using llvm::MemoryEffects;
+    using llvm::ModRefInfo;
+    using llvm::DominatorTree;
+    using llvm::DominatorTreeAnalysis;
 }
 
 export namespace llvm::cl {

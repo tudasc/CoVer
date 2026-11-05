@@ -121,6 +121,7 @@ PreservedAnalyses InstrumentPass::run(Module &M,
         SmallVector<ReturnInst *, 8> Returns;
         CloneFunctionInto(newMain, mainF, VMap, CloneFunctionChangeType::LocalChangesOnly, Returns);
         mainF->replaceAllUsesWith(newMain);
+        MAM->getResult<FunctionAnalysisManagerModuleProxy>(M).getManager().clear(*mainF, mainF->getName());
         mainF->eraseFromParent();
         mainF = newMain;
     }
@@ -133,6 +134,15 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     instrument_ignore.insert({argcptr, argvptr});
     instrument_ignore.insert(new StoreInst(Vargc, argcptr, initFuncCI->getIterator()));
     instrument_ignore.insert(new StoreInst(Vargv, argvptr, initFuncCI->getIterator()));
+
+    // Collect annotated indirect calls before instrumenting
+    for (Function& F : M) {
+        for (Instruction& I : instructions(F)) {
+            CallBase* CB = dyn_cast<CallBase>(&I);
+            if (!CB || !CB->isIndirectCall()) continue;
+            for (Function* Target : ContractPassUtility::getFPAnnots(CB)) fpAnnotatedCalls[Target].push_back(CB);
+        }
+    }
 
     // Create callbacks
     if (ClInstrumentType != "funconly")
@@ -513,19 +523,13 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
     for (User* U : F->users()) {
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand() == F) callsites.push_back(CB);
-            else if (CB->getCalledOperand()->getName() == "CoVer_AnnotFP") {
-                // There is an annotated indirect call to this function. Need to instrument it as well
-                Instruction* cur = CB->getNextNode();
-                for (int i = 0; i < 5 && cur; i++) {
-                    if (CallBase* indirect = dyn_cast<CallBase>(cur)) {
-                        if (ContractPassUtility::getFPAnnots(indirect).contains(F)) {
-                            callsites.push_back(indirect);
-                            break;
-                        }
-                    }
-                    cur = cur->getNextNode();
-                }
-            }
+        }
+    }
+    // Annotated indirect calls to this function need to be instrumented as well.
+    // Instrumenting replaces the call, so each one is only instrumented once
+    if (fpAnnotatedCalls.contains(F)) {
+        for (CallBase* indirect : fpAnnotatedCalls[F]) {
+            if (instrumentedFPCalls.insert(indirect).second) callsites.push_back(indirect);
         }
     }
     for (CallBase* callsite : callsites) {
@@ -662,7 +666,7 @@ bool InstrumentPass::checkIsStrParam(CallBase* CB, int idx) {
 
     // If optimization is turned it it will just do load from str -> store.
     // So first do this, then check if global
-    StoreInst* SI = ContractPassUtility::getLastStore(CB, idx, &MAM->getResult<FunctionAnalysisManagerModuleProxy>(*CB->getModule()).getManager());
+    StoreInst* SI = ContractPassUtility::getLastStore(CB, idx);
     if (SI && isa<LoadInst>(SI->getValueOperand())) {
         LoadInst* LI = dyn_cast<LoadInst>(SI->getValueOperand());
         if (isa<GlobalVariable>(LI->getPointerOperand())) {

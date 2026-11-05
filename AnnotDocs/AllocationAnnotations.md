@@ -53,6 +53,18 @@ define i32 @main() {
 
 The annotation is placed directly after the instruction producing the pointer.
 
+## Source Level Annotations
+
+Allocation annotations can also be written directly in the source code, annotating a variable after it was assigned:
+
+```c
+int* buf = (int*)(((uintptr_t)raw + 63) & ~(uintptr_t)63); // Align to 64 bytes
+CoVer_AnnotAlloc(buf, 1024);
+MPI_Irecv(buf, 256, MPI_INT, 0, 0, MPI_COMM_WORLD, &req);
+```
+
+From the annotation onwards, uses of `buf` are considered allocated.
+
 ## `CoVer_AnnotAlloc` Arguments
 
 | Position | Description |

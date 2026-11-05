@@ -139,8 +139,8 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
         }
         // For Fortran, this sometimes requires a lil trickery:
         // First, try to get at the actual value instead of the weird pointer that is passed as the arg in IR
-        if (Instruction* I = dyn_cast<Instruction>(callVal)) {
-            StoreInst* SI = ContractPassUtility::getLastStore(call, idx, &MAM->getResult<FunctionAnalysisManagerModuleProxy>(*I->getModule()).getManager());
+        if (isa<Instruction>(callVal)) {
+            StoreInst* SI = ContractPassUtility::getLastStore(call, idx);
             if (SI && isa<ConstantInt>(SI->getValueOperand())) {
                 callVal = SI->getValueOperand();
             }

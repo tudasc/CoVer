@@ -71,6 +71,8 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
 
         std::vector<ErrorMessage> err_msgs;
         std::unordered_set<Instruction*> instrument_ignore;
+        std::map<Function const*, std::vector<CallBase*>> fpAnnotatedCalls; // Indirect calls annotated with the function as target
+        std::set<CallBase const*> instrumentedFPCalls; // Annotated indirect calls already instrumented (replaced, so not to be dereferenced)
 
         ContractManagerAnalysis::ContractDatabase* DB;
         ModuleAnalysisManager* MAM;

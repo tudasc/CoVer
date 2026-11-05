@@ -86,6 +86,9 @@ export struct AliasGroup {
 // Annotation infos
 std::map<int, ContractPassUtility::AliasGroup> aliasInfo;
 
+// Function analyses of the current module
+FunctionAnalysisManager* curFAM = nullptr;
+
 #define DEBUG_ENV "COVER_LLVM_DEBUG"
 export bool isDebug() {
     static const bool debug = getenv(DEBUG_ENV) != NULL && atoi(getenv(DEBUG_ENV)) == 1;
@@ -120,21 +123,79 @@ bool sameOriginCheck(Value const* source, Value const* target) {
 }
 
 export std::map<int, AliasGroup> const& getAliasAnnots() { return aliasInfo; }
-export std::set<Function*> getFPAnnots(CallBase const* CB) {
-    if (!CB->isIndirectCall()) return {};
+// The memory state a load reads: The last access that may have written the loaded memory
+MemoryAccess const* getReachingDef(LoadInst const* LI) {
+    if (!curFAM) return nullptr;
+    MemorySSA& MSSA = curFAM->getResult<MemorySSAAnalysis>(*const_cast<Function*>(LI->getFunction())).getMSSA();
+    return MSSA.getWalker()->getClobberingMemoryAccess(LI);
+}
 
+// IR edits invalidate the memory SSA of the edited function
+void invalidateFunctionAnalyses(Function* F) {
+    if (curFAM && F) curFAM->invalidate(*F, PreservedAnalyses::none());
+}
+
+// Whether both values are computed the same way from the same values, e.g. two loads of a variable
+// without a store to it in between, or two GEPs into the same array with equivalent indices
+bool equivalentValues(Value const* A, Value const* B) {
+    if (A == B) return true;
+    Instruction const* IA = dyn_cast<Instruction>(A);
+    Instruction const* IB = dyn_cast<Instruction>(B);
+    if (!IA || !IB) return false;
+    if (!isa<LoadInst, GetElementPtrInst, CastInst, BinaryOperator>(IA)) return false;
+    if (!IA->isSameOperationAs(IB)) return false;
+    if (LoadInst const* LA = dyn_cast<LoadInst>(IA)) {
+        // Loads only read the same value if they read the same memory state
+        if (IA->getFunction() != IB->getFunction()) return false;
+        MemoryAccess const* defA = getReachingDef(LA);
+        if (!defA || defA != getReachingDef(cast<LoadInst>(IB))) return false;
+    }
+    for (unsigned i = 0; i < IA->getNumOperands(); i++) {
+        if (!equivalentValues(IA->getOperand(i), IB->getOperand(i))) return false;
+    }
+    return true;
+}
+
+// Members of the alias group that V refers to: The annotated value itself or its pointer operand.
+// Otherwise, equivalent values: For source level annotations, the annotation and each use of a variable
+// load it separately
+std::set<Value const*> getMatchingAliasMembers(AliasGroup const& AG, Value const* V) {
+    std::set<Value const*> res;
+    for (Value const* M : AG.members) {
+        if (M == V || M == betterGetPointerOperand(V)) res.insert(M);
+    }
+    if (!res.empty()) return res;
+    for (Value const* M : AG.members) {
+        if (equivalentValues(M, V)) res.insert(M);
+    }
+    return res;
+}
+
+// The function pointer annotation of an indirect call: An annotation dominating the call, annotating the same value as the called one.
+// If there are multiple, they are ordered by dominance, and the closest one is used
+CallBase* getFPAnnotCall(CallBase const* CB) {
+    if (!CB->isIndirectCall() || !curFAM) return nullptr;
+    Function* AnnotFP = CB->getModule()->getFunction("CoVer_AnnotFP");
+    if (!AnnotFP) return nullptr;
+    Function* F = const_cast<Function*>(CB->getFunction());
+    DominatorTree& DT = curFAM->getResult<DominatorTreeAnalysis>(*F);
+    CallBase* res = nullptr;
+    for (User* U : AnnotFP->users()) {
+        CallBase* annot = dyn_cast<CallBase>(U);
+        if (!annot || annot->getCalledOperand() != AnnotFP || annot->getFunction() != F) continue;
+        if (!DT.dominates(annot, CB)) continue;
+        if (!equivalentValues(annot->getArgOperand(0), CB->getCalledOperand())) continue;
+        if (!res || DT.dominates(res, annot)) res = annot;
+    }
+    return res;
+}
+
+export std::set<Function*> getFPAnnots(CallBase const* CB) {
+    CallBase const* annot = getFPAnnotCall(CB);
+    if (!annot) return {};
     std::set<Function*> fp_targets;
-    Instruction const* cur = CB->getPrevNode();
-    for (int i = 0; i < 5 && cur; i++) {
-        if (CallBase const* annotCall = dyn_cast<CallBase>(cur)) {
-            if (annotCall->getCalledOperand()->getName() == "CoVer_AnnotFP" && sameOriginCheck(annotCall->getArgOperand(0), CB->getCalledOperand())) {
-                for (int i = 2; i < annotCall->arg_size(); i++) {
-                    fp_targets.insert(CB->getModule()->getFunction(annotCall->getArgOperand(i)->getName()));
-                }
-                break;
-            }
-        }
-        cur = cur->getPrevNode();
+    for (unsigned i = 2; i < annot->arg_size(); i++) {
+        fp_targets.insert(CB->getModule()->getFunction(annot->getArgOperand(i)->getName()));
     }
     return fp_targets;
 }
@@ -350,35 +411,6 @@ Function const* getParentFunction(Value const* V) {
     return nullptr;
 }
 
-std::set<int> getAliasGroups(Value const* V) {
-    std::set<int> res;
-    if (Instruction const* I = dyn_cast<Instruction>(V)) {
-        // Result of an invoke is only available in the normal destination
-        Instruction const* cur = isa<InvokeInst>(I) ? &dyn_cast<InvokeInst>(I)->getNormalDest()->front() : I->getNextNode();
-        for (int i = 0; i < 5 && cur; i++) {
-            if (CallBase const* CB = dyn_cast<CallBase>(cur)) {
-                if (CB->getCalledOperand()->getName() == "CoVer_AnnotAlias") {
-                    if (sameOriginCheck(CB->getArgOperand(0), V)) res.insert(dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue());
-                }
-            }
-            if (!cur->getNextNode()) break;
-            cur = cur->getNextNode();
-        }
-    } else {
-        // Annotations of arguments are at the entry of their function, others at the entry of main
-        Function* F = isa<Argument>(V) ? const_cast<Function*>(dyn_cast<Argument>(V)->getParent()) : curM->getFunction("main");
-        for (Instruction& I : instructions(F)) {
-            if (isa<AllocaInst>(&I)) continue;
-            if (CallBase* CB = dyn_cast<CallBase>(&I)) {
-                if (CB->getCalledOperand()->getName() == "CoVer_AnnotAlias") {
-                    if (CB->getArgOperand(0) == V) res.insert(dyn_cast<ConstantInt>(CB->getArgOperand(2))->getSExtValue());
-                }
-            } else break;
-        }
-    }
-    return res;
-}
-
 std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int curSteps, std::map<const Value*,int> const& candidatesConsidered) {
     // First step: Collect the arguments represented by the value
     std::set<Argument const*> args;
@@ -570,7 +602,7 @@ void determinizeModule() {
     }
 }
 
-export StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* FAM) {
+export StoreInst* getLastStore(CallBase* CB, int idx) {
     Instruction* cur = CB->getPrevNode();
     while (cur) {
         if (isa<CallBase>(cur) && !dyn_cast<CallBase>(cur)->getCalledOperand()->getName().starts_with("PPDCV")) break;
@@ -582,12 +614,13 @@ export StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* F
     return nullptr;
 }
 
-export void Initialize(Module& M, bool _outputIR) {
+export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
 
     isFort = M.getFunction("_QQmain");
     curM = &M;
 
     parentInstrCandidatesCache.clear();
+    curFAM = &MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
 
     outputIR = _outputIR;
 
@@ -822,20 +855,18 @@ export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTre
 
     if (source == target) return true;
 
-    // Check for alias annotations
-    // First, check if both are in alias group
+    // Check for alias annotations: Both need to refer to members of the same alias group
     if (source && target) {
         for (std::pair<const int, AliasGroup> const& AG : aliasInfo) {
-            if ((AG.second.members.contains(source) || AG.second.members.contains(betterGetPointerOperand(source)))
-            && (AG.second.members.contains(target) || AG.second.members.contains(betterGetPointerOperand(target)))) {
-                return AG.second.areAliasing;
-            }
+            std::set<Value const*> srcMembers = getMatchingAliasMembers(AG.second, source);
+            if (srcMembers.empty()) continue;
+            std::set<Value const*> tgtMembers = getMatchingAliasMembers(AG.second, target);
+            if (tgtMembers.empty()) continue;
+            if (AG.second.areAliasing) return true;
+            // No-alias groups only separate different members, not two uses of the same annotated value
+            bool sameMember = std::ranges::any_of(srcMembers, [&tgtMembers](Value const* M) { return tgtMembers.contains(M); });
+            if (!sameMember) return false;
         }
-        // User annotations are a bit later - Check those now
-        std::set<int> aliasTgt = getAliasGroups(target), aliasSrc = getAliasGroups(source);
-        std::vector<int> shared;
-        std::set_intersection(aliasSrc.begin(), aliasSrc.end(), aliasTgt.begin(), aliasTgt.end(), std::back_inserter(shared));
-        if (!shared.empty()) return getAliasAnnots().at(shared.front()).areAliasing;
     }
 
     if (isFort) {
@@ -916,11 +947,14 @@ export void addToAliasGroup(int idx, Value* V) {
     aliasInfo[idx].members.insert(V);
     CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlias"), {V, ConstantInt::getBool(curM->getContext(), aliasInfo[idx].areAliasing), getInt(idx)});
     if (Instruction* I = dyn_cast<Instruction>(V)) {
+        invalidateFunctionAnalyses(I->getFunction());
         CI->insertAfter(I);
         CI->setDebugLoc(I->getDebugLoc());
     } else if (Argument* A = dyn_cast<Argument>(V)) {
+        invalidateFunctionAnalyses(A->getParent());
         CI->insertBefore(A->getParent()->getEntryBlock().getFirstInsertionPt());
     } else {
+        invalidateFunctionAnalyses(curM->getFunction("main"));
         CI->insertBefore(curM->getFunction("main")->getEntryBlock().getFirstInsertionPt());
     }
 }
@@ -954,7 +988,9 @@ export std::vector<CallBase*> getAliasEpochs(int group) {
     return res;
 }
 export void removeAliasEpoch(int group, int idx) {
-    getAliasEpochs(group)[idx]->eraseFromParent();
+    CallBase* epoch = getAliasEpochs(group)[idx];
+    invalidateFunctionAnalyses(epoch->getFunction());
+    epoch->eraseFromParent();
 }
 
 export void removeFromAliasGroup(int group, int idx) {
@@ -965,13 +1001,17 @@ export void removeFromAliasGroup(int group, int idx) {
             if (CB->getCalledOperand()->getName() != "CoVer_AnnotAlias") continue;
             if (CB->getArgOperand(0) != V) continue;
             if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() != group) continue;
+            invalidateFunctionAnalyses(CB->getFunction());
             CB->eraseFromParent();
             break;
         }
     }
     if (aliasInfo[group].members.empty()) {
         // Group is gone, delete its epochs
-        for (CallBase* CB : getAliasEpochs(group)) CB->eraseFromParent();
+        for (CallBase* CB : getAliasEpochs(group)) {
+            invalidateFunctionAnalyses(CB->getFunction());
+            CB->eraseFromParent();
+        }
         aliasInfo.erase(group);
     }
 }
@@ -979,6 +1019,7 @@ export void removeFromAliasGroup(int group, int idx) {
 export void addAliasEpoch(int group, Instruction* before) {
     if (isa<PHINode>(before)) before = &*before->getParent()->getFirstInsertionPt();
     CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAliasEpoch"), {getInt(group)});
+    invalidateFunctionAnalyses(before->getFunction());
     CI->insertBefore(before->getIterator());
     CI->setDebugLoc(before->getDebugLoc());
 }
@@ -986,16 +1027,17 @@ export void addAliasEpoch(int group, Instruction* before) {
 export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     assert(indirect->isIndirectCall());
 
+    // Replace the current annotation. The new one is placed directly before the call, where the called value is available
+    CallBase* old = getFPAnnotCall(indirect);
+    invalidateFunctionAnalyses(indirect->getFunction());
+    if (old) old->eraseFromParent();
+    if (targets.empty()) return;
+
     std::vector<Value*> args = {indirect->getCalledOperand(), getInt(targets.size())};
     args.insert(args.end(), targets.begin(), targets.end());
     CallInst* CI = CallInst::Create(indirect->getModule()->getFunction("CoVer_AnnotFP"), args);
-    if (indirect->getPrevNode() && isa<CallBase>(indirect->getPrevNode()) && dyn_cast<CallBase>(indirect->getPrevNode())->getCalledOperand()->getName() == "CoVer_AnnotFP") {
-        ReplaceInstWithInst(indirect->getPrevNode(), CI);
-    } else {
-        CI->insertBefore(indirect->getIterator());
-    }
-    if (targets.empty()) indirect->getPrevNode()->eraseFromParent();
-    else indirect->getPrevNode()->setDebugLoc(indirect->getDebugLoc());
+    CI->insertBefore(indirect->getIterator());
+    CI->setDebugLoc(indirect->getDebugLoc());
 }
 
 // Annotate the pointer produced by I as allocated with at least size bytes (0: size unknown). Returns error message, empty on success

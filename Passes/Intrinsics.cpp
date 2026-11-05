@@ -54,16 +54,23 @@ void IntrinsicsPass::createCallees(Module& M) {
 
     // Annotations
     FunctionType* FunctionFPAnnotType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int_Type}, true);
-    calleeHelper(M, "CoVer_AnnotFP", FunctionFPAnnotType);
+    FunctionCallee annotFPCallee = calleeHelper(M, "CoVer_AnnotFP", FunctionFPAnnotType);
 
     FunctionType* FunctionAnnotAliasType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Bool_Type, Basic_Types.Int_Type}, false);
-    calleeHelper(M, "CoVer_AnnotAlias", FunctionAnnotAliasType);
+    FunctionCallee annotAliasCallee = calleeHelper(M, "CoVer_AnnotAlias", FunctionAnnotAliasType);
 
     FunctionType* FunctionAnnotAliasEpochType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Int_Type}, false);
-    calleeHelper(M, "CoVer_AnnotAliasEpoch", FunctionAnnotAliasEpochType);
+    FunctionCallee annotAliasEpochCallee = calleeHelper(M, "CoVer_AnnotAliasEpoch", FunctionAnnotAliasEpochType);
 
+    // Only compare pointer values
+    for (FunctionCallee callee : {annotFPCallee, annotAliasCallee, annotAliasEpochCallee}) {
+        dyn_cast<Function>(callee.getCallee())->setMemoryEffects(MemoryEffects::inaccessibleMemOnly());
+    }
+
+    // Probes that the annotated memory is accessible, so it reads it
     FunctionType* FunctionAnnotAllocType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int64_Type}, false);
-    calleeHelper(M, "CoVer_AnnotAlloc", FunctionAnnotAllocType);
+    FunctionCallee annotAllocCallee = calleeHelper(M, "CoVer_AnnotAlloc", FunctionAnnotAllocType);
+    dyn_cast<Function>(annotAllocCallee.getCallee())->setMemoryEffects(MemoryEffects::argMemOnly(ModRefInfo::Ref) | MemoryEffects::inaccessibleMemOnly());
 }
 
 void IntrinsicsPass::instrumentIntrinsics(Module& M) {

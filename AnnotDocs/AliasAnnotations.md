@@ -58,6 +58,35 @@ define i32 @main() #0 {
 }
 ```
 
+## Source Level Annotations
+
+Alias annotations can also be written directly in the source code, annotating a variable after it was assigned:
+
+```c
+MPI_Request* req = acquireRequest();
+CoVer_AnnotAlias(req, true, 0);
+MPI_Isend(buf, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, req);
+
+MPI_Request* pending = lastRequest();
+CoVer_AnnotAlias(pending, true, 0);
+MPI_Wait(pending, MPI_STATUS_IGNORE);
+```
+
+Without optimization, every use of a variable loads it again, so the annotated value and the values passed to `MPI_Isend` and `MPI_Wait` are distinct IR values.
+If a value is not annotated itself, the static analysis therefore treats it as a member of a group if it is computed the same way as an annotated value
+from the same variable contents, e.g. another load of the same variable, or `&reqs[i]` for an annotated `&reqs[i]` with no change to `i` in between.
+This also distinguishes annotations of the same expression with different values of the variables involved:
+
+```c
+CoVer_AnnotAlias(&reqs[idx], false, 0);
+MPI_Isend(&a, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, &reqs[idx]); // Matches the first annotation
+idx++;
+CoVer_AnnotAlias(&reqs[idx], false, 0);
+MPI_Isend(&b, 1, MPI_INT, 1, 1, MPI_COMM_WORLD, &reqs[idx]); // Matches the second annotation
+```
+
+For no-alias groups, two values referring to the same annotated variable are not separated.
+
 ## `CoVer_AnnotAlias` Arguments
 
 | Position | Description |
@@ -70,7 +99,8 @@ define i32 @main() #0 {
 
 `CoVer_AnnotAliasEpoch(int group)` starts a new epoch for an alias group.
 The runtime annotation verifier forgets all values of the group seen so far, so values from before the epoch are not compared against values after it.
-This is useful if the same memory is reused for different purposes over time, e.g. a request array that is reused for each round of communication after all requests have been completed:
+This is useful if the same memory is reused for different purposes over time, e.g. a request array that is reused for each round of communication after all requests have been completed,
+or if an annotated variable refers to a different object in each round:
 
 ```llvm
 define void @comm_round() {
@@ -82,4 +112,8 @@ define void @comm_round() {
 ## Constraints
 
 - All alias annotations **must** share the same type within a group (aliasing or not aliasing).
-- All alias annotations **must** occur directly after the value they reference is created (i.e. the value first occurs).
+- All alias annotations in IR **must** occur after the value they reference is created.
+- A source level annotation applies to the uses of the variable until the variable may have been written.
+  The analysis is conservative here: If the variable's address is passed to a function or written through a pointer, a write in between may not be ruled out.
+  In that case, annotate again directly before the use.
+- Source level annotations only apply to uses in the same function.

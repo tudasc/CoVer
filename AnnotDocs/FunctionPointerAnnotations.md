@@ -72,6 +72,17 @@ define i32 @main(i32 noundef %0, ptr noundef %1) #4 {
 }
 ```
 
+## Source Level Annotations
+
+Function pointer annotations can also be written directly in the source code, after the function pointer was assigned:
+
+```c
+if (argc > 1) func = f1;
+else func = f2;
+CoVer_AnnotFP(func, 2, f1, f2);
+func(&a,&a,&a);
+```
+
 ## `CoVer_AnnotFP` Arguments
 
 | Position | Description |
@@ -82,5 +93,5 @@ define i32 @main(i32 noundef %0, ptr noundef %1) #4 {
 
 ## Constraints
 
-- All function pointer annotations **must** occur directly before the indirect call is made.
+- All function pointer annotations **must** occur before the indirect call, on every path to it, with no change to the function pointer in between.
 - All function pointer annotations **must** include all possible function targets.

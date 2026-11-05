@@ -49,7 +49,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     curDatabase.isInteractive = ClInteractMode != InteractiveUI::InteractMode::NONE;
 
     errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
-    ContractPassUtility::Initialize(M, ClIROutput);
+    ContractPassUtility::Initialize(M, AM, ClIROutput);
 
     extractFromAnnotations(M);
     extractFromFunction(M);
