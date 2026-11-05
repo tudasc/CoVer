@@ -49,6 +49,7 @@ void ShowChat(LLMChat::ChatSession& chat) {
     std::string input;
     int scroll = -1; // Focused line, -1 to follow the end of the transcript
     int num_lines = 0;
+    bool export_requested = false; // Leaves the chat's loop for the export screens, then the chat is shown again
 
     ftxui::InputOption input_options = {
         .content = &input,
@@ -82,10 +83,15 @@ void ShowChat(LLMChat::ChatSession& chat) {
             ftxui::text(chat.Status()) | ftxui::dim,
             ftxui::hbox(ftxui::text(">>> "), input_comp->Render()),
             ftxui::separator(),
-            ftxui::text(chat.Busy() ? "Esc: cancel the request and close | PgUp/PgDn: scroll" : "Enter: send | Esc: close chat | PgUp/PgDn: scroll"),
+            ftxui::text(chat.Busy() ? "Esc: cancel the request and close | PgUp/PgDn: scroll | Ctrl+S: export log" : "Enter: send | Esc: close chat | PgUp/PgDn: scroll | Ctrl+S: export log"),
         });
     }), [&](ftxui::Event e) {
         if (e == ftxui::Event::Escape) {
+            screen.Exit();
+            return true;
+        }
+        if (e == ftxui::Event::CtrlS) {
+            export_requested = true;
             screen.Exit();
             return true;
         }
@@ -100,7 +106,12 @@ void ShowChat(LLMChat::ChatSession& chat) {
         return true;
     });
 
-    screen.Loop(render);
+    while (true) {
+        export_requested = false;
+        screen.Loop(render);
+        if (!export_requested) break;
+        TUIManager::ExportChatLog(); // A running request continues meanwhile
+    }
     chat.Cancel();
 }
 

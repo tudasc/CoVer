@@ -26,6 +26,7 @@ namespace MCPControl {
 
 using InteractiveUtils::PostFn;
 using InteractiveUtils::ReportedFormula;
+using InteractiveUtils::TraceKey;
 using MCPServer::Activity;
 using TraceTools::ToolResult;
 using TraceTools::ToolSpec;
@@ -67,7 +68,7 @@ struct State {
     AnalysisReports::FormulaDebugHandlers* result_debug_handlers = nullptr;
     TraceTools::TraceTools* trace = nullptr; // While a trace is open
     std::vector<Screen> screens; // Innermost last
-    std::optional<std::string> resume; // Key of the trace to open again once the results of a reanalysis are shown, see TraceKey
+    std::optional<std::string> resume; // Key of the trace to open again once the results of a reanalysis are shown, see InteractiveUtils::TraceKey
 };
 
 State state;
@@ -83,20 +84,6 @@ std::vector<std::shared_ptr<ContractTree::ContractExpression>> DebuggableLeaves(
     std::vector<std::shared_ptr<ContractTree::ContractExpression>> leaves;
     CollectLeaves(report.formula, debugHandlers, leaves);
     return leaves;
-}
-
-// Identifies a trace across analysis runs: one is reported per contract and top level formula, and has a trace per violated leaf.
-// Leaf indices may change when a reanalysis fixes other leaves, so the leaf's formula is used.
-std::string TraceKey(std::string const& function, std::string const& report, std::string const& leaf) {
-    return function + "|" + report + "|" + leaf;
-}
-
-std::string TraceKey(ReportedFormula const& report, ContractTree::ContractFormula const& leaf) {
-    return TraceKey(report.contract->F->getName().str(), report.formula->ExprStr, leaf.ExprStr);
-}
-
-std::string TraceKey(AnalysisReports::DebugContext const& context) {
-    return TraceKey(context.function, context.report, context.formula);
 }
 
 std::string OpenTraceKey(State const& s) {

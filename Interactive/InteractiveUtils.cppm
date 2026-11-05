@@ -28,10 +28,11 @@ export using PostFn = std::function<void(std::function<void()>)>;
 export constexpr char const* INTERACT_START_FILE = "CoVer_InteractStart.ll"; // Module before any annotation, base of the diff command
 export constexpr char const* REANALYSE_FILE = "CoVer_Reanalyse.ll"; // Current module, input of the reanalysis
 export constexpr char const* HISTORY_CACHE_FILE = "CoVer_HistoryCache"; // Command history and MCP mode, carried over to the reanalysis
+export constexpr char const* CHAT_CACHE_FILE = "CoVer_ChatCache.json"; // Conversation of the LLM chat, carried over to the reanalysis
 export constexpr char const* DIFF_TMP_FILE = "CoVer_Diff.tmp";
 
 export void removeInteractiveFiles() {
-    for (char const* file : {INTERACT_START_FILE, REANALYSE_FILE, HISTORY_CACHE_FILE, DIFF_TMP_FILE}) std::filesystem::remove(file);
+    for (char const* file : {INTERACT_START_FILE, REANALYSE_FILE, HISTORY_CACHE_FILE, CHAT_CACHE_FILE, DIFF_TMP_FILE}) std::filesystem::remove(file);
 }
 
 std::string getSpecificLine(std::string file, int line) {
@@ -62,6 +63,20 @@ export struct ReportedFormula {
 
     std::string Summary() const { return std::format("{}: {}", contract->F->getName().str(), formula->Message.value_or(formula->ExprStr)); }
 };
+
+// Identifies a trace across analysis runs: one is reported per contract and top level formula, and has a trace per violated leaf.
+// Leaf indices may change when a reanalysis fixes other leaves, so the leaf's formula is used.
+export std::string TraceKey(std::string const& function, std::string const& report, std::string const& leaf) {
+    return function + "|" + report + "|" + leaf;
+}
+
+export std::string TraceKey(ReportedFormula const& report, ContractTree::ContractFormula const& leaf) {
+    return TraceKey(report.contract->F->getName().str(), report.formula->ExprStr, leaf.ExprStr);
+}
+
+export std::string TraceKey(AnalysisReports::DebugContext const& context) {
+    return TraceKey(context.function, context.report, context.formula);
+}
 
 // Formulas listed on the results screen, all that are not fulfilled
 export std::vector<ReportedFormula> getReportedFormulas(std::vector<Contract> const& ViolatedContracts) {

@@ -84,6 +84,10 @@ class ChatDialog : public QDialog {
             send->setDefault(true);
             QObject::connect(send, &QPushButton::clicked, this, [this] { Send(); });
             buttons->addWidget(send);
+            QPushButton* export_log = new QPushButton("Export...");
+            export_log->setToolTip("Save the chat log as JSON");
+            QObject::connect(export_log, &QPushButton::clicked, this, [this] { GUIManager::ExportChatLog(this); });
+            buttons->addWidget(export_log);
             QPushButton* close = new QPushButton("Close");
             QObject::connect(close, &QPushButton::clicked, this, &QDialog::reject);
             buttons->addWidget(close);

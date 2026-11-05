@@ -12,6 +12,7 @@ import InteractiveUtils;
 import InteractiveFrontend;
 import TraceTools;
 import MCPControl;
+import LLMChat;
 
 using namespace llvm;
 
@@ -80,6 +81,7 @@ bool ShowTrace(InteractiveSession::TraceSession& session) {
     if (reanalyse) {
         session.SaveHistory();
         MCPControl::SaveResume(session.Context()); // MCP mode continues after the reanalysis
+        LLMChat::ExportConversation(InteractiveUtils::CHAT_CACHE_FILE); // The chat continues after the reanalysis
     }
     return reanalyse;
 }

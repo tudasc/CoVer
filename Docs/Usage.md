@@ -73,9 +73,8 @@ The model knows the contract, the violated formula and the error report, and can
 It can explain why an error is reported, judge whether it is a false positive, and add annotations.
 Annotations added by the model are issued as trace commands, so they are recorded in the command history and patch files like your own,
 and they are shown in the trace once the chat is closed. Reanalyse afterwards to check their effect, which the model cannot do itself.
-The conversation is kept alive even when close.
-This allows continuing after reopening the chat,
-and the model is told about commands you ran in between.
+The conversation lasts for the whole interactive session until CoVer exits.
+The model is told about commands you ran in between, and when the trace changed or the program was reanalysed.
 
 The server must support the Chat Completions API,
 and the selected model must support tool use.

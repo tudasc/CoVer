@@ -8,6 +8,7 @@ module;
 #include <QDialogButtonBox>
 #include <QEventLoop>
 #include <QFile>
+#include <QFileDialog>
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QFrame>
@@ -20,6 +21,7 @@ module;
 #include <QMetaObject>
 #include <QListWidget>
 #include <QMainWindow>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPixmap>
 #include <QPlainTextEdit>
@@ -46,6 +48,7 @@ import ErrorMessage;
 import InteractiveUtils;
 import MCPControl;
 import MCPServer;
+import LLMChat;
 
 using namespace ContractTree;
 
@@ -200,6 +203,15 @@ export QWidget* Window() { return GetWindow(); }
 export std::string StartMCP() {
     GetWindow(); // Sets up the application, which runs the posted tool calls
     return MCPControl::Start(Post);
+}
+
+// Asks for a file and exports the log of the LLM chat to it
+export void ExportChatLog(QWidget* parent) {
+    QString const title = "Export Chat Log";
+    QString path = QFileDialog::getSaveFileName(parent, title, qstr(LLMChat::EXPORT_FILE), "JSON (*.json);;All files (*)");
+    if (path.isEmpty()) return;
+    std::string err = LLMChat::ExportConversation(path.toStdString());
+    if (!err.empty()) QMessageBox::warning(parent, title, qstr(err));
 }
 
 // Status and controls of the MCP server, shown below the reports and in the trace debugger
@@ -753,6 +765,8 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
     bool reanalyse = false;
     std::optional<PageRun> run;
 
+    std::function<void()> update_export; // Shows the export button of the chat log once there is one, set below
+
     // MCP clients work through the reports: they open them, also from within the debugger of another report
     bool navigating = false; // A debugger is open. Its teardown runs events, which must not open the next one before it is gone.
     std::function<void()> open_requested = [&] {
@@ -766,6 +780,7 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
             }
         }
         navigating = false;
+        update_export(); // The chat may have been used in the debugger
     };
     ContractView* contract = new ContractView(debugHandlers, [&](std::shared_ptr<ContractExpression> expr) {
         int row = violations->currentRow();
@@ -773,6 +788,7 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
         navigating = true;
         bool debug_reanalyse = debugHandlers[expr.get()](AnalysisReports::DebugContext(*formulas[row].contract, *formulas[row].formula, *expr, reports));
         navigating = false;
+        update_export(); // The chat may have been used in the debugger
         if (debug_reanalyse) {
             reanalyse = true;
             run->Finish();
@@ -794,6 +810,13 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
     QHBoxLayout* buttons = new QHBoxLayout;
     MCPPanel* mcp = new MCPPanel(false);
     buttons->addWidget(mcp, 1);
+    // A chat of this session can be exported once it was used, possibly before the reanalysis
+    QPushButton* export_chat = new QPushButton("Export chat log");
+    export_chat->setToolTip("Save the log of the LLM chat as JSON");
+    QObject::connect(export_chat, &QPushButton::clicked, page, [page] { ExportChatLog(page); });
+    update_export = [export_chat] { export_chat->setVisible(LLMChat::HasConversation()); };
+    update_export();
+    buttons->addWidget(export_chat, 0, Qt::AlignTop);
     QPushButton* exit = new QPushButton("Exit Tool");
     buttons->addWidget(exit, 0, Qt::AlignTop);
     layout->addLayout(buttons);

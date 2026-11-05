@@ -11,6 +11,7 @@ import ErrorMessage;
 import InteractiveUtils;
 import MCPServer;
 import MCPControl;
+import LLMChat;
 
 using namespace ContractTree;
 
@@ -281,6 +282,48 @@ export void ShowMessage(std::string const& title, std::string const& text) {
     ShowLines({ftxui::paragraph(text)}, title);
 }
 
+// Asks for a line of text, prefilled with initial. Empty if cancelled.
+export std::optional<std::string> PromptText(std::string const& title, std::string const& description, std::string initial) {
+    std::string input = std::move(initial);
+    int cursor = input.size(); // Start at the end of the prefilled text
+    bool confirmed = false;
+    ftxui::InputOption options = ftxui::InputOption::Default();
+    options.content = &input;
+    options.cursor_position = &cursor;
+    options.multiline = false;
+    options.on_enter = [&] {
+        confirmed = true;
+        screen.Exit();
+    };
+    ftxui::Component input_comp = ftxui::Input(options);
+    ftxui::Component render = ftxui::CatchEvent(ftxui::Renderer(input_comp, [&] {
+        return ftxui::vbox({
+            getHeader(title),
+            ftxui::paragraph(description),
+            ftxui::text(""),
+            ftxui::hbox(ftxui::text(">>> "), input_comp->Render()),
+            ftxui::filler(),
+            ftxui::separator(),
+            ftxui::text("Enter: confirm | Esc: cancel"),
+        });
+    }), [&](ftxui::Event e) {
+        if (e != ftxui::Event::Escape) return false;
+        screen.Exit();
+        return true;
+    });
+    screen.Loop(render);
+    if (!confirmed) return std::nullopt;
+    return input;
+}
+
+// Asks for a file and exports the log of the LLM chat to it
+export void ExportChatLog() {
+    std::optional<std::string> path = PromptText("Export Chat Log", "File to write the log of the LLM chat to, as JSON. It includes the full outputs of the tool calls.", LLMChat::EXPORT_FILE);
+    if (!path || path->empty()) return;
+    std::string err = LLMChat::ExportConversation(*path);
+    ShowMessage("Export Chat Log", err.empty() ? "Exported the chat log to " + *path : err);
+}
+
 // MCP mode: a view serving tool calls of MCP clients. Tool calls are posted to the view's event loop (see MCPControl::Start).
 // While MCP mode is active (MCPControl::Active), the results screen and the debugger show this view instead of their own.
 
@@ -399,8 +442,6 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, Analysis
 // The results of the analysis: shows the results menu, or the MCP view while MCP mode is active, and opens the reports
 // requested by tool calls. Returns whether to reanalyse.
 export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
-    std::vector<std::string> violations = {"Exit Tool", "Start MCP mode"};
-    for (InteractiveUtils::ReportedFormula const& formula : formulas) violations.push_back(formula.Summary());
     std::string title = InteractiveUtils::resultsTitle(!formulas.empty(), runtime);
     while (true) {
         // Also requested from the debugger, once MCP mode was started there
@@ -412,14 +453,25 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
             ShowMCP(std::format("Results of the analysis: {} reports, no trace open", formulas.size()));
             continue;
         }
-        int choice = RenderMenu(violations, title);
+        // A chat of this session can be exported once it was used, possibly before the reanalysis
+        bool has_chat = LLMChat::HasConversation();
+        std::vector<std::string> entries = {"Exit Tool", "Start MCP mode"};
+        if (has_chat) entries.push_back("Export LLM chat log");
+        std::size_t first_report = entries.size();
+        for (InteractiveUtils::ReportedFormula const& formula : formulas) entries.push_back(formula.Summary());
+        int choice = RenderMenu(entries, title);
         if (choice == 0) return false;
         if (choice == 1) {
             if (std::string err = ActivateMCP(); !err.empty()) ShowMessage("MCP Mode", err);
             continue;
         }
-        if (!ShowViolationDetails(formulas[choice-2].formula, reports)) continue;
-        if (ShowContractDetails(*formulas[choice-2].contract, reports, debugHandlers)) return true;
+        if (has_chat && choice == 2) {
+            ExportChatLog();
+            continue;
+        }
+        InteractiveUtils::ReportedFormula const& formula = formulas[choice - first_report];
+        if (!ShowViolationDetails(formula.formula, reports)) continue;
+        if (ShowContractDetails(*formula.contract, reports, debugHandlers)) return true;
     }
 }
 
