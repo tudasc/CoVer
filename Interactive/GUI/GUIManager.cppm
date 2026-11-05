@@ -46,21 +46,23 @@ module;
 #include <utility>
 #include <vector>
 
-#include "../../Passes/ContractManager.hpp"
 #include "ContractTree.hpp"
 
 export module GUIManager;
+import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
 import InteractiveUtils;
 import MCPControl;
 import MCPServer;
 
+using namespace ContractTree;
+
 using namespace llvm;
 
 namespace GUIManager {
 
-using Contract = llvm::ContractManagerAnalysis::Contract;
+using Contract = AnalysisReports::Contract;
 
 export bool IsAvailable() {
     return std::getenv("DISPLAY") || std::getenv("WAYLAND_DISPLAY") || std::getenv("QT_QPA_PLATFORM");
@@ -559,7 +561,7 @@ class CodeView : public QPlainTextEdit {
 // Contract string and formula tree, optionally allowing to launch the worklist debugger for leaf formulas
 class ContractView : public QWidget {
     public:
-        ContractView(ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, std::function<void(std::shared_ptr<ContractExpression>)> on_debug) : debugHandlers{debugHandlers}, on_debug{on_debug} {
+        ContractView(AnalysisReports::FormulaDebugHandlers& debugHandlers, std::function<void(std::shared_ptr<ContractExpression>)> on_debug) : debugHandlers{debugHandlers}, on_debug{on_debug} {
             QVBoxLayout* layout = new QVBoxLayout(this);
             layout->setContentsMargins(0, 0, 0, 0);
             function = new QLabel;
@@ -628,7 +630,7 @@ class ContractView : public QWidget {
         }
 
     private:
-        ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers;
+        AnalysisReports::FormulaDebugHandlers& debugHandlers;
         std::function<void(std::shared_ptr<ContractExpression>)> on_debug;
         std::map<QTreeWidgetItem*, std::shared_ptr<ContractFormula>> formulas;
         QLabel* function;
@@ -682,7 +684,7 @@ QWidget* VBox(std::vector<QWidget*> widgets, QString const& title = "") {
     return box;
 }
 
-export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double parse_time) {
+export void StartMenu(std::vector<AnalysisReports::Contract> const& Contracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double parse_time) {
     GetWindow(); // Sets up the application
     QWidget* page = new QWidget;
     QVBoxLayout* layout = new QVBoxLayout(page);
@@ -692,12 +694,12 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     search->setPlaceholderText("Filter contracts...");
     search->setClearButtonEnabled(true);
     QListWidget* contracts = new QListWidget;
-    for (llvm::ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
+    for (AnalysisReports::Contract const& contract : Contracts) {
         QListWidgetItem* item = new QListWidgetItem(qstr(contract.F->getName().str()), contracts);
         item->setToolTip(qstr(contract.ContractString));
     }
     splitter->addWidget(VBox({search, contracts}, "Contracts"));
-    ContractView* details = new ContractView(DB.debugHandlers, nullptr);
+    ContractView* details = new ContractView(debugHandlers, nullptr);
     splitter->addWidget(VBox({details}, "Contract Details"));
     splitter->setStretchFactor(1, 2);
     layout->addWidget(splitter, 1);
@@ -711,10 +713,10 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
 
     ConnectFilter(search, contracts);
     QObject::connect(contracts, &QListWidget::currentRowChanged, page, [&](int row) {
-        if (row >= 0) details->SetContract(DB.Contracts[row]);
+        if (row >= 0) details->SetContract(Contracts[row]);
     });
 
-    PageRun run(page, InteractiveUtils::startMenuTitle(DB.Contracts.size(), parse_time));
+    PageRun run(page, InteractiveUtils::startMenuTitle(Contracts.size(), parse_time));
     QObject::connect(start, &QPushButton::clicked, page, [&] { run.Finish(); });
     start->setFocus();
     run.Exec();
@@ -725,7 +727,7 @@ export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double
     }
 }
 
-export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
+export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
     GetWindow(); // Sets up the application
     QWidget* page = new QWidget;
     QVBoxLayout* layout = new QVBoxLayout(page);
@@ -778,7 +780,7 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
         int row = violations->currentRow();
         if (row < 0 || row >= formulas.size()) return;
         navigating = true;
-        bool debug_reanalyse = debugHandlers[expr.get()](ContractManagerAnalysis::DebugContext(*formulas[row].contract, *formulas[row].formula, *expr, reports));
+        bool debug_reanalyse = debugHandlers[expr.get()](AnalysisReports::DebugContext(*formulas[row].contract, *formulas[row].formula, *expr, reports));
         navigating = false;
         if (debug_reanalyse) {
             reanalyse = true;

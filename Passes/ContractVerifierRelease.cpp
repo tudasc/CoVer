@@ -7,9 +7,9 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include <llvm/Support/ErrorHandling.h>
 
 import LLVMModule;
 import ContractPassUtility;
@@ -154,7 +154,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
             }
             break;
         default:
-            llvm_unreachable("transferRelease encountered previously-checked error state!");
+            std::unreachable(); // transferRelease encountered previously-checked error state!
     }
     // Not relevant. Just forward info
     return cur;

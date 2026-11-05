@@ -8,20 +8,22 @@ module;
 #include <string>
 #include <vector>
 
-#include "../Passes/ContractManager.hpp"
 #include "ContractTree.hpp"
 
 export module InteractiveUtils;
+import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
 import ContractPassUtility;
+
+using namespace ContractTree;
 
 using namespace llvm;
 
 // Frontend independent parts of the interactive mode, shared by the TUI and GUI. Trace commands are in InteractiveCmds.
 namespace InteractiveUtils {
 
-using Contract = ContractManagerAnalysis::Contract;
+using Contract = AnalysisReports::Contract;
 
 export constexpr int UI_ANALYSISINFO_PAD_SIZE = 15;
 

@@ -309,7 +309,6 @@ export class Server {
         }
 
         void HandleMessage(Json::Value const& msg, Json::Value& responses) {
-            if (!msg.isObject()) return (void)responses.append(RpcError(Json::Value(), -32600, "Invalid request"));
             if (!msg.isMember("method") || !msg.isMember("id")) return; // Notification, or a response to a request we never send
             Json::Value const& id = msg["id"];
             std::string method = msg["method"].asString();

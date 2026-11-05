@@ -1,5 +1,7 @@
 module;
 
+#include <cstdint>
+#include <llvm/Config/llvm-config.h>
 #include <llvm/IR/Instructions.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Metadata.h>
@@ -39,6 +41,7 @@ module;
 #include <llvm/Transforms/Utils/ValueMapper.h>
 #include <llvm/Transforms/Utils/Cloning.h>
 #include <llvm/Transforms/Utils/Local.h>
+#include <llvm/Plugins/PassPlugin.h>
 
 export module LLVMModule;
 
@@ -133,6 +136,24 @@ export namespace llvm {
     using llvm::ModulePassManager;
     using llvm::ArrayRef;
     using llvm::FunctionAnalysisManagerModuleProxy;
+    using llvm::make_early_inc_range;
+    using llvm::GlobalAlias;
+    using llvm::MDNode;
+    using llvm::NamedMDNode;
+    using llvm::DICompileUnit;
+    using llvm::operator<;
+    using llvm::DICompositeType;
+    using llvm::DbgVariableRecord;
+    using llvm::DbgRecord;
+    using llvm::operator+;
+    using llvm::operator<<;
+    using llvm::cast;
+    using llvm::DebugLoc;
+    using llvm::dyn_cast_or_null;
+    using llvm::FunctionAnalysisManager;
+    using llvm::MDTuple;
+    using llvm::PHINode;
+    using llvm::PassPluginLibraryInfo;
 }
 
 export namespace llvm::cl {
@@ -140,6 +161,8 @@ export namespace llvm::cl {
     using llvm::cl::init;
     using llvm::cl::desc;
     using llvm::cl::Hidden;
+    using llvm::cl::values;
+    using llvm::cl::OptionEnumValue; // What the clEnumValN macro creates: OptionEnumValue{name, int(value), description}
 }
 
 export namespace llvm::dwarf {
@@ -153,4 +176,10 @@ export namespace llvm::Intrinsic {
     using llvm::Intrinsic::getOrInsertDeclaration;
     using llvm::Intrinsic::frameaddress;
     using llvm::Intrinsic::stacksave;
+}
+
+// Values of LLVM macros, which cannot be exported themselves
+export namespace LLVMModule {
+    constexpr uint32_t PLUGIN_API_VERSION = LLVM_PLUGIN_API_VERSION;
+    constexpr char const* VERSION_STRING = LLVM_VERSION_STRING;
 }

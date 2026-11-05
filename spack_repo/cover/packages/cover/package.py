@@ -16,6 +16,7 @@ class Cover(CMakePackage):
     version("master", branch="master", submodules=True)
 
     variant("bundled_jsoncpp", default=True, description="Use the vendored jsoncpp submodule")
+    variant("tui", default=False, description="Build the terminal UI for the interactive mode")
     variant("gui", default=False, description="Build the Qt-based GUI for the interactive mode")
 
     # C++20 modules require CMake >= 3.28 + Ninja
@@ -44,6 +45,7 @@ class Cover(CMakePackage):
     def cmake_args(self):
         args = [
             self.define_from_variant("BUNDLED_JSONCPP", "bundled_jsoncpp"),
+            self.define_from_variant("ENABLE_TUI", "tui"),
             self.define_from_variant("ENABLE_GUI", "gui"),
             self.define("MPI_APIS_JSON", self.spec["py-pympistandard"].package.apis_json),
         ]

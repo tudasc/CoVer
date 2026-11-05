@@ -5,7 +5,6 @@
 #include <string>
 #include <system_error>
 #include <vector>
-#include <llvm/Support/CommandLine.h>
 #include "ContractTree.hpp"
 
 import LLVMModule;
@@ -24,9 +23,9 @@ static cl::opt<InteractiveUI::InteractMode> ClInteractMode(
     "cover-interact-mode", cl::init(InteractiveUI::InteractMode::NONE),
     cl::desc("Interactive mode frontend"),
     cl::values(
-        clEnumValN(InteractiveUI::InteractMode::NONE, "none", "Not interactive"),
-        clEnumValN(InteractiveUI::InteractMode::TUI, "tui", "Terminal UI"),
-        clEnumValN(InteractiveUI::InteractMode::GUI, "gui", "Graphical UI")),
+        cl::OptionEnumValue{"none", int(InteractiveUI::InteractMode::NONE), "Not interactive"},
+        cl::OptionEnumValue{"tui", int(InteractiveUI::InteractMode::TUI), "Terminal UI"},
+        cl::OptionEnumValue{"gui", int(InteractiveUI::InteractMode::GUI), "Graphical UI"}),
     cl::Hidden);
 static cl::opt<bool> ClIROutput(
     "cover-ir-output", cl::init(false),
@@ -54,7 +53,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     curDatabase.isInteractive = ClInteractMode != InteractiveUI::InteractMode::NONE;
 
     errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
-    ContractPassUtility::Initialize(M, AM, ClIROutput);
+    ContractPassUtility::Initialize(M, ClIROutput);
 
     extractFromAnnotations(M);
     extractFromFunction(M);
@@ -77,9 +76,9 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
     double parse_time = std::chrono::duration<double>(std::chrono::system_clock::now() - curDatabase.start_time).count();
     errs() << std::format("CoVer: Parsed contracts after {}s\n", parse_time);
 
+    if (curDatabase.isInteractive && !InteractiveUI::SetMode(ClInteractMode)) curDatabase.isInteractive = false;
     if (curDatabase.isInteractive) {
-        InteractiveUI::SetMode(ClInteractMode);
-        InteractiveUI::StartMenu(curDatabase, parse_time);
+        InteractiveUI::StartMenu(curDatabase.Contracts, curDatabase.reports, curDatabase.debugHandlers, parse_time);
         if (M.getName() != InteractiveUtils::REANALYSE_FILE) {
             // Write original module
             std::error_code rc;

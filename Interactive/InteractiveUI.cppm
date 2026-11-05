@@ -1,98 +1,100 @@
 module;
 
+#include <dlfcn.h>
+#include <expected>
+#include <filesystem>
+#include <format>
 #include <functional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "../Passes/ContractManager.hpp"
-
 export module InteractiveUI;
 import LLVMModule;
+import AnalysisReports;
 import ContractPassUtility;
 import InteractiveSession;
 import InteractiveUtils;
+import InteractiveFrontend;
 import TraceTools;
 import MCPControl;
-import TUIManager;
-import TUITrace;
-#ifdef COVER_HAS_GUI
-import GUIManager;
-import GUITrace;
-#endif
 
 using namespace llvm;
 
-// Dispatches the interactive mode to the selected frontend
+// Entry of the analysis into the interactive mode. Loads the library of the selected frontend and dispatches to it.
 namespace InteractiveUI {
 
-using Contract = llvm::ContractManagerAnalysis::Contract;
+using InteractiveFrontend::Frontend;
 
 export enum struct InteractMode { NONE, TUI, GUI };
 
-InteractMode mode = InteractMode::NONE;
+Frontend const* frontend = nullptr;
 
-export void SetMode(InteractMode m) {
-#ifdef COVER_HAS_GUI
-    if (m == InteractMode::GUI && !GUIManager::IsAvailable()) {
-        errs() << "CoVer: No display found for the GUI, falling back to the TUI\n";
-        m = InteractMode::TUI;
-    }
-#else
-    if (m == InteractMode::GUI) {
-        errs() << "CoVer: Built without GUI support, falling back to the TUI\n";
-        m = InteractMode::TUI;
-    }
-#endif
-    mode = m;
+// The directory of this library, which the frontend libraries are installed next to
+std::filesystem::path LibraryDir() {
+    Dl_info info;
+    if (!dladdr(reinterpret_cast<void const*>(&LibraryDir), &info) || !info.dli_fname) return ".";
+    return std::filesystem::path(info.dli_fname).parent_path();
 }
 
-export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double parse_time) {
+// The frontend in the given library, or why it cannot be used
+std::expected<Frontend const*, std::string> Load(std::string const& name) {
+    std::filesystem::path path = LibraryDir() / ("lib" + name + ".so");
+    void* lib = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL); // Never closed, the frontend lives until the program exits
+    if (!lib) return std::unexpected(dlerror());
+    InteractiveFrontend::EntryPoint entry = reinterpret_cast<InteractiveFrontend::EntryPoint>(dlsym(lib, InteractiveFrontend::ENTRY_POINT));
+    if (!entry) return std::unexpected(std::format("{} has no entry point {}", path.string(), InteractiveFrontend::ENTRY_POINT));
+    Frontend const* loaded = entry();
+    if (!loaded->isAvailable()) return std::unexpected("it cannot be shown here (e.g. no display was found)");
+    return loaded;
+}
+
+// Loads the frontend of the mode. False if it cannot be loaded, then the analysis runs without the interactive mode.
+export bool SetMode(InteractMode mode) {
+    bool gui = mode == InteractMode::GUI;
+    std::expected<Frontend const*, std::string> loaded = Load(gui ? "CoVerQtFrontend" : "CoVerTUIFrontend");
+    if (!loaded) {
+        errs() << "CoVer: The " << (gui ? "GUI" : "TUI") << " is not available, continuing without the interactive mode: " << loaded.error() << "\n";
+        return false;
+    }
+    frontend = *loaded;
+    return true;
+}
+
+// The start menu before the analysis. Its debug handlers are a copy, so they cannot change the analysis.
+export void StartMenu(std::vector<AnalysisReports::Contract> const& contracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers debugHandlers, double parse_time) {
     // MCP was active before the reanalysis, so MCP clients continue without interaction
     if (MCPControl::CheckResume()) {
-        std::string err;
-#ifdef COVER_HAS_GUI
-        if (mode == InteractMode::GUI) err = GUIManager::StartMCP();
-        else
-#endif
-        err = TUIManager::ActivateMCP();
+        std::string err = frontend->startMCP();
         if (err.empty()) return; // Skips the start menu
         errs() << "CoVer: " << err << "\n";
     }
-#ifdef COVER_HAS_GUI
-    if (mode == InteractMode::GUI) return GUIManager::StartMenu(DB, parse_time);
-#endif
-    TUIManager::StartMenu(DB, parse_time);
+    frontend->startMenu(contracts, reports, debugHandlers, parse_time);
 }
 
-export bool ResultsScreen(std::vector<Contract> const& ViolatedContracts, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
+export bool ResultsScreen(std::vector<AnalysisReports::Contract> const& ViolatedContracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
     MCPControl::ResultsScope mcp_scope(formulas, reports, debugHandlers); // Tool calls of MCP clients work on these reports
-#ifdef COVER_HAS_GUI
-    if (mode == InteractMode::GUI) return GUIManager::ResultsScreen(formulas, reports, debugHandlers, runtime);
-#endif
-    return TUIManager::ResultsScreen(formulas, reports, debugHandlers, runtime);
+    return frontend->resultsScreen(formulas, reports, debugHandlers, runtime);
 }
 
+// Shows the trace, returns whether to reanalyse
 bool ShowTrace(InteractiveSession::TraceSession& session) {
-#ifdef COVER_HAS_GUI
-    if (mode == InteractMode::GUI) return GUITrace::ShowTrace(session);
-#endif
-    return TUITrace::ShowTrace(session);
-}
-
-export template<typename T>
-bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, ContractManagerAnalysis::DebugContext context) {
-    if (!trace) return false;
-    InteractiveSession::TraceSessionImpl<T> session(traceDB, trace, infoToStr, std::move(context));
     TraceTools::TraceTools mcp_tools(session);
     MCPControl::TraceScope mcp_trace(mcp_tools); // Tool calls of MCP clients work on this trace while it is open
-    bool reanalyse = ShowTrace(session);
+    bool reanalyse = frontend->showTrace(session);
     if (reanalyse) {
         session.SaveHistory();
         MCPControl::SaveResume(session.Context()); // MCP mode continues after the reanalysis
     }
     return reanalyse;
+}
+
+export template<typename T>
+bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, AnalysisReports::DebugContext context) {
+    if (!trace) return false;
+    InteractiveSession::TraceSessionImpl<T> session(traceDB, trace, infoToStr, std::move(context));
+    return ShowTrace(session);
 }
 
 } // namespace InteractiveUI

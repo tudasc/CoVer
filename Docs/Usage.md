@@ -50,11 +50,9 @@ with some limitations. See [language support](LanguageSupport.md) for details.
 
 The static analysis results can be inspected interactively by passing `--interactive` to the compile wrappers.
 Two frontends are available:
-- `--interactive` (or `--interactive=tui`): Terminal UI
-- `--interactive=gui`: Graphical UI.
-  This requires CoVer to be built with Qt6,
-  which CMake enables automatically if Qt is found.
-  If no display is available, the TUI is used instead.
+- `--interactive` (or `--interactive=tui`): Terminal UI, built with the CMake option `-DENABLE_TUI=ON` (Spack: `+tui`).
+- `--interactive=gui`: Graphical UI, built with `-DENABLE_GUI=ON` (Spack: `+gui`), which requires Qt6.
+Both options are off by default.
 
 Both frontends provide the same workflow: Inspecting the contracts before the analysis, browsing the reported errors with references into the source code, and debugging the worklist analysis trace of a violated contract.
 The trace debugger allows adding annotations (function pointer targets, alias groups, allocations), rerunning the analysis using them (`reanalyse`),

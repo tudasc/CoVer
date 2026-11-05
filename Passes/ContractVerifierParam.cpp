@@ -5,9 +5,10 @@
 #include <format>
 #include <vector>
 #include <memory>
+#include <optional>
 #include <string>
+#include <utility>
 
-#include <llvm/Support/ErrorHandling.h>
 
 import BasicTypes;
 import ContractPassUtility;
@@ -38,12 +39,11 @@ PreservedAnalyses ContractVerifierParamPass::run(Module &M,
                     for (ParamRequirement const& req : ParamOp->reqs) {
                         // Figure out value(s) to check against
                         std::set<Value*> vars;
-                        try {
-                            // First, check if constant value provided
-                            int ivalue = std::stoi(req.value);
-                            if (req.isArg) vars = {CB->getArgOperand(ivalue)};
-                            else vars = {ConstantInt::get(Type::getInt64Ty(M.getContext()), ivalue)};
-                        } catch(std::exception& e) {
+                        if (std::optional<int> ivalue = ContractPassUtility::parseInt(req.value)) {
+                            // Constant value provided
+                            if (req.isArg) vars = {CB->getArgOperand(*ivalue)};
+                            else vars = {ConstantInt::get(Type::getInt64Ty(M.getContext()), *ivalue)};
+                        } else {
                             // Otherwise, check against value database
                             if (!DB.ContractVariableData.contains(req.value)) {
                                 errs() << "Undefined non-constint contract value identifier \"" << req.value << "\"!\n";
@@ -101,7 +101,7 @@ std::string createCompErr(const Comparator comp, const ConstantInt* callCI, cons
         case Comparator::LTEQ:
             return "Call parameter value (" + callCs + ") not less or equal to contract value (" + valueCs + ")!";
         case Comparator::EXEQ:
-            llvm_unreachable("Exception Equal should not trigger an error!");
+            std::unreachable(); // Exception Equal should not trigger an error!
     }
 }
 

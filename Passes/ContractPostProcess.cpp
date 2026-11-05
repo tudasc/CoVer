@@ -8,10 +8,10 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <system_error>
 #include <vector>
 
-#include <llvm/Support/ErrorHandling.h>
 
 import LLVMModule;
 import ContractPassUtility;
@@ -260,5 +260,5 @@ std::pair<Fulfillment,std::optional<std::string>> ContractPostProcessingPass::re
             *contrF->Status = Fulfillment::BROKEN;
             return {*contrF->Status, outMsg};
     }
-    llvm_unreachable("Unknown composite in contract definition!");
+    std::unreachable(); // Unknown composite in contract definition!
 }

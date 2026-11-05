@@ -15,15 +15,18 @@ module;
 
 #include <json/json.h>
 
-#include "../Passes/ContractManager.hpp"
+#include "ContractTree.hpp"
 
 export module TraceTools;
+import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
 import ContractPassUtility;
 import InteractiveUtils;
 import InteractiveSession;
 import InteractiveCmds;
+
+using namespace ContractTree;
 
 using namespace llvm;
 
@@ -183,7 +186,7 @@ export class TraceTools {
             for (InteractiveCmds::CmdInfo const& cmd : InteractiveCmds::GetTraceCommands()) {
                 if (cmd.access == InteractiveCmds::CmdAccess::ANY) out += std::format("- {} {}: {}\n", cmd.name, cmd.usage, cmd.helptext);
             }
-            ContractManagerAnalysis::DebugContext const& ctx = session.Context();
+            AnalysisReports::DebugContext const& ctx = session.Context();
             out += "\n# The report being debugged\n";
             out += std::format("Contract of function {}: {}\nFormula whose trace is shown: {} (status: {})\n", ctx.function, ctx.contract, ctx.formula, ctx.status);
             for (ErrorMessage const& err : ctx.errors) {
@@ -288,6 +291,7 @@ export class TraceTools {
             std::vector<std::string> functions;
             std::string names;
             for (Json::Value const& F : input["functions"]) {
+                if (!F.isString()) return {"The functions must be strings", true, "set_fp_targets"};
                 functions.push_back(F.asString());
                 names += (names.empty() ? "" : ", ") + F.asString();
             }

@@ -12,10 +12,10 @@ module;
 
 #include <json/json.h>
 
-#include "../../Passes/ContractManager.hpp"
 #include "ContractTree.hpp"
 
 export module MCPControl;
+import AnalysisReports;
 import ErrorMessage;
 import InteractiveUtils;
 import InteractiveSession;
@@ -23,6 +23,8 @@ import InteractiveCmds;
 import TraceTools;
 import MCPServer;
 import LLVMModule;
+
+using namespace ContractTree;
 
 using namespace llvm;
 
@@ -70,8 +72,8 @@ struct State {
     std::vector<Activity> log;
     Action pending;
     std::vector<ReportedFormula> const* results = nullptr; // Of the current analysis, while the results are shown
-    ContractManagerAnalysis::FormulaReports const* result_texts = nullptr;
-    ContractManagerAnalysis::FormulaDebugHandlers* result_debug_handlers = nullptr;
+    AnalysisReports::FormulaReports const* result_texts = nullptr;
+    AnalysisReports::FormulaDebugHandlers* result_debug_handlers = nullptr;
     TraceTools::TraceTools* trace = nullptr; // While a trace is open
     std::vector<Screen> screens; // Innermost last
     std::optional<std::string> resume; // Key of the trace to open again once the results of a reanalysis are shown, see TraceKey
@@ -80,13 +82,13 @@ struct State {
 State state;
 
 // Violated leaves of the formula with a trace that can be debugged, in depth-first order. MCP clients address them by their index.
-void CollectLeaves(std::shared_ptr<ContractTree::ContractFormula> const& form, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers,
+void CollectLeaves(std::shared_ptr<ContractTree::ContractFormula> const& form, AnalysisReports::FormulaDebugHandlers const& debugHandlers,
                    std::vector<std::shared_ptr<ContractTree::ContractExpression>>& leaves) {
     if (*form->Status != ContractTree::Fulfillment::FULFILLED && debugHandlers.contains(form.get())) leaves.push_back(std::static_pointer_cast<ContractTree::ContractExpression>(form));
     for (std::shared_ptr<ContractTree::ContractFormula> const& child : form->Children) CollectLeaves(child, debugHandlers, leaves);
 }
 
-std::vector<std::shared_ptr<ContractTree::ContractExpression>> DebuggableLeaves(ReportedFormula const& report, ContractManagerAnalysis::FormulaDebugHandlers const& debugHandlers) {
+std::vector<std::shared_ptr<ContractTree::ContractExpression>> DebuggableLeaves(ReportedFormula const& report, AnalysisReports::FormulaDebugHandlers const& debugHandlers) {
     std::vector<std::shared_ptr<ContractTree::ContractExpression>> leaves;
     CollectLeaves(report.formula, debugHandlers, leaves);
     return leaves;
@@ -102,7 +104,7 @@ std::string TraceKey(ReportedFormula const& report, ContractTree::ContractFormul
     return TraceKey(report.contract->F->getName().str(), report.formula->ExprStr, leaf.ExprStr);
 }
 
-std::string TraceKey(ContractManagerAnalysis::DebugContext const& context) {
+std::string TraceKey(AnalysisReports::DebugContext const& context) {
     return TraceKey(context.function, context.report, context.formula);
 }
 
@@ -241,7 +243,7 @@ export bool OpenPendingReport() {
     state.pending = {};
     ReportedFormula const& report = (*state.results)[action.report];
     std::shared_ptr<ContractTree::ContractExpression> leaf = DebuggableLeaves(report, *state.result_debug_handlers)[action.leaf];
-    return (*state.result_debug_handlers)[leaf.get()](ContractManagerAnalysis::DebugContext(*report.contract, *report.formula, *leaf, *state.result_texts));
+    return (*state.result_debug_handlers)[leaf.get()](AnalysisReports::DebugContext(*report.contract, *report.formula, *leaf, *state.result_texts));
 }
 
 // What a trace screen does after tool calls ran, see NavigateTrace
@@ -265,7 +267,7 @@ export TraceNavigation NavigateTrace(std::function<void(std::string const&)> con
 // again if it is still reported, see CheckResume.
 export class ResultsScope {
     public:
-        ResultsScope(std::vector<ReportedFormula> const& formulas, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers)
+        ResultsScope(std::vector<ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers)
             : prev{state.results}, prev_texts{state.result_texts}, prev_debug_handlers{state.result_debug_handlers} {
             state.results = &formulas;
             state.result_texts = &reports;
@@ -286,8 +288,8 @@ export class ResultsScope {
         }
     private:
         std::vector<ReportedFormula> const* prev;
-        ContractManagerAnalysis::FormulaReports const* prev_texts;
-        ContractManagerAnalysis::FormulaDebugHandlers* prev_debug_handlers;
+        AnalysisReports::FormulaReports const* prev_texts;
+        AnalysisReports::FormulaDebugHandlers* prev_debug_handlers;
 };
 
 // A trace is open in the debugger
@@ -314,7 +316,7 @@ export class ScreenScope {
 
 // When reanalysing from the trace of context: if MCP mode is active, it continues after the reanalysis with its report.
 // Appended to the history cache, so call it after TraceSession::SaveHistory.
-export void SaveResume(ContractManagerAnalysis::DebugContext const& context) {
+export void SaveResume(AnalysisReports::DebugContext const& context) {
     if (!Active()) return;
     std::ofstream cache(InteractiveUtils::HISTORY_CACHE_FILE, std::ios::app);
     cache << RESUME_PREFIX << TraceKey(context) << "\n";

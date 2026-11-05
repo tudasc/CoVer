@@ -20,11 +20,10 @@ else()
 endif()
 
 add_subdirectory(Externals/CoVerLang)
-add_subdirectory(Externals/FTXUI)
 add_subdirectory(Externals/llvm-dsa)
 
 ##
-## Configure static analysis project
+## Static Analysis Core and Utilities
 ##
 
 list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
@@ -32,6 +31,44 @@ include(AddLLVM)
 add_definitions(${LLVM_DEFINITIONS})
 include_directories(${LLVM_INCLUDE_DIRS})
 link_directories(${LLVM_LIBRARY_DIR})
+
+add_library(CoVerCore SHARED)
+target_sources(CoVerCore PUBLIC FILE_SET CXX_MODULES FILES
+  Utils/AnalysisReports.cppm
+  Utils/ContractPassUtility.cppm
+  Utils/LLVMModule.cppm
+  Utils/ErrorMessage.cppm
+  Utils/UserConfig.cppm
+  Interactive/InteractiveUI.cppm
+  Interactive/InteractiveFrontend.cppm
+  Interactive/InteractiveUtils.cppm
+  Interactive/InteractiveCmds.cppm
+  Interactive/InteractiveSession.cppm
+  Interactive/TraceTools.cppm
+  Interactive/LLM/LLMClient.cppm
+  Interactive/LLM/LLMChat.cppm
+  Interactive/MCP/MCPServer.cppm
+  Interactive/MCP/MCPControl.cppm
+)
+target_include_directories(CoVerCore
+  PUBLIC
+    Include/
+    Externals/llvm-dsa/include
+)
+
+# Helper library for IR patch application
+add_library(CoVerIRPatch STATIC)
+target_sources(CoVerIRPatch PUBLIC FILE_SET CXX_MODULES FILES Utils/IRPatch.cppm)
+set_target_properties(CoVerIRPatch PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# LLM chat uses libcurl for communication, the frontends are loaded with dlopen
+find_package(CURL REQUIRED)
+
+target_link_libraries(CoVerCore PUBLIC CoVerLang CoVerIRPatch LLVM PRIVATE CURL::libcurl ${CMAKE_DL_LIBS})
+
+##
+## LLVM Analysis Passes
+##
 
 add_llvm_pass_plugin(CoVerPlugin
   Passes/Registrar.cpp
@@ -45,71 +82,14 @@ add_llvm_pass_plugin(CoVerPlugin
   Passes/Intrinsics.cpp
   Passes/Instrument.cpp
 )
-
 target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
   Passes/AnalysisCleanup.cppm
   Passes/BasicTypes.cppm
-  Utils/ContractPassUtility.cppm
-  Utils/LLVMModule.cppm
-  Utils/ErrorMessage.cppm
-  Utils/UserConfig.cppm
-  Interactive/InteractiveUI.cppm
-  Interactive/InteractiveUtils.cppm
-  Interactive/InteractiveCmds.cppm
-  Interactive/InteractiveSession.cppm
-  Interactive/TraceTools.cppm
-  Interactive/LLM/LLMClient.cppm
-  Interactive/LLM/LLMChat.cppm
-  Interactive/TUI/TUIChat.cppm
-  Interactive/TUI/TUISettings.cppm
-  Interactive/MCP/MCPServer.cppm
-  Interactive/MCP/MCPControl.cppm
-  Interactive/TUI/TUITrace.cppm
-  Interactive/TUI/TUIManager.cppm
 )
+target_link_libraries(CoVerPlugin PRIVATE CoVerCore)
 
-# Helper library for IR patch application
-add_library(CoVerIRPatch STATIC)
-target_sources(CoVerIRPatch PUBLIC FILE_SET CXX_MODULES FILES Utils/IRPatch.cppm)
-set_target_properties(CoVerIRPatch PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(CoVerPlugin PRIVATE CoVerIRPatch)
-
-# LLM chat uses libcurl for communication
-find_package(CURL REQUIRED)
-target_link_libraries(CoVerPlugin PRIVATE CURL::libcurl)
-
-target_include_directories(CoVerPlugin
-  PUBLIC
-    Include/
-    Externals/llvm-dsa/include
-)
-
-target_compile_options (CoVerPlugin PUBLIC -fexceptions)
-
-##
-## Runtime Dependencies
-##
-
-target_link_libraries(CoVerPlugin PRIVATE CoVerLang ftxui::screen ftxui::dom ftxui::component)
-
-# Optional Qt GUI for the interactive mode
-option(ENABLE_GUI "Build the Qt-based GUI for the interactive mode, if Qt6 is found" ON)
-if (ENABLE_GUI)
-  find_package(Qt6 COMPONENTS Widgets)
-  if (Qt6Widgets_FOUND)
-    message("Found Qt ${Qt6Widgets_VERSION}, the GUI for the interactive mode will be built.")
-    target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
-      Interactive/GUI/GUIManager.cppm
-      Interactive/GUI/GUITrace.cppm
-      Interactive/GUI/GUIChat.cppm
-      Interactive/GUI/GUISettings.cppm
-    )
-    target_link_libraries(CoVerPlugin PRIVATE Qt6::Widgets)
-    target_compile_definitions(CoVerPlugin PRIVATE COVER_HAS_GUI QT_NO_KEYWORDS)
-  else()
-    message("Qt6 not found, the GUI for the interactive mode will not be built.")
-  endif(Qt6Widgets_FOUND)
-endif(ENABLE_GUI)
+set_target_properties(CoVerCore PROPERTIES INSTALL_RPATH "$ORIGIN")
+install(TARGETS CoVerCore LIBRARY DESTINATION lib)
 
 # Attempt finding system version of JsonCpp
 find_package(PkgConfig)
@@ -117,7 +97,7 @@ if (PKGCONFIG_FOUND AND (NOT BUNDLED_JSONCPP))
     pkg_check_modules(JSONCPP jsoncpp)
     if (JSONCPP_FOUND)
         include_directories(${JSONCPP_INCLUDE_DIRS})
-        target_link_libraries(CoVerPlugin PUBLIC ${JSONCPP_LDFLAGS})
+        target_link_libraries(CoVerCore PUBLIC ${JSONCPP_LDFLAGS})
     endif(JSONCPP_FOUND)
 endif(PKGCONFIG_FOUND AND (NOT BUNDLED_JSONCPP))
 
@@ -128,8 +108,21 @@ if((NOT JSONCPP_FOUND) OR BUNDLED_JSONCPP)
     add_subdirectory(Externals/jsoncpp)
     set_property(TARGET jsoncpp_static PROPERTY POSITION_INDEPENDENT_CODE ON)
     include_directories(Externals/jsoncpp/include)
-    target_link_libraries(CoVerPlugin PRIVATE jsoncpp_static)
+    target_link_libraries(CoVerCore PUBLIC jsoncpp_static)
 endif((NOT JSONCPP_FOUND) OR BUNDLED_JSONCPP)
+
+##
+## Frontends of the interactive mode, loaded by the core on demand (see Interactive/InteractiveFrontend.cppm)
+##
+
+option(ENABLE_TUI "Build the terminal UI for the interactive mode (requires the FTXUI submodule)" OFF)
+option(ENABLE_GUI "Build the Qt-based GUI for the interactive mode (requires Qt6)" OFF)
+if (ENABLE_TUI)
+  add_subdirectory(Interactive/TUI)
+endif(ENABLE_TUI)
+if (ENABLE_GUI)
+  add_subdirectory(Interactive/GUI)
+endif(ENABLE_GUI)
 
 install(
   FILES

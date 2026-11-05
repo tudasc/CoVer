@@ -13,6 +13,7 @@
 
 import LLVMModule;
 import ErrorMessage;
+import AnalysisReports;
 
 using namespace ContractTree;
 
@@ -22,29 +23,11 @@ class ContractManagerAnalysis : public AnalysisInfoMixin<ContractManagerAnalysis
     public:
         static inline llvm::AnalysisKey Key;
 
-        using FormulaReports = std::map<const ContractFormula*, std::vector<ErrorMessage>>;
-
-        struct Contract {
-            Function* F;
-            const std::string ContractString;
-            const ContractData Data;
-            std::shared_ptr<std::vector<std::string>> DebugInfo = std::make_shared<std::vector<std::string>>();
-        };
-
-        // What a trace session debugs
-        struct DebugContext {
-            DebugContext(Contract const& C, ContractFormula const& top, ContractFormula const& form, FormulaReports const& reports)
-                : function{C.F->getName().str()}, contract{C.ContractString}, report{top.ExprStr}, formula{form.ExprStr}, status{FulfillmentStr(*form.Status)},
-                  errors{reports.contains(&top) ? reports.at(&top) : std::vector<ErrorMessage>()} {}
-
-            std::string function; // Contract supplier
-            std::string contract;
-            std::string report; // Reported top level formula
-            std::string formula; // Formula whose trace is debugged
-            std::string status;
-            std::vector<ErrorMessage> errors;
-        };
-        using FormulaDebugHandlers = std::map<const ContractFormula*, std::function<bool(DebugContext const&)>>;
+        // Shared with the interactive mode, see AnalysisReports
+        using FormulaReports = AnalysisReports::FormulaReports;
+        using Contract = AnalysisReports::Contract;
+        using DebugContext = AnalysisReports::DebugContext;
+        using FormulaDebugHandlers = AnalysisReports::FormulaDebugHandlers;
 
         struct LinearizedContract {
             Function* F;

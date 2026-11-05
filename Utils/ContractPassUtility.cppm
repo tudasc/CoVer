@@ -1,14 +1,19 @@
 module;
 
 #include "ContractTree.hpp"
+#include <cassert>
+#include <charconv>
 #include <climits>
+#include <cstdlib>
 #include <format>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <queue>
 #include <set>
 #include <string>
+#include <string_view>
 #include <optional>
 #include <sys/types.h>
 #include <stack>
@@ -23,15 +28,14 @@ module;
 export module ContractPassUtility;
 import LLVMModule;
 import ErrorMessage;
-import BasicTypes;
 
 using namespace llvm;
 
 // The module to analyse
 Module* curM;
 
-// Basic Types
-BasicTypesAnalysis::BasicTypes Basic_Types;
+// 32 bit integer constant, the type of the int parameters of CoVer's annotation functions
+ConstantInt* getInt(int x) { return ConstantInt::get(Type::getInt32Ty(curM->getContext()), x); }
 
 // To only warn once if a CB is calling an unknown function
 static std::set<const CallBase*> UnknownCalledParam;
@@ -595,8 +599,7 @@ export StoreInst* getLastStore(CallBase* CB, int idx, FunctionAnalysisManager* F
 
 
 
-export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
-    Basic_Types = MAM.getResult<BasicTypesAnalysis>(M);
+export void Initialize(Module& M, bool _outputIR) {
 
     isFort = M.getFunction("_QQmain");
     curM = &M;
@@ -644,6 +647,15 @@ export std::string getFile(const Instruction* I, bool longform = true) {
     if (I->getDebugLoc())
         return (I->getDebugLoc()->getDirectory() != "" && longform ? I->getDebugLoc()->getDirectory() + "/" : "").str() + I->getDebugLoc()->getFilename().str();
     return "UNKNOWN";
+}
+
+// The integer the whole text spells, e.g. a constant contract value, or nothing if it is no (representable) integer
+export std::optional<int> parseInt(std::string_view text) {
+    int value = 0;
+    char const* end = text.data() + text.size();
+    std::from_chars_result parsed = std::from_chars(text.data(), end, value);
+    if (parsed.ec != std::errc() || parsed.ptr != end) return std::nullopt;
+    return value;
 }
 
 export std::string getInstrLocStr(const Function* I, bool longform = true) {
@@ -880,8 +892,10 @@ export bool checkCallParamApplies(const CallBase* Source, const CallBase* Target
                 candidateParams.push_back(Target->getArgOperand(*TagU.param));
             }
         }
-        if (candidateParams.empty())
-            throw "Could not find candidate parameter with matching tag! Invalid contract definition";
+        if (candidateParams.empty()) {
+            errs() << "CoVer: Could not find candidate parameter with matching tag " << TargetStr << " for " << getInstrLocStr(Target) << ". Invalid contract definition!\n";
+            std::exit(EXIT_FAILURE);
+        }
     }
 
     for (const Value* candidateParam : candidateParams) {
@@ -917,7 +931,7 @@ export Value* getValueByName(std::string name, Function* F) {
 export void addToAliasGroup(int idx, Value* V) {
     if (aliasInfo[idx].members.contains(V)) return; // Need to do early return to not double-instrument
     aliasInfo[idx].members.insert(V);
-    CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlias"), {V, Basic_Types.getBool(aliasInfo[idx].areAliasing), Basic_Types.getInt(idx)});
+    CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlias"), {V, ConstantInt::getBool(curM->getContext(), aliasInfo[idx].areAliasing), getInt(idx)});
     if (Instruction* I = dyn_cast<Instruction>(V)) {
         CI->insertAfter(I);
         CI->setDebugLoc(I->getDebugLoc());
@@ -939,7 +953,7 @@ export void setAliasGroupType(int idx, bool isAlias) {
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand()->getName() != "CoVer_AnnotAlias") continue;
             if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() != idx) continue;
-            CB->setArgOperand(1, Basic_Types.getBool(isAlias));
+            CB->setArgOperand(1, ConstantInt::getBool(curM->getContext(), isAlias));
         }
     }
 }
@@ -981,7 +995,7 @@ export void removeFromAliasGroup(int group, int idx) {
 
 export void addAliasEpoch(int group, Instruction* before) {
     if (isa<PHINode>(before)) before = &*before->getParent()->getFirstInsertionPt();
-    CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAliasEpoch"), {Basic_Types.getInt(group)});
+    CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAliasEpoch"), {getInt(group)});
     CI->insertBefore(before->getIterator());
     CI->setDebugLoc(before->getDebugLoc());
 }
@@ -989,7 +1003,7 @@ export void addAliasEpoch(int group, Instruction* before) {
 export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     assert(indirect->isIndirectCall());
 
-    std::vector<Value*> args = {indirect->getCalledOperand(), Basic_Types.getInt(targets.size())};
+    std::vector<Value*> args = {indirect->getCalledOperand(), getInt(targets.size())};
     args.insert(args.end(), targets.begin(), targets.end());
     CallInst* CI = CallInst::Create(indirect->getModule()->getFunction("CoVer_AnnotFP"), args);
     if (indirect->getPrevNode() && isa<CallBase>(indirect->getPrevNode()) && dyn_cast<CallBase>(indirect->getPrevNode())->getCalledOperand()->getName() == "CoVer_AnnotFP") {
@@ -1017,7 +1031,7 @@ export std::string setAllocAnnot(Instruction* I, uint64_t size) {
         insertPt = I->getNextNode();
     }
 
-    ConstantInt* sizeConst = ConstantInt::get(Basic_Types.Int64_Type, size);
+    ConstantInt* sizeConst = ConstantInt::get(Type::getInt64Ty(curM->getContext()), size);
     // Already annotated: Only update size
     for (CallBase* CB = dyn_cast<CallBase>(insertPt); CB && CB->getCalledOperand()->getName() == "CoVer_AnnotAlloc"; CB = dyn_cast_or_null<CallBase>(CB->getNextNode())) {
         if (CB->getArgOperand(0) != I) continue;

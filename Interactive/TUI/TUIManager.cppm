@@ -19,21 +19,23 @@ module;
 #include <utility>
 #include <vector>
 
-#include "../../Passes/ContractManager.hpp"
 #include "ContractTree.hpp"
 
 export module TUIManager;
+import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
 import InteractiveUtils;
 import MCPServer;
 import MCPControl;
 
+using namespace ContractTree;
+
 using namespace llvm;
 
 namespace TUIManager {
 
-using Contract = llvm::ContractManagerAnalysis::Contract;
+using Contract = AnalysisReports::Contract;
 
 ftxui::Decorator FulfillmentColor(Fulfillment f) {
     switch (f) {
@@ -182,7 +184,7 @@ export std::string RenderTxtEntry(std::vector<ftxui::Element> lines, std::string
 }
 
 // top is the reported formula, Form one of its subformulas
-bool ShowContractFormula(Contract const& C, ContractTree::ContractFormula const& top, std::shared_ptr<ContractTree::ContractFormula> const& Form, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, std::string const& title) {
+bool ShowContractFormula(Contract const& C, ContractTree::ContractFormula const& top, std::shared_ptr<ContractTree::ContractFormula> const& Form, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, std::string const& title) {
     int selected = 0;
     bool debuggable = debugHandlers.contains(Form.get());
     std::vector<std::string> menu_entries = {"Exit debugger"};
@@ -210,11 +212,11 @@ bool ShowContractFormula(Contract const& C, ContractTree::ContractFormula const&
     );
     screen.Loop(render);
     if (selected == 0) return false;
-    if (debuggable) return debugHandlers[Form.get()](ContractManagerAnalysis::DebugContext(C, top, *Form, reports));
+    if (debuggable) return debugHandlers[Form.get()](AnalysisReports::DebugContext(C, top, *Form, reports));
     return ShowContractFormula(C, top, Form->Children[selected - 1], reports, debugHandlers, title);
 }
 
-bool ShowContractDetails(Contract const& C, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers) {
+bool ShowContractDetails(Contract const& C, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers) {
     std::vector<std::string> menu_entries = {"Back to Listing"};
     std::vector<std::shared_ptr<ContractFormula>> violated_formulas;
     for (auto const& [kind, scope] : {std::pair{"Precondition", C.Data.Pre}, std::pair{"Postcondition", C.Data.Post}}) {
@@ -250,18 +252,18 @@ bool ShowContractDetails(Contract const& C, ContractManagerAnalysis::FormulaRepo
     return ShowContractFormula(C, *form, form, reports, debugHandlers, "Inspecting Contract Subformula for Function: " + C.F->getName().str());
 }
 
-export void StartMenu(llvm::ContractManagerAnalysis::ContractDatabase DB, double parse_time) {
+export void StartMenu(std::vector<AnalysisReports::Contract> const& Contracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double parse_time) {
     std::vector<std::string> contr_funcs;
     contr_funcs.push_back("Start Analysis");
-    for (llvm::ContractManagerAnalysis::Contract const& contract : DB.Contracts) {
+    for (AnalysisReports::Contract const& contract : Contracts) {
         contr_funcs.push_back("Read Contract: " + contract.F->getName().str());
     }
 
     int choice;
     do {
-        choice = RenderMenu(contr_funcs, InteractiveUtils::startMenuTitle(DB.Contracts.size(), parse_time));
+        choice = RenderMenu(contr_funcs, InteractiveUtils::startMenuTitle(Contracts.size(), parse_time));
         // Can ignore ShowContractDetails ret here, no way for reanalyse command as no analyses started yet
-        if (choice != 0) ShowContractDetails(DB.Contracts[choice-1], DB.reports, DB.debugHandlers);
+        if (choice != 0) ShowContractDetails(Contracts[choice-1], reports, debugHandlers);
     } while (choice != 0);
 }
 
@@ -367,7 +369,7 @@ void ShowFile(std::string file, std::map<int,ftxui::Color> highlights, int focus
     ShowLines(lines, "Source Preview", focus_line);
 }
 
-bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, ContractManagerAnalysis::FormulaReports const& reports) {
+bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, AnalysisReports::FormulaReports const& reports) {
     std::vector<std::string> choices;
     choices.push_back("Back to Listing");
     choices.push_back("Launch Debugger");
@@ -413,7 +415,7 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, Contract
 
 // The results of the analysis: shows the results menu, or the MCP view while MCP mode is active, and opens the reports
 // requested by tool calls. Returns whether to reanalyse.
-export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, ContractManagerAnalysis::FormulaReports const& reports, ContractManagerAnalysis::FormulaDebugHandlers& debugHandlers, double runtime) {
+export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::vector<std::string> violations = {"Exit Tool", "Start MCP mode"};
     for (InteractiveUtils::ReportedFormula const& formula : formulas) violations.push_back(formula.Summary());
     std::string title = InteractiveUtils::resultsTitle(!formulas.empty(), runtime);

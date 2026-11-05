@@ -17,12 +17,15 @@ module;
 #include <utility>
 #include <vector>
 
-#include "../Passes/ContractManager.hpp"
+#include "ContractTree.hpp"
 
 export module InteractiveSession;
+import AnalysisReports;
 import LLVMModule;
 import ContractPassUtility;
 import InteractiveUtils;
+
+using namespace ContractTree;
 
 using namespace llvm;
 
@@ -104,7 +107,7 @@ export struct BlockLine {
 // Views are rebuilt by Refresh, which the trace commands call after every command except for those ending the session
 export class TraceSession {
     public:
-        explicit TraceSession(ContractManagerAnalysis::DebugContext context) : context{std::move(context)} {}
+        explicit TraceSession(AnalysisReports::DebugContext context) : context{std::move(context)} {}
         virtual ~TraceSession() = default;
         virtual void Refresh() = 0;
         virtual std::vector<TraceBlockView> const& Blocks() const = 0;
@@ -141,7 +144,7 @@ export class TraceSession {
         void SetExpandAsSource(bool source) { expand_as_source = source; }
 
         // The report being debugged
-        ContractManagerAnalysis::DebugContext const& Context() const { return context; }
+        AnalysisReports::DebugContext const& Context() const { return context; }
 
         History const& GetHistory() const { return history; }
         void AddHistory(std::string const& cmd, CmdResult const& res) { history.push_back({cmd, res}); }
@@ -161,7 +164,7 @@ export class TraceSession {
         }
 
     protected:
-        ContractManagerAnalysis::DebugContext context;
+        AnalysisReports::DebugContext context;
         bool expand_as_source = false;
         History history = LoadHistoryCache();
 };
@@ -184,7 +187,7 @@ JumpTraceEntry<T>* getLinearTraceEnd(JumpTraceEntry<T>* entry) {
 export template<typename T>
 class TraceSessionImpl : public TraceSession {
     public:
-        TraceSessionImpl(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, ContractManagerAnalysis::DebugContext context)
+        TraceSessionImpl(TraceDB<T> traceDB, JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, AnalysisReports::DebugContext context)
             : TraceSession(std::move(context)), traceDB{traceDB}, trace{trace}, infoToStr{infoToStr} {
             Refresh();
         }

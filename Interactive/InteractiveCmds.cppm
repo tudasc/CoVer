@@ -67,22 +67,21 @@ export struct CmdInfo {
 export std::vector<CmdInfo> const& GetTraceCommands();
 
 // Parse a whole argument as integer, the error names the argument
-std::expected<int, std::string> ParseInt(std::string_view s, std::string_view arg_name) {
-    int value;
-    auto [end, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
-    if (ec != std::errc{} || end != s.data() + s.size()) return std::unexpected(std::format("{} argument is not a number!", arg_name));
-    return value;
+std::expected<int, std::string> ParseIntArg(std::string_view s, std::string_view arg_name) {
+    std::optional<int> value = ContractPassUtility::parseInt(s);
+    if (!value) return std::unexpected(std::format("{} argument is not a number!", arg_name));
+    return *value;
 }
 
 std::expected<int, std::string> ParseBlock(std::string_view s, TraceSession const& session) {
-    std::expected<int, std::string> block = ParseInt(s, "Block");
+    std::expected<int, std::string> block = ParseIntArg(s, "Block");
     if (block && (*block < 0 || *block >= session.Blocks().size()))
         return std::unexpected(std::format("Invalid block number! Must be between 0 and {}", session.Blocks().size() - 1));
     return block;
 }
 
 std::expected<Instruction*, std::string> ParseTraceInstr(std::string_view s, int block, TraceSession const& session) {
-    std::expected<int, std::string> instr = ParseInt(s, "Instruction");
+    std::expected<int, std::string> instr = ParseIntArg(s, "Instruction");
     if (!instr) return std::unexpected(instr.error());
     Instruction* I = session.BlockInstruction(block, *instr);
     if (!I) return std::unexpected("No such instruction!");
@@ -90,7 +89,7 @@ std::expected<Instruction*, std::string> ParseTraceInstr(std::string_view s, int
 }
 
 std::expected<int, std::string> ParseAliasGroup(std::string_view s) {
-    std::expected<int, std::string> group = ParseInt(s, "Group");
+    std::expected<int, std::string> group = ParseIntArg(s, "Group");
     if (group && !ContractPassUtility::getAliasAnnots().contains(*group))
         return std::unexpected("Invalid alias group! Check existing groups using alias-get");
     return group;
@@ -113,7 +112,7 @@ CmdResult CmdExpand(std::vector<std::string> const& args, TraceSession& session,
 CmdResult CmdChild(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
     std::expected<int, std::string> block = ParseBlock(args[0], session);
     if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
-    std::expected<int, std::string> child = ParseInt(args[1], "Child");
+    std::expected<int, std::string> child = ParseIntArg(args[1], "Child");
     if (!child) return {CmdResultCode::INVALID_INPUT, child.error()};
     int num_children = session.NumChildren(*block);
     if (num_children == 0) return {CmdResultCode::INVALID_INPUT, std::format("Block {} has no children!", *block)};
@@ -207,7 +206,7 @@ CmdResult CmdAliasRm(std::vector<std::string> const& args, TraceSession& session
     std::expected<int, std::string> group = ParseAliasGroup(args[0]);
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
     if (args[1].starts_with("e")) {
-        std::expected<int, std::string> idx = ParseInt(std::string_view(args[1]).substr(1), "Epoch index");
+        std::expected<int, std::string> idx = ParseIntArg(std::string_view(args[1]).substr(1), "Epoch index");
         if (!idx) return {CmdResultCode::INVALID_INPUT, idx.error()};
         int num_epochs = ContractPassUtility::getAliasEpochs(*group).size();
         if (*idx < 0 || *idx >= num_epochs) {
@@ -216,7 +215,7 @@ CmdResult CmdAliasRm(std::vector<std::string> const& args, TraceSession& session
         ContractPassUtility::removeAliasEpoch(*group, *idx);
         return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias epoch {:>3}.e{:0>2}", *group, *idx)};
     }
-    std::expected<int, std::string> idx = ParseInt(args[1], "Group member index");
+    std::expected<int, std::string> idx = ParseIntArg(args[1], "Group member index");
     if (!idx) return {CmdResultCode::INVALID_INPUT, idx.error()};
     int num_members = ContractPassUtility::getAliasAnnots().at(*group).members.size();
     if (*idx < 0 || *idx >= num_members) {
@@ -278,7 +277,7 @@ CmdResult CmdAllocCreate(std::vector<std::string> const& args, TraceSession& ses
     std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[1], *block, session);
     if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
     if (args[2].starts_with("-")) return {CmdResultCode::INVALID_INPUT, "Size argument must not be negative!"};
-    std::expected<uint64_t, std::string> size = ParseInt(args[2], "Size");
+    std::expected<uint64_t, std::string> size = ParseIntArg(args[2], "Size");
     if (!size) return {CmdResultCode::INVALID_INPUT, size.error()};
     std::string err = ContractPassUtility::setAllocAnnot(*selected, *size);
     if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};

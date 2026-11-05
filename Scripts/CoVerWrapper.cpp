@@ -139,7 +139,8 @@ std::string exec(std::string const& cmd, bool interactive = true) {
     std::string result;
     FILE* pipe = popen(cmd.c_str(), "r");
     if (!pipe) {
-        throw std::runtime_error("popen() failed!");
+        std::cerr << "Could not run \"" << cmd << "\": popen() failed!\n";
+        exit(EXIT_FAILURE);
     }
     while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
         result += buffer.data();

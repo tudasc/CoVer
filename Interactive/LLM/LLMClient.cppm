@@ -167,10 +167,9 @@ int ProgressCallback(void* userdata, curl_off_t, curl_off_t, curl_off_t, curl_of
 // Most servers report errors as {"error": {"message": ...}}, some as {"error": "..."}
 std::string ApiErrorMessage(long status, std::string const& response) {
     std::expected<Json::Value, std::string> json = ParseJson(response);
-    if (json && json->isObject() && json->isMember("error")) {
+    if (json && json->isMember("error")) {
         Json::Value const& error = (*json)["error"];
-        if (error.isObject() && error.isMember("message")) return std::format("LLM API error {}: {}", status, error["message"].asString());
-        if (error.isString()) return std::format("LLM API error {}: {}", status, error.asString());
+        return std::format("LLM API error {}: {}", status, error.isString() ? error.asString() : error["message"].asString());
     }
     return std::format("LLM API error {}: {}", status, response.substr(0, 500));
 }
@@ -300,12 +299,10 @@ Reply DecodeReply(Json::Value const& response) {
     reply.cached_tokens = usage["prompt_tokens_details"]["cached_tokens"].asUInt64();
     reply.output_tokens = usage["completion_tokens"].asUInt64();
     reply.reasoning_tokens = usage["completion_tokens_details"]["reasoning_tokens"].asUInt64();
-    if (!response["choices"].isArray() || response["choices"].empty()) return reply;
-
     Json::Value const& choice = response["choices"][0];
     Json::Value const& message = choice["message"];
     std::string finish_reason = choice["finish_reason"].asString();
-    if (message["refusal"].isString() && !message["refusal"].asString().empty()) {
+    if (!message["refusal"].asString().empty()) { // Null unless refused
         reply.stop = Reply::Stop::REFUSAL;
         reply.refusal = message["refusal"].asString();
         return reply;
@@ -324,7 +321,7 @@ Reply DecodeReply(Json::Value const& response) {
         reply.message.reasoning = message[field].asString();
         if (!reply.message.reasoning.empty()) break;
     }
-    if (message["content"].isString() && !message["content"].asString().empty()) reply.message.texts.push_back(message["content"].asString());
+    if (!message["content"].asString().empty()) reply.message.texts.push_back(message["content"].asString()); // Null with tool calls
     bool cut_off = finish_reason == "length";
     for (Json::Value const& call : message["tool_calls"]) {
         std::string name = call["function"]["name"].asString();
@@ -388,7 +385,6 @@ export std::expected<void, std::string> TestConnection(Config const& config, std
         return std::unexpected("The server's answer is no model list. Check that the URL includes the API's base path, usually /v1.");
     std::string offered;
     for (Json::Value const& model : (*response)["data"]) {
-        if (!model.isObject() || !model["id"].isString()) continue;
         std::string id = model["id"].asString();
         if (id == config.model || id == config.model + ":latest") return {}; // Ollama adds the default tag
         offered += " " + id;
