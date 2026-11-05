@@ -13,6 +13,7 @@ import ContractPassUtility;
 import InteractiveUtils;
 import InteractiveSession;
 import InteractiveCmds;
+import AnnotDocs;
 
 using namespace ContractTree;
 
@@ -136,6 +137,7 @@ Annotations are assumptions the static analysis trusts without checking. They do
 - Alias annotations (alias-create, alias-add, alias-type, alias-rm, alias-epoch): when alias analysis is imprecise, parameters of calls cannot be matched (e.g. the request passed to MPI_Wait is not recognised as the one from MPI_Isend). Values in a group are asserted to alias (yes) or not to alias (no). Values are named as in the IR of the function containing the given block (%name, %42, or @global for globals); values defined outside of the block but in the same function can be used as well. An epoch (alias-epoch) placed before an instruction forgets the values of the group seen so far, for memory that is reused over time, such as request arrays reused in every communication round.
 - Allocation annotations (alloc-create): the analysis tracks allocated pointers through stores, loads and GEPs, but not through integer arithmetic or opaque calls. Annotating the instruction producing a pointer asserts the pointer refers to memory allocated with at least the given number of bytes (0 if unknown, never more than actually allocated).
 New annotations do not affect the current trace, they take effect with the next reanalysis.
+The get_annotation_docs tool returns CoVer's documentation of each annotation kind, with examples and constraints, e.g. how far a source level alias annotation reaches. It shows annotations as calls in the IR or the source code (CoVer_AnnotAlias, ...), which is how they end up in the program. In the trace debugger, add them with the commands above instead. Read the documentation of an annotation kind before using it for the first time.
 
 # How to work
 - Investigate before answering: look at the trace, the relevant blocks and the source code. Do not guess value names or instruction numbers, look them up.
@@ -146,6 +148,27 @@ New annotations do not affect the current trace, they take effect with the next 
 
 // Name of the tool returning Context(), not needed when the context is part of the system prompt
 export constexpr char const* CONTEXT_TOOL = "get_debug_context";
+
+// Name of the tool returning the annotation documentation, which needs no trace session
+export constexpr char const* DOCS_TOOL = "get_annotation_docs";
+
+export ToolSpec DocsSpec() {
+    std::string topics;
+    for (AnnotDocs::Doc const& doc : AnnotDocs::Docs()) topics += (topics.empty() ? "" : ", ") + doc.topic;
+    Json::Value schema = Schema({{"topic", "string", std::format("One of {}, all if omitted", topics)}}, {});
+    for (AnnotDocs::Doc const& doc : AnnotDocs::Docs()) schema["properties"]["topic"]["enum"].append(doc.topic);
+    return {DOCS_TOOL, "CoVer's documentation of an annotation kind: what it asserts, examples in IR and source code, and its constraints.", schema};
+}
+
+export ToolResult AnnotationDocs(Json::Value const& input) {
+    std::optional<std::string> topic = GetString(input, "topic");
+    std::string out;
+    for (AnnotDocs::Doc const& doc : AnnotDocs::Docs()) {
+        if (!topic || *topic == doc.topic) out += std::string(doc.text) + "\n";
+    }
+    if (out.empty()) return {std::format("Unknown topic {}, see the tool description", *topic), true, std::format("{} {}  ->  unknown topic", DOCS_TOOL, *topic)};
+    return {out, false, std::format("{} {}", DOCS_TOOL, topic.value_or("(all)"))};
+}
 
 // Runs the tools on a trace session. Not thread safe, use from the UI thread only.
 export class TraceTools {
@@ -232,6 +255,7 @@ export class TraceTools {
                 {{"list_functions", "Functions of the module, e.g. candidates for function pointer targets.",
                   Schema({{"filter", "string", "Only list functions whose name contains this text"}}, {})},
                  [](TraceTools& t, Json::Value const& input) { return t.ListFunctions(input); }},
+                {DocsSpec(), [](TraceTools&, Json::Value const& input) { return AnnotationDocs(input); }},
             };
         }
 

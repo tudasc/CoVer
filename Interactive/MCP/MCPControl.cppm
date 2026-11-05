@@ -161,6 +161,10 @@ std::vector<TraceTools::Tool<State>> BuildTools() {
             }});
             continue;
         }
+        if (spec.name == TraceTools::DOCS_TOOL) { // Needs no open trace
+            tools.push_back({spec, [](State&, Json::Value const& args) { return TraceTools::AnnotationDocs(args); }});
+            continue;
+        }
         tools.push_back({spec, [name = spec.name](State& s, Json::Value const& args) -> ToolResult {
             if (!s.trace) return {"No trace is open, use list_reports and open_report first", true, name + "  ->  no trace open"};
             return s.trace->Run(name, args);

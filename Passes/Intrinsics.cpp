@@ -1,5 +1,5 @@
-#include "Intrinsics.hpp"
 #include "ContractManager.hpp"
+#include "Intrinsics.hpp"
 
 import std;
 import LLVMModule;

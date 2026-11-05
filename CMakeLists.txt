@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 4.5)
 set(CMAKE_INSTALL_LIBDIR "lib" CACHE PATH "Library install directory" FORCE)
 
 project(CoVer LANGUAGES CXX C)
-set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD 26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ##
@@ -45,6 +45,7 @@ target_sources(CoVerCore PUBLIC FILE_SET CXX_MODULES FILES
   Interactive/InteractiveCmds.cppm
   Interactive/InteractiveSession.cppm
   Interactive/TraceTools.cppm
+  Interactive/AnnotDocs.cppm
   Interactive/LLM/LLMClient.cppm
   Interactive/LLM/LLMChat.cppm
   Interactive/MCP/MCPServer.cppm
