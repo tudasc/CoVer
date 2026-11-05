@@ -1,18 +1,10 @@
 module;
 
-#include <ftxui/component/app.hpp>
-#include <ftxui/component/component.hpp>
-#include <ftxui/component/component_base.hpp>
-#include <ftxui/component/component_options.hpp>
-#include <ftxui/component/event.hpp>
-#include <ftxui/component/mouse.hpp>
-#include <ftxui/dom/elements.hpp>
-#include <ftxui/screen/color.hpp>
-
 #include "ContractTree.hpp"
 
 export module TUIManager;
 import std;
+import ftxui;
 import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;

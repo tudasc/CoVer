@@ -1,10 +1,6 @@
-module;
-
-#include <ftxui/dom/elements.hpp>
-#include <ftxui/screen/color.hpp>
-
 export module TUITrace;
 import std;
+import ftxui;
 import InteractiveUtils;
 import InteractiveCmds;
 import InteractiveSession;

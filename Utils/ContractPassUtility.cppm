@@ -4,7 +4,6 @@ module;
 #include <cassert>
 #include <climits>
 #include <cstdlib>
-#include <sys/types.h>
 
 #include "dsa/DSNode.h"
 #include "dsa/DSSupport.h"

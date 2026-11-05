@@ -1,15 +1,6 @@
-module;
-
-#include <ftxui/component/app.hpp>
-#include <ftxui/component/component.hpp>
-#include <ftxui/component/component_options.hpp>
-#include <ftxui/component/event.hpp>
-#include <ftxui/component/mouse.hpp>
-#include <ftxui/dom/elements.hpp>
-#include <ftxui/screen/color.hpp>
-
 export module TUIChat;
 import std;
+import ftxui;
 import InteractiveSession;
 import TUIManager;
 import LLMChat;

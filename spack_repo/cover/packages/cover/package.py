@@ -19,13 +19,13 @@ class Cover(CMakePackage):
     variant("tui", default=False, description="Build the terminal UI for the interactive mode")
     variant("gui", default=False, description="Build the Qt-based GUI for the interactive mode")
 
-    # C++20 modules require CMake >= 3.28 + Ninja
+    # C++20 modules and import std require CMake >= 4.5 + Ninja
     generator("ninja")
 
     depends_on("c", type="build")
     depends_on("cxx", type="build")
 
-    depends_on("cmake@3.28:", type="build")
+    depends_on("cmake@4.5:", type="build")
     depends_on("ninja", type="build")
     depends_on("pkgconfig", type="build")
     depends_on("java", type="build")  # ANTLR4 grammar generation
