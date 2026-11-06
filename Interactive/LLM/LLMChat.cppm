@@ -28,7 +28,14 @@ export struct ChatEntry {
     Kind kind;
     std::string text;
     std::string detail; // Tool output, shown on demand
+    std::uint64_t tokens = 0; // Thinking only: reasoning tokens as reported by the server, 0 if it does not report them
 };
+
+// Shown instead of the reasoning, which is only kept for the export. Estimated from the length if the server does not report the tokens.
+export std::string ThinkingLabel(ChatEntry const& entry) {
+    if (entry.tokens > 0) return std::format("Thinking... ({} Tokens)", entry.tokens);
+    return std::format("Thinking... (~{} Tokens)", (entry.text.size() + 3) / 4);
+}
 
 constexpr int MAX_TOOL_ROUNDS = 40; // Per user message, to bound cost if the model gets stuck
 std::string const CUT_OFF_INFO = "The response was cut off at the maximum length. Send a message to let it continue.";
@@ -94,7 +101,7 @@ Conversation LoadConversation() {
     Conversation conv;
     for (Json::Value const& message : json["messages"]) conv.messages.push_back(MessageFromJson(message));
     for (Json::Value const& entry : json["transcript"])
-        conv.transcript.push_back({static_cast<ChatEntry::Kind>(entry["kind"].asInt()), entry["text"].asString(), entry["detail"].asString()});
+        conv.transcript.push_back({static_cast<ChatEntry::Kind>(entry["kind"].asInt()), entry["text"].asString(), entry["detail"].asString(), entry["tokens"].asUInt64()});
     conv.input_tokens = json["input_tokens"].asUInt64();
     conv.cached_tokens = json["cached_tokens"].asUInt64();
     conv.output_tokens = json["output_tokens"].asUInt64();
@@ -131,6 +138,7 @@ export std::string ExportConversation(std::string const& path) {
         item["kind"] = std::to_underlying(entry.kind);
         item["text"] = entry.text;
         item["detail"] = entry.detail;
+        if (entry.kind == ChatEntry::Kind::THINKING) item["tokens"] = static_cast<Json::UInt64>(entry.tokens);
         json["transcript"].append(item);
     }
     json["input_tokens"] = static_cast<Json::UInt64>(conv.input_tokens);
@@ -292,7 +300,7 @@ export class ChatSession {
             conv.output_tokens += reply.output_tokens;
             conv.reasoning_tokens += reply.reasoning_tokens;
             // Shown even without a message, the response may have been cut off while reasoning
-            if (!reply.message.reasoning.empty()) conv.transcript.push_back({ChatEntry::Kind::THINKING, reply.message.reasoning});
+            if (!reply.message.reasoning.empty()) conv.transcript.push_back({ChatEntry::Kind::THINKING, reply.message.reasoning, "", reply.reasoning_tokens});
             for (std::string const& notice : reply.notices) conv.transcript.push_back({ChatEntry::Kind::INFO, notice});
             if (reply.stop == Reply::Stop::REFUSAL) {
                 conv.transcript.push_back({ChatEntry::Kind::ERROR, "The model declined to respond" + (reply.refusal.empty() ? "" : " (" + reply.refusal + ")") + ". Try rephrasing your message."});
@@ -304,7 +312,7 @@ export class ChatSession {
                 return Notify();
             }
             conv.messages.push_back(reply.message);
-            for (std::string const& text : reply.message.texts) conv.transcript.push_back({ChatEntry::Kind::ASSISTANT, text});
+            for (std::string const& text : reply.message.texts) conv.transcript.push_back({ChatEntry::Kind::ASSISTANT, TraceTools::Trim(text)});
 
             Message results = {Message::Role::USER};
             for (LLMClient::ToolCall const& call : reply.message.tool_calls) {

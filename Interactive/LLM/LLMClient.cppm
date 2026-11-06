@@ -305,7 +305,7 @@ Reply DecodeReply(Json::Value const& response) {
         reply.message.reasoning = message[field].asString();
         if (!reply.message.reasoning.empty()) break;
     }
-    if (!message["content"].asString().empty()) reply.message.texts.push_back(message["content"].asString()); // Null with tool calls
+    if (!Trim(message["content"].asString()).empty()) reply.message.texts.push_back(message["content"].asString());
     bool cut_off = finish_reason == "length";
     for (Json::Value const& call : message["tool_calls"]) {
         std::string name = call["function"]["name"].asString();

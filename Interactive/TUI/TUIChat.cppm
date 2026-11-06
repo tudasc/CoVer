@@ -28,7 +28,7 @@ void AddEntry(std::vector<ftxui::Element>& elems, ChatEntry const& entry) {
             addLines(entry.text, ftxui::nothing);
             break;
         case ChatEntry::Kind::THINKING:
-            addLines("(thinking) " + entry.text, ftxui::dim);
+            addLines(LLMChat::ThinkingLabel(entry), ftxui::dim);
             break;
         case ChatEntry::Kind::TOOL:
             addLines("  > " + entry.text, ftxui::color(ftxui::Color::Blue));

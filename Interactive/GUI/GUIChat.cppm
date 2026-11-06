@@ -187,7 +187,7 @@ class ChatDialog : public QDialog {
 #endif
                         break;
                     case ChatEntry::Kind::THINKING:
-                        block(qstr(entry.text), muted, false, true);
+                        block(qstr(LLMChat::ThinkingLabel(entry)), muted, false, true);
                         break;
                     case ChatEntry::Kind::TOOL:
                         ToolLink(cursor, i, entry, muted);
