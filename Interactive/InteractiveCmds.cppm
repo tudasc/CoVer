@@ -267,15 +267,26 @@ CmdResult CmdAllocCreate(std::vector<std::string> const& args, TraceSession& ses
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} at {}.{} is now annotated as allocated{}", (*selected)->getNameOrAsOperand(), *block, args[1], *size ? std::format(" with at least {} bytes", *size) : "")};
 }
 
-CmdResult CmdDiff(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
-    std::ofstream difffile(args[0]);
-    session.WriteHistory(difffile, false);
-    int rc = std::system(std::format("diff -c -I '^; ModuleID' -I '^!.*' -I '^@.*' {} {} > {}", InteractiveUtils::INTERACT_START_FILE, InteractiveUtils::REANALYSE_FILE, InteractiveUtils::DIFF_TMP_FILE).c_str());
+// Default file of the patch files written by the frontends
+export constexpr char const* PATCH_FILE = "annotations.patch";
+
+// Writes the annotations of this and previous runs as a patch file, see the diff command. Also usable without an open trace.
+export CmdResult WritePatch(std::string const& path) {
+    // Written once a trace is opened or a reanalysis starts, before that the module has no annotations
+    char const* current = std::filesystem::exists(InteractiveUtils::REANALYSE_FILE) ? InteractiveUtils::REANALYSE_FILE : InteractiveUtils::INTERACT_START_FILE;
+    int rc = std::system(std::format("diff -c -I '^; ModuleID' -I '^!.*' -I '^@.*' {} {} > {}", InteractiveUtils::INTERACT_START_FILE, current, InteractiveUtils::DIFF_TMP_FILE).c_str());
     if (!WIFEXITED(rc) || (WEXITSTATUS(rc) && WEXITSTATUS(rc) != 1)) {
         return {CmdResultCode::INVALID_INPUT, std::format("Error, diff returned exit code {}", WEXITSTATUS(rc))};
     }
+    std::ofstream difffile(path);
+    if (!difffile) return {CmdResultCode::INVALID_INPUT, "Error, cannot write to " + path};
+    InteractiveSession::WriteHistory(difffile, false);
     difffile << std::ifstream(InteractiveUtils::DIFF_TMP_FILE).rdbuf();
-    return {CmdResultCode::SUCCESS_CONTINUE, "Wrote patch file to " + args[0]};
+    return {CmdResultCode::SUCCESS_CONTINUE, "Wrote patch file to " + path};
+}
+
+CmdResult CmdDiff(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
+    return WritePatch(args[0]);
 }
 
 CmdResult CmdPatch(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {

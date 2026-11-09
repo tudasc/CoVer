@@ -24,6 +24,7 @@ using namespace llvm;
 // The frontends declare what is shown with the scopes below and perform the requested navigation (OpenPendingReport, NavigateTrace).
 namespace MCPControl {
 
+using InteractiveUtils::DebuggableLeaves;
 using InteractiveUtils::PostFn;
 using InteractiveUtils::ReportedFormula;
 using InteractiveUtils::TraceKey;
@@ -48,10 +49,7 @@ You are connected to CoVer's interactive mode through MCP and can work through a
 - After reanalysing, check with list_reports that the reports you annotated are gone. Annotations can also uncover further reports.
 - Reports without a debuggable trace (marked in list_reports) cannot be annotated with these tools, leave them to the user.
 - Annotate false positives only. Leave real bugs reported, and tell the user about them with a suggested fix.
-- When done, tell the user which annotations you added for which reports, and which reports are real bugs. The user can save the annotations as a patch file with the diff command of CoVer's debugger.)";
-
-// Line appended to the history cache if MCP mode was active when reanalysing, followed by the key of the report being debugged
-constexpr std::string_view RESUME_PREFIX = "|| MCP RESUME || ";
+- When done, tell the user which annotations you added for which reports, and which reports are real bugs. The user can save the annotations as a patch file with the diff command of CoVer's debugger, or from the report list.)";
 
 // A screen of the frontend able to run tool calls, see ScreenScope
 struct Screen {
@@ -68,23 +66,10 @@ struct State {
     AnalysisReports::FormulaDebugHandlers* result_debug_handlers = nullptr;
     TraceTools::TraceTools* trace = nullptr; // While a trace is open
     std::vector<Screen> screens; // Innermost last
-    std::optional<std::string> resume; // Key of the trace to open again once the results of a reanalysis are shown, see InteractiveUtils::TraceKey
+    std::string start_error; // Why the server could not be started
 };
 
 State state;
-
-// Violated leaves of the formula with a trace that can be debugged, in depth-first order. MCP clients address them by their index.
-void CollectLeaves(std::shared_ptr<ContractTree::ContractFormula> const& form, AnalysisReports::FormulaDebugHandlers const& debugHandlers,
-                   std::vector<std::shared_ptr<ContractTree::ContractExpression>>& leaves) {
-    if (*form->Status != ContractTree::Fulfillment::FULFILLED && debugHandlers.contains(form.get())) leaves.push_back(std::static_pointer_cast<ContractTree::ContractExpression>(form));
-    for (std::shared_ptr<ContractTree::ContractFormula> const& child : form->Children) CollectLeaves(child, debugHandlers, leaves);
-}
-
-std::vector<std::shared_ptr<ContractTree::ContractExpression>> DebuggableLeaves(ReportedFormula const& report, AnalysisReports::FormulaDebugHandlers const& debugHandlers) {
-    std::vector<std::shared_ptr<ContractTree::ContractExpression>> leaves;
-    CollectLeaves(report.formula, debugHandlers, leaves);
-    return leaves;
-}
 
 std::string OpenTraceKey(State const& s) {
     return s.trace ? TraceKey(s.trace->Session().Context()) : "";
@@ -192,6 +177,7 @@ export void RunWaiting() {
 }
 
 export bool Running() { return state.server != nullptr; }
+export std::string const& StartError() { return state.start_error; }
 // Whether MCP mode is active, i.e. tool calls are run. It is left by the TUI only.
 export bool Active() { return state.server && state.active; }
 export std::string Url() { return state.server ? state.server->Url() : ""; }
@@ -203,8 +189,9 @@ export std::vector<Activity> const& Log() { return state.log; }
 export std::string Start(PostFn post) {
     if (!state.server) {
         MCPServer::StartResult started = MCPServer::Start(TraceTools::SpecsOf(Tools()), [post] { post(RunWaiting); });
-        if (!started.server) return started.message;
+        if (!started.server) return state.start_error = started.message;
         state.server = std::move(started.server);
+        state.start_error.clear();
     }
     state.active = true;
     state.server->SetAccepting(true); // Tool calls wait while no screen is ready, e.g. during the analysis
@@ -245,8 +232,7 @@ export TraceNavigation NavigateTrace(std::function<void(std::string const&)> con
     return TraceNavigation::STAY;
 }
 
-// The results of the current analysis are shown. Requests to open the trace debugged before the reanalysis
-// again if it is still reported, see CheckResume.
+// The results of the current analysis are shown
 export class ResultsScope {
     public:
         ResultsScope(std::vector<ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers)
@@ -254,14 +240,6 @@ export class ResultsScope {
             state.results = &formulas;
             state.result_texts = &reports;
             state.result_debug_handlers = &debugHandlers;
-            if (!state.resume) return;
-            for (int report = 0; report < formulas.size(); report++) {
-                std::vector<std::shared_ptr<ContractTree::ContractExpression>> leaves = DebuggableLeaves(formulas[report], debugHandlers);
-                for (int leaf = 0; leaf < leaves.size(); leaf++) {
-                    if (TraceKey(formulas[report], *leaves[leaf]) == *state.resume) state.pending = {Action::Kind::OPEN_REPORT, report, leaf};
-                }
-            }
-            state.resume.reset();
         }
         ~ResultsScope() {
             state.results = prev;
@@ -295,25 +273,5 @@ export class ScreenScope {
         ScreenScope(ScreenScope const&) = delete;
         ScreenScope& operator=(ScreenScope const&) = delete;
 };
-
-// When reanalysing from the trace of context: if MCP mode is active, it continues after the reanalysis with its report.
-// Appended to the history cache, so call it after TraceSession::SaveHistory.
-export void SaveResume(AnalysisReports::DebugContext const& context) {
-    if (!Active()) return;
-    std::ofstream cache(InteractiveUtils::HISTORY_CACHE_FILE, std::ios::app);
-    cache << RESUME_PREFIX << TraceKey(context) << "\n";
-}
-
-// At the start of a reanalysis: whether MCP mode was active before, then the frontend starts it again.
-// The history cache is left for the trace session.
-export bool CheckResume() {
-    std::ifstream cache(InteractiveUtils::HISTORY_CACHE_FILE);
-    for (std::string line; std::getline(cache, line);) {
-        if (!line.starts_with(RESUME_PREFIX)) continue;
-        state.resume = line.substr(RESUME_PREFIX.size());
-        return true;
-    }
-    return false;
-}
 
 } // namespace MCPControl

@@ -13,8 +13,8 @@ export constexpr char const* ENTRY_POINT = "CoVer_Frontend";
 export struct Frontend {
     // Whether the frontend is currently available
     bool (*isAvailable)();
-    // Starts the MCP server and enters MCP mode, used to continue MCP mode after a reanalysis. Returns an error message on failure.
-    std::string (*startMCP)();
+    // Starts the MCP server, at the start of the interactive mode. mcp_mode: MCP mode was active before the reanalysis
+    std::string (*startMCP)(bool mcp_mode);
     // The contracts before the analysis
     void (*startMenu)(std::vector<AnalysisReports::Contract> const& contracts, AnalysisReports::FormulaReports const& reports,
                       AnalysisReports::FormulaDebugHandlers& debugHandlers, double parse_time);

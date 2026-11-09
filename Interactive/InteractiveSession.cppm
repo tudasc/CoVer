@@ -46,23 +46,63 @@ export std::string resultCodeStr(CmdResultCode code) {
 constexpr std::string_view HISTORY_BEGIN = "|| DIFF HISTORY BEGIN ||";
 constexpr std::string_view HISTORY_END = "|| DIFF HISTORY END ||";
 
-// Command history of a previous run, if this is a reanalysis
-History LoadHistoryCache() {
-    History input_history;
-    if (std::filesystem::exists(InteractiveUtils::HISTORY_CACHE_FILE)) {
-        std::string line;
-        std::ifstream historyfile(InteractiveUtils::HISTORY_CACHE_FILE);
-        std::getline(historyfile, line);
-        while (std::getline(historyfile, line)) {
-            if (line == HISTORY_END) break;
+// Lines after the history in the history cache: the key of the trace debugged when reanalysing, and whether MCP mode was active
+constexpr std::string_view RESUME_PREFIX = "|| RESUME || ";
+constexpr std::string_view MCP_MODE_LINE = "|| MCP MODE ||";
+
+// State carried over from the previous run, if this is a reanalysis
+struct HistoryCache {
+    History history;
+    std::optional<std::string> resume_trace; // See InteractiveUtils::TraceKey
+    bool mcp_mode = false;
+};
+
+HistoryCache LoadHistoryCache() {
+    HistoryCache cache;
+    std::ifstream file(InteractiveUtils::HISTORY_CACHE_FILE);
+    std::string line;
+    std::getline(file, line); // HISTORY_BEGIN
+    bool in_history = true;
+    while (std::getline(file, line)) {
+        if (line == HISTORY_END) {
+            in_history = false;
+        } else if (in_history) {
             std::string_view code_str = std::string_view(line).substr(0, line.find('|'));
             std::underlying_type_t<CmdResultCode> code = 0;
             std::from_chars(code_str.data(), code_str.data() + code_str.size(), code);
-            input_history.push_back({line.substr(line.find('|') + 1), {static_cast<CmdResultCode>(code), ""}});
+            cache.history.push_back({line.substr(line.find('|') + 1), {static_cast<CmdResultCode>(code), ""}});
+        } else if (line.starts_with(RESUME_PREFIX)) {
+            cache.resume_trace = line.substr(RESUME_PREFIX.size());
+        } else if (line == MCP_MODE_LINE) {
+            cache.mcp_mode = true;
         }
-        std::filesystem::remove(InteractiveUtils::HISTORY_CACHE_FILE);
     }
-    return input_history;
+    return cache;
+}
+
+HistoryCache previous_run = LoadHistoryCache();
+
+// Commands of all traces opened in this run, continuing the history of the previous run. Kept across trace sessions, as their
+// annotations remain in the module and are part of the patch files of the diff command.
+History history = std::move(previous_run.history);
+
+// Whether this is a reanalysis started from a trace, which is opened again instead of showing the start menu
+export bool Resuming() { return previous_run.resume_trace.has_value(); }
+
+// The key of the trace to open again, once. See InteractiveUtils::TraceKey.
+export std::optional<std::string> TakeResumeTrace() { return std::exchange(previous_run.resume_trace, std::nullopt); }
+
+// Whether MCP mode was active when reanalysing, it continues then
+export bool ResumeMCPMode() { return previous_run.mcp_mode; }
+
+// History framed as in the patch files of the diff command, with result codes for the history cache
+export void WriteHistory(std::ostream& out, bool with_codes) {
+    out << HISTORY_BEGIN << "\n";
+    for (auto const& [command, result] : history) {
+        if (with_codes) out << std::to_underlying(result.code) << "|";
+        out << command << "\n";
+    }
+    out << HISTORY_END << "\n---\n";
 }
 
 export struct TraceEntryView {
@@ -132,25 +172,17 @@ export class TraceSession {
 
         History const& GetHistory() const { return history; }
         void AddHistory(std::string const& cmd, CmdResult const& res) { history.push_back({cmd, res}); }
-        void SaveHistory() const {
+        // Before reanalysing: carries the history over to the next run, which opens this trace again and continues MCP mode if active
+        void SaveForReanalysis(bool mcp_mode) const {
             std::ofstream cache(InteractiveUtils::HISTORY_CACHE_FILE);
             WriteHistory(cache, true);
-        }
-
-        // History framed as in the patch files of the diff command, with result codes for the history cache
-        void WriteHistory(std::ostream& out, bool with_codes) const {
-            out << HISTORY_BEGIN << "\n";
-            for (auto const& [command, result] : history) {
-                if (with_codes) out << std::to_underlying(result.code) << "|";
-                out << command << "\n";
-            }
-            out << HISTORY_END << "\n---\n";
+            cache << RESUME_PREFIX << InteractiveUtils::TraceKey(context) << "\n";
+            if (mcp_mode) cache << MCP_MODE_LINE << "\n";
         }
 
     protected:
         AnalysisReports::DebugContext context;
         bool expand_as_source = false;
-        History history = LoadHistoryCache();
 };
 
 // Current module, used as input for reanalysis and diffing

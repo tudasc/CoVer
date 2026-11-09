@@ -158,7 +158,7 @@ export class Server {
                 SetJson(res, status, RpcError(Json::Value(), -32600, message));
                 return httplib::Server::HandlerResponse::Handled;
             };
-            if (req.path != "/mcp") return refuse(404, "The MCP endpoint is /mcp");
+            if (req.path != "/mcp") return refuse(404, "The MCP endpoint is /mcp, you tried: " + req.path);
             // Protection against DNS rebinding, browsers must not be able to reach the server from other origins
             std::string host = req.get_header_value("Host");
             if (host != std::format("127.0.0.1:{}", port) && host != std::format("localhost:{}", port)) return refuse(403, "Invalid Host header");

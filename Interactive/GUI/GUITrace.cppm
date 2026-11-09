@@ -1064,7 +1064,7 @@ class TraceDebugger {
                 {"Show alias groups", [this] { Execute("alias-get"); }},
             });
             MenuButton(toolbar, "Patches", {
-                {"Write annotations as patch...", [this] { FileCommand("diff", true, "Write Patch File", "annotations.patch"); }},
+                {"Write annotations as patch...", [this] { FileCommand("diff", true, "Write Patch File", InteractiveCmds::PATCH_FILE); }},
                 {"Apply patch and reanalyse...", [this] { FileCommand("patch", false, "Read Patch File", ""); }},
                 {"Dump module IR...", [this] { FileCommand("dump", true, "Dump Module", "module.ll"); }},
             });

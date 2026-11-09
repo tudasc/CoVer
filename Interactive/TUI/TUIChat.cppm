@@ -11,6 +11,14 @@ namespace TUIChat {
 
 using LLMChat::ChatEntry;
 
+ftxui::Color ToColor(LLMChat::Rgb c) { return ftxui::Color::RGB(c.r, c.g, c.b); }
+
+// Text color of a transcript entry, see LLMChat::EntryColor
+ftxui::Decorator EntryDecorator(ChatEntry const& entry) {
+    std::optional<LLMChat::Rgb> color = LLMChat::EntryColor(entry);
+    return color ? ftxui::color(ToColor(*color)) : ftxui::dim;
+}
+
 // One element per line, so the transcript can be scrolled line by line
 void AddEntry(std::vector<ftxui::Element>& elems, ChatEntry const& entry) {
     auto addLines = [&](std::string const& text, ftxui::Decorator decorator) {
@@ -20,24 +28,24 @@ void AddEntry(std::vector<ftxui::Element>& elems, ChatEntry const& entry) {
     };
     switch (entry.kind) {
         case ChatEntry::Kind::USER:
-            elems.push_back(ftxui::text("You") | ftxui::bold | ftxui::color(ftxui::Color::Cyan));
+            elems.push_back(ftxui::text("You") | ftxui::bold | EntryDecorator(entry));
             addLines(entry.text, ftxui::nothing);
             break;
         case ChatEntry::Kind::ASSISTANT:
-            elems.push_back(ftxui::text("Assistant") | ftxui::bold | ftxui::color(ftxui::Color::Green));
+            elems.push_back(ftxui::text("Assistant") | ftxui::bold | EntryDecorator(entry));
             addLines(entry.text, ftxui::nothing);
             break;
         case ChatEntry::Kind::THINKING:
-            addLines(LLMChat::ThinkingLabel(entry), ftxui::dim);
+            addLines(LLMChat::ThinkingLabel(entry), EntryDecorator(entry));
             break;
         case ChatEntry::Kind::TOOL:
-            addLines("  > " + entry.text, ftxui::color(ftxui::Color::Blue));
+            addLines("  > " + entry.text, EntryDecorator(entry));
             return; // Tool calls are listed without spacing
         case ChatEntry::Kind::INFO:
-            addLines(entry.text, ftxui::color(ftxui::Color::Yellow));
+            addLines(entry.text, EntryDecorator(entry));
             break;
         case ChatEntry::Kind::ERROR:
-            addLines("Error: " + entry.text, ftxui::color(ftxui::Color::Red));
+            addLines("Error: " + entry.text, EntryDecorator(entry));
             break;
     }
     elems.push_back(ftxui::text(""));
@@ -80,7 +88,7 @@ void ShowChat(LLMChat::ChatSession& chat) {
             TUIManager::getHeader("LLM Chat"),
             ftxui::vbox(lines) | ftxui::vscroll_indicator | ftxui::yframe | ftxui::flex,
             ftxui::separator(),
-            ftxui::text(chat.Status()) | ftxui::dim,
+            ftxui::hbox(ftxui::text("● ") | ftxui::color(ToColor(LLMChat::StateColor(chat.State()))), ftxui::text(chat.Status()) | ftxui::dim),
             ftxui::hbox(ftxui::text(">>> "), input_comp->Render()),
             ftxui::separator(),
             ftxui::text(chat.Busy() ? "Esc: cancel the request and close | PgUp/PgDn: scroll | Ctrl+S: export log" : "Enter: send | Esc: close chat | PgUp/PgDn: scroll | Ctrl+S: export log"),

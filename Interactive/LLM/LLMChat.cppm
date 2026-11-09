@@ -37,6 +37,52 @@ export std::string ThinkingLabel(ChatEntry const& entry) {
     return std::format("Thinking... (~{} Tokens)", (entry.text.size() + 3) / 4);
 }
 
+export struct Rgb {
+    std::uint8_t r, g, b;
+};
+
+// Colors of the chat, shared by the frontends so that they look alike. Medium tones, readable on light and dark backgrounds.
+export struct ChatColors {
+    Rgb user; // The user's messages
+    Rgb assistant; // The model's answers, and a ready connection
+    Rgb info; // Notes such as a cancellation, and a running request
+    Rgb error; // Errors and failed tool calls, and a missing or failed connection
+};
+export constexpr ChatColors CHAT_COLORS = {
+    .user = {56, 132, 244},
+    .assistant = {46, 160, 67},
+    .info = {210, 153, 34},
+    .error = {218, 54, 51},
+};
+
+// Color of a transcript entry, none for the frontend's dimmed text (thinking and successful tool calls)
+export std::optional<Rgb> EntryColor(ChatEntry const& entry) {
+    switch (entry.kind) {
+        case ChatEntry::Kind::USER: return CHAT_COLORS.user;
+        case ChatEntry::Kind::ASSISTANT: return CHAT_COLORS.assistant;
+        case ChatEntry::Kind::THINKING: return std::nullopt;
+        case ChatEntry::Kind::TOOL: return std::nullopt;
+        case ChatEntry::Kind::INFO: return CHAT_COLORS.info;
+        case ChatEntry::Kind::ERROR: return CHAT_COLORS.error;
+    }
+    return std::nullopt;
+}
+
+export enum struct ChatState {
+    READY,
+    BUSY, // A request is running
+    FAILED, // Not connected, or the last turn ended with an error
+};
+
+export Rgb StateColor(ChatState state) {
+    switch (state) {
+        case ChatState::READY: return CHAT_COLORS.assistant;
+        case ChatState::BUSY: return CHAT_COLORS.info;
+        case ChatState::FAILED: return CHAT_COLORS.error;
+    }
+    return CHAT_COLORS.error;
+}
+
 constexpr int MAX_TOOL_ROUNDS = 40; // Per user message, to bound cost if the model gets stuck
 std::string const CUT_OFF_INFO = "The response was cut off at the maximum length. Send a message to let it continue.";
 
@@ -189,12 +235,27 @@ export class ChatSession {
 
         std::vector<ChatEntry> const& Transcript() const { return conv.transcript; }
         bool Busy() const { return busy; }
-        std::string Status() const {
-            if (!config) return "Not connected";
+        ChatState State() const {
+            if (busy) return ChatState::BUSY;
+            if (!config || (!conv.transcript.empty() && conv.transcript.back().kind == ChatEntry::Kind::ERROR)) return ChatState::FAILED;
+            return ChatState::READY;
+        }
+        // Empty if not connected
+        std::string Model() const { return config ? config->model : ""; }
+        std::string Usage() const {
             std::string usage = std::format("{} input tokens ({} cached), {} output tokens", conv.input_tokens, conv.cached_tokens, conv.output_tokens);
             if (conv.reasoning_tokens > 0) usage += std::format(" ({} reasoning)", conv.reasoning_tokens);
-            if (busy) return std::format("Waiting for {} ({}s) | {}", config->model, std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - request_start).count(), usage);
-            return std::format("{} | {}", config->model, usage);
+            return usage;
+        }
+        // Time the running request has taken so far, zero if none is running
+        std::chrono::seconds Waiting() const {
+            if (!busy) return std::chrono::seconds(0);
+            return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - request_start);
+        }
+        std::string Status() const {
+            if (!config) return "Not connected";
+            if (busy) return std::format("Waiting for {} ({}s) | {}", config->model, Waiting().count(), Usage());
+            return std::format("{} | {}", config->model, Usage());
         }
 
         // Called on the UI thread whenever the transcript or busy state changes. Set to nullptr when the window closes.

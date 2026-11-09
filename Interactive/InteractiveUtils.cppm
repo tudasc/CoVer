@@ -92,6 +92,19 @@ export std::vector<ReportedFormula> getReportedFormulas(std::vector<Contract> co
     return formulas;
 }
 
+// Violated leaves of the formula with a trace that can be debugged, in depth-first order. MCP clients address them by their index.
+void CollectLeaves(std::shared_ptr<ContractTree::ContractFormula> const& form, AnalysisReports::FormulaDebugHandlers const& debugHandlers,
+                   std::vector<std::shared_ptr<ContractTree::ContractExpression>>& leaves) {
+    if (*form->Status != ContractTree::Fulfillment::FULFILLED && debugHandlers.contains(form.get())) leaves.push_back(std::static_pointer_cast<ContractTree::ContractExpression>(form));
+    for (std::shared_ptr<ContractTree::ContractFormula> const& child : form->Children) CollectLeaves(child, debugHandlers, leaves);
+}
+
+export std::vector<std::shared_ptr<ContractTree::ContractExpression>> DebuggableLeaves(ReportedFormula const& report, AnalysisReports::FormulaDebugHandlers const& debugHandlers) {
+    std::vector<std::shared_ptr<ContractTree::ContractExpression>> leaves;
+    CollectLeaves(report.formula, debugHandlers, leaves);
+    return leaves;
+}
+
 export std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
     switch (kind) {
         case ContractPassUtility::TraceKind::LINEAR: return "LINEAR";

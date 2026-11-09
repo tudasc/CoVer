@@ -55,8 +55,10 @@ Two frontends are available:
 Both options are off by default.
 
 Both frontends provide the same workflow: Inspecting the contracts before the analysis, browsing the reported errors with references into the source code, and debugging the worklist analysis trace of a violated contract.
-The trace debugger allows adding annotations (function pointer targets, alias groups, allocations), rerunning the analysis using them (`reanalyse`),
+The trace debugger allows adding annotations (function pointer targets, alias groups, allocations), rerunning the analysis using them (`reanalyse`,
+which skips the start menu and opens the trace again if it is still reported),
 and write them to a patch file (`diff`) to apply later using `--ir-patches`.
+The patch file can also be written from the list of reports, without opening a trace.
 Type `help` in the trace debugger for a list of all commands.
 
 The GUI additionally shows the trace as a graph.
@@ -87,22 +89,20 @@ Instead of the built-in chat, external agents supporting the [Model Context Prot
 Unlike the chat, they can work through all reports by themselves: list the reports, open their traces, add annotations and reanalyse, until only real bugs are left.
 Annotations are issued as trace commands, so they are recorded in the command history and patch files like your own.
 
-MCP mode is started with the `mcp` command of the trace debugger, the "Start MCP server" button below the reports (GUI), or the "Start MCP mode" entry of the report list (TUI).
-This starts the server on localhost (port 7341, or the `mcp_port` entry of CoVer's user settings) and shows its URL and the authorization header clients have to send.
-The server only listens on `localhost`, but other users of the machine can reach it as well, hence the token.
-It is generated on first use and stored as the `mcp_token` entry of CoVer's user settings,
+The MCP server runs during interactive mode on port 7341 (configurable as `mcp_port` in the user settings).
+Its URL and the authorization header clients have to send are shown below the reports and in the "MCP" tab of the debugger (GUI),
+or in the MCP view (TUI), opened with the `mcp` command of the trace debugger or the "Start MCP mode" entry of the report list.
+If the server cannot be started (e.g. the port is in use), the interactive mode continues without it, and the button / command retries.
+
+The token is generated on first use and stored as the `mcp_token` entry of CoVer's user settings,
 remove the entry to generate a new token.
-For example, for Claude Code (after starting MCP mode once, so the token exists; or copy the header CoVer shows):
 
-```sh
-claude mcp add --scope user --transport http cover http://127.0.0.1:7341/mcp --header "Authorization: Bearer $(jq -r .mcp_token ~/.config/cover/settings.json)"
-```
-
-Then ask the agent to fix the false positives reported by CoVer. Agents should call the `get_debug_context` tool first, which explains traces, annotations and the workflow.
-MCP mode lasts until CoVer exits, also across reanalyses: CoVer then skips the start menu, and opens the trace of the report debugged before if it is still reported.
+Then ask the agent to investigate the error.
+Agents should call the `get_debug_context` tool first, which explains traces, annotations and the workflow.
+If they detect a false positive, they can annotate independently.
 
 In the GUI, tool calls are run right away and the trace is updated live, also while you use the GUI. The "MCP" tab of the debugger lists all tool calls.
-In the TUI, MCP mode shows a view listing the tool calls instead of the reports and traces. Leave it with Escape to take over:
+In the TUI, tool calls are only run in MCP mode, which shows a view listing the tool calls instead of the reports and traces. Leave it with Escape to take over:
 you then see the current report list or trace, and tool calls are refused until MCP mode is started again.
 
 ## Runtime Analysis

@@ -46,6 +46,8 @@ import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
 import InteractiveUtils;
+import InteractiveSession;
+import InteractiveCmds;
 import MCPControl;
 import MCPServer;
 import LLMChat;
@@ -199,7 +201,8 @@ MainWindow* GetWindow() {
 
 export QWidget* Window() { return GetWindow(); }
 
-// Starts the MCP server for the rest of the session unless running, returns an error message on failure
+// Starts the MCP server for the rest of the session unless running, returns an error message on failure. Called at the start of the
+// interactive mode, the MCP panel retries if that failed.
 export std::string StartMCP() {
     GetWindow(); // Sets up the application, which runs the posted tool calls
     return MCPControl::Start(Post);
@@ -214,12 +217,21 @@ export void ExportChatLog(QWidget* parent) {
     if (!err.empty()) QMessageBox::warning(parent, title, qstr(err));
 }
 
+// Asks for a file and writes the annotations added so far as a patch file to it, see the diff command
+void ExportPatch(QWidget* parent) {
+    QString const title = "Export Annotations";
+    QString path = QFileDialog::getSaveFileName(parent, title, qstr(InteractiveCmds::PATCH_FILE), "Patch files (*.patch);;All files (*)");
+    if (path.isEmpty()) return;
+    InteractiveSession::CmdResult result = InteractiveCmds::WritePatch(path.toStdString());
+    if (result.code != InteractiveSession::CmdResultCode::SUCCESS_CONTINUE) QMessageBox::warning(parent, title, qstr(result.res));
+}
+
 // Status and controls of the MCP server, shown below the reports and in the trace debugger
 export class MCPPanel : public QWidget {
     public:
         // with_log adds the list of tool calls. start is run by the start button, by default it calls Start.
         MCPPanel(bool with_log, std::function<void()> start = nullptr) {
-            status = new QLabel("Start the MCP server to let MCP clients (e.g. coding agents) work through the reports: inspect traces, add annotations and reanalyse.");
+            status = new QLabel;
             status->setWordWrap(true);
             status->setTextFormat(Qt::RichText);
             status->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -254,11 +266,14 @@ export class MCPPanel : public QWidget {
             return err;
         }
 
-        // Shows the status once the server runs
+        // Shows the status of the server, or why it could not be started
         void Update() {
             start_button->setVisible(!MCPControl::Running());
             copy_button->setVisible(MCPControl::Running());
-            if (!MCPControl::Running()) return;
+            if (!MCPControl::Running()) {
+                status->setText(qstr(MCPControl::StartError()).toHtmlEscaped() + "<br>Start the MCP server to let MCP clients (e.g. coding agents) work through the reports: inspect traces, add annotations and reanalyse.");
+                return;
+            }
             status->setText(QString("<b>URL:</b> %1<br><b>Header:</b> %2<br>Set up your MCP client once with this URL and header (Streamable HTTP transport, see the documentation). "
                                     "The token is kept in your CoVer user settings, remove it there to generate a new one (see the documentation). MCP clients can work through all reports until CoVer is closed. %3 tool calls so far.")
                                 .arg(qstr(MCPControl::Url()).toHtmlEscaped(), qstr(MCPControl::AuthHeader()).toHtmlEscaped())
@@ -810,6 +825,10 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
     QHBoxLayout* buttons = new QHBoxLayout;
     MCPPanel* mcp = new MCPPanel(false);
     buttons->addWidget(mcp, 1);
+    QPushButton* export_patch = new QPushButton("Export patch");
+    export_patch->setToolTip("Save the annotations added so far as a patch file");
+    QObject::connect(export_patch, &QPushButton::clicked, page, [page] { ExportPatch(page); });
+    buttons->addWidget(export_patch, 0, Qt::AlignTop);
     // A chat of this session can be exported once it was used, possibly before the reanalysis
     QPushButton* export_chat = new QPushButton("Export chat log");
     export_chat->setToolTip("Save the log of the LLM chat as JSON");
@@ -852,7 +871,7 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
     QObject::connect(exit, &QPushButton::clicked, page, [&] { run->Finish(); });
     if (!formulas.empty()) violations->setCurrentRow(0);
     QTimer::singleShot(0, page, [&] {
-        open_requested(); // E.g. the report debugged before the reanalysis, see MCPControl::ResultsScope
+        open_requested(); // E.g. by a tool call in the trace reopened before the results, see InteractiveUI::ResultsScreen
         MCPControl::RunWaiting(); // Tool calls which arrived during the analysis
     });
     {

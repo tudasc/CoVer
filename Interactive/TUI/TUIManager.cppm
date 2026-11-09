@@ -9,6 +9,8 @@ import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
 import InteractiveUtils;
+import InteractiveSession;
+import InteractiveCmds;
 import MCPServer;
 import MCPControl;
 import LLMChat;
@@ -335,6 +337,13 @@ export std::string ActivateMCP() {
     return MCPControl::Start(Post);
 }
 
+// Starts the server at the start of the interactive mode, entering MCP mode only if it was active before the reanalysis
+export std::string StartMCP(bool mcp_mode) {
+    std::string err = MCPControl::Start(Post);
+    if (err.empty() && !mcp_mode) MCPControl::Leave(MCP_REFUSAL);
+    return err;
+}
+
 ftxui::Element MCPDocument(std::string const& state) {
     std::vector<MCPServer::Activity> const& log = MCPControl::Log();
     std::vector<ftxui::Element> lines;
@@ -455,7 +464,7 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
         }
         // A chat of this session can be exported once it was used, possibly before the reanalysis
         bool has_chat = LLMChat::HasConversation();
-        std::vector<std::string> entries = {"Exit Tool", "Start MCP mode"};
+        std::vector<std::string> entries = {"Exit Tool", "Start MCP mode", "Export annotations as patch"};
         if (has_chat) entries.push_back("Export LLM chat log");
         std::size_t first_report = entries.size();
         for (InteractiveUtils::ReportedFormula const& formula : formulas) entries.push_back(formula.Summary());
@@ -465,7 +474,12 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
             if (std::string err = ActivateMCP(); !err.empty()) ShowMessage("MCP Mode", err);
             continue;
         }
-        if (has_chat && choice == 2) {
+        if (choice == 2) {
+            std::optional<std::string> path = PromptText("Export Annotations", "File to write the annotations added so far to, as a patch file. It can be applied with the patch command of the trace debugger.", InteractiveCmds::PATCH_FILE);
+            if (path && !path->empty()) ShowMessage("Export Annotations", InteractiveCmds::WritePatch(*path).res);
+            continue;
+        }
+        if (has_chat && choice == 3) {
             ExportChatLog();
             continue;
         }

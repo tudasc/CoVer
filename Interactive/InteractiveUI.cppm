@@ -2,6 +2,8 @@ module;
 
 #include <dlfcn.h>
 
+#include "ContractTree.hpp"
+
 export module InteractiveUI;
 import std;
 import LLVMModule;
@@ -56,20 +58,32 @@ export bool SetMode(InteractMode mode) {
     return true;
 }
 
-// The start menu before the analysis. Its debug handlers are a copy, so they cannot change the analysis.
+// The start menu before the analysis, skipped when reanalysing from a trace. Its debug handlers are a copy, so they cannot change the analysis.
+// Also starts the MCP server
 export void StartMenu(std::vector<AnalysisReports::Contract> const& contracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers debugHandlers, double parse_time) {
-    // MCP was active before the reanalysis, so MCP clients continue without interaction
-    if (MCPControl::CheckResume()) {
-        std::string err = frontend->startMCP();
-        if (err.empty()) return; // Skips the start menu
-        errs() << "CoVer: " << err << "\n";
-    }
+    if (std::string err = frontend->startMCP(InteractiveSession::ResumeMCPMode()); !err.empty()) errs() << "CoVer: " << err << "\n";
+    if (InteractiveSession::Resuming()) return;
     frontend->startMenu(contracts, reports, debugHandlers, parse_time);
 }
 
+// Opens the trace debugged before the reanalysis again if it is still reported, returns whether to reanalyse
+bool ResumeTrace(std::vector<InteractiveUtils::ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers) {
+    std::optional<std::string> key = InteractiveSession::TakeResumeTrace();
+    if (!key) return false;
+    for (InteractiveUtils::ReportedFormula const& report : formulas) {
+        for (std::shared_ptr<ContractTree::ContractExpression> const& leaf : InteractiveUtils::DebuggableLeaves(report, debugHandlers)) {
+            if (InteractiveUtils::TraceKey(report, *leaf) != *key) continue;
+            return debugHandlers[leaf.get()](AnalysisReports::DebugContext(*report.contract, *report.formula, *leaf, reports));
+        }
+    }
+    return false;
+}
+
+// The results of the analysis, returns whether to reanalyse. When reanalysing from a trace, it is opened again first.
 export bool ResultsScreen(std::vector<AnalysisReports::Contract> const& ViolatedContracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
     MCPControl::ResultsScope mcp_scope(formulas, reports, debugHandlers); // Tool calls of MCP clients work on these reports
+    if (ResumeTrace(formulas, reports, debugHandlers)) return true;
     return frontend->resultsScreen(formulas, reports, debugHandlers, runtime);
 }
 
@@ -79,8 +93,7 @@ bool ShowTrace(InteractiveSession::TraceSession& session) {
     MCPControl::TraceScope mcp_trace(mcp_tools); // Tool calls of MCP clients work on this trace while it is open
     bool reanalyse = frontend->showTrace(session);
     if (reanalyse) {
-        session.SaveHistory();
-        MCPControl::SaveResume(session.Context()); // MCP mode continues after the reanalysis
+        session.SaveForReanalysis(MCPControl::Active());
         LLMChat::ExportConversation(InteractiveUtils::CHAT_CACHE_FILE); // The chat continues after the reanalysis
     }
     return reanalyse;
