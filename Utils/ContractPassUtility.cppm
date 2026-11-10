@@ -532,7 +532,7 @@ export ConstantInt* fortCheckAndGetGlbInt(Value* V) {
 export bool checkCalledApplies(const CallBase* CB, const StringRef Target, bool isTag, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags) {
     std::set<Function*> fns;
     if (CB->isIndirectCall()) fns = getFPAnnots(CB);
-    else fns = {dyn_cast<Function>(CB->getCalledOperand())};
+    else fns = {getCalleeThroughAlias(CB)};
     if (fns.empty()) {
         if (!UnknownCalledParam.contains(CB)) {
             errs() << "Could not identify function at " << getInstrLocStr(CB) << "!\nAnalysis performance is impaired!\n";
