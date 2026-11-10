@@ -2,9 +2,7 @@
 #include <setjmp.h>
 #include <signal.h>
 #include <stdarg.h>
-#include <stdint.h>
 #include <stdio.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 import std;
@@ -13,13 +11,12 @@ namespace {
     std::string exec(std::string const& cmd) {
         std::array<char, 128> buffer;
         std::string result;
-        FILE* pipe = popen(cmd.c_str(), "r");
-        while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+        std::FILE* pipe = popen(cmd.c_str(), "r");
+        while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
             result += buffer.data();
         }
-        int ret = WEXITSTATUS(pclose(pipe));
-        if (ret != 0) {
-            std::exit(ret);
+        if (pclose(pipe) != 0) {
+            std::exit(1);
         }
         return result;
     }
@@ -32,7 +29,7 @@ namespace {
 #ifdef CMAKE_ADDR2LINE
         constexpr int SCAN_RANGE = 64;
         for (int i = 0; i <= SCAN_RANGE; i++) {
-            std::string scan_cmd = std::format("{} -e {} {:x}", CMAKE_ADDR2LINE, file, (uintptr_t)parsed_loc - i);
+            std::string scan_cmd = std::format("{} -e {} {:x}", CMAKE_ADDR2LINE, file, (std::uintptr_t)parsed_loc - i);
             std::string scan_results = exec(scan_cmd);
             scan_results.pop_back();
             if (!scan_results.empty() && !scan_results.ends_with(":?") && !scan_results.ends_with(":0")) {
@@ -41,7 +38,7 @@ namespace {
         }
         return "";
 #else
-        return std::format("{}[0x{:x}] (Cannot resolve: No addr2line support configured)\n", file, (uintptr_t)parsed_loc);
+        return std::format("{}[0x{:x}] (Cannot resolve: No addr2line support configured)\n", file, (std::uintptr_t)parsed_loc);
 #endif
     }
 
@@ -50,11 +47,11 @@ namespace {
         if (!dladdr(location, &info)) {
             return std::nullopt;
         }
-        if ((intptr_t)info.dli_fbase != (intptr_t)0x400000) {
+        if ((std::intptr_t)info.dli_fbase != (std::intptr_t)0x400000) {
             // if the filebase is not 0x400000, we have an VMA offset that we have to subtract
             // otherwise, it is a PIE so we can just use the codePtr
             // Additionally, subtract 1 to get from return address to call
-            location = (void*)((intptr_t)location - (intptr_t)info.dli_fbase - 1);
+            location = (void*)((std::intptr_t)location - (std::intptr_t)info.dli_fbase - 1);
         }
         return std::optional<std::pair<std::string, void const*>>({std::string(info.dli_fname), location});
     }
@@ -70,11 +67,11 @@ namespace {
         Dl_info info;
 #ifdef CMAKE_ADDR2LINE
         if (!dladdr(ptr, &info)) return "?";
-        uintptr_t offset = (uintptr_t)ptr;
-        if ((intptr_t)info.dli_fbase != (intptr_t)0x400000)
-            offset -= (uintptr_t)info.dli_fbase;
+        std::uintptr_t offset = (std::uintptr_t)ptr;
+        if ((std::intptr_t)info.dli_fbase != (std::intptr_t)0x400000)
+            offset -= (std::uintptr_t)info.dli_fbase;
         std::string out = exec(std::format("{} -f -e {} {:x}", CMAKE_ADDR2LINE, info.dli_fname, offset));
-        size_t nl = out.find('\n');
+        std::size_t nl = out.find('\n');
         if (nl != std::string::npos) out.resize(nl);
         if (out.empty()) return "??";
         return out;
@@ -87,7 +84,7 @@ namespace {
 
 std::vector<std::pair<void const*, void const*>> fp_targets;
 extern "C" void __attribute__((visibility("default"))) CoVer_AnnotFP(void const* ptr, int num_targets, ...) {
-    va_list list;
+    std::va_list list;
     va_start(list, num_targets);
     for (int i = 0; i < num_targets; i++) {
         void* target = va_arg(list, void*);
@@ -141,7 +138,7 @@ namespace {
 
     // Dereferences ptr and each page start up to ptr+size, catching segfaults.
     // Returns number of bytes accessible from ptr (page granularity, at most size). size 0 only checks ptr itself.
-    size_t probeAccessible(void const* ptr, size_t size) {
+    std::size_t probeAccessible(void const* ptr, std::size_t size) {
         std::lock_guard lock(probe_mutex);
         struct sigaction sa = {};
         sa.sa_sigaction = probeHandler;
@@ -150,16 +147,16 @@ namespace {
         sigaction(SIGSEGV, &sa, &prev_segv);
         sigaction(SIGBUS, &sa, &prev_bus);
 
-        uintptr_t const page_size = sysconf(_SC_PAGESIZE);
-        uintptr_t const begin = (uintptr_t)ptr;
-        uintptr_t const end = begin + std::min<size_t>(std::max<size_t>(size, 1), UINTPTR_MAX - begin);
-        volatile uintptr_t cur = begin;
-        size_t res;
+        std::uintptr_t const page_size = sysconf(_SC_PAGESIZE);
+        std::uintptr_t const begin = (std::uintptr_t)ptr;
+        std::uintptr_t const end = begin + std::min<std::size_t>(std::max<std::size_t>(size, 1), std::numeric_limits<std::uintptr_t>::max() - begin);
+        volatile std::uintptr_t cur = begin;
+        std::size_t res;
         probing = 1;
         if (sigsetjmp(probe_env, 1) == 0) {
             while (true) {
                 (void)*(char const volatile*)cur;
-                uintptr_t next = (cur & ~(page_size - 1)) + page_size;
+                std::uintptr_t next = (cur & ~(page_size - 1)) + page_size;
                 if (next >= end || next < cur) break;
                 cur = next;
             }
@@ -175,8 +172,8 @@ namespace {
     }
 }
 
-extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlloc(void* ptr, size_t size) {
-    size_t accessible = probeAccessible(ptr, size);
+extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlloc(void* ptr, std::size_t size) {
+    std::size_t accessible = probeAccessible(ptr, size);
     if (accessible == 0) {
         AnnotErr() << "Annotation verification failed!\n";
         AnnotErr() << "Allocation annotation at " << getFileRefStr(__builtin_return_address(0)) << " references pointer " << ptr << ", which cannot be dereferenced!\n";
