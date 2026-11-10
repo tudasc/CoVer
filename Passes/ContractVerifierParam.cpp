@@ -1,5 +1,5 @@
-#include "ContractVerifierParam.hpp"
 #include "ContractManager.hpp"
+#include "ContractVerifierParam.hpp"
 #include "ContractTree.hpp"
 
 import std;
