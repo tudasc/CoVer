@@ -1,17 +1,13 @@
-#include "AnnotVerifier.h"
-#include <cstdarg>
-#include <cstdint>
 #include <dlfcn.h>
-#include <format>
-#include <iostream>
-#include <vector>
-#include <array>
-#include <optional>
-#include <algorithm>
 #include <setjmp.h>
-#include <csignal>
-#include <mutex>
+#include <signal.h>
+#include <stdarg.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/wait.h>
 #include <unistd.h>
+
+import std;
 
 namespace {
     std::string exec(std::string const& cmd) {
@@ -23,7 +19,7 @@ namespace {
         }
         int ret = WEXITSTATUS(pclose(pipe));
         if (ret != 0) {
-            exit(ret);
+            std::exit(ret);
         }
         return result;
     }
@@ -102,28 +98,32 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotFP(void const*
     va_end(list);
 }
 
-struct AliasGroupAbstr {
-    int idx;
-    void* cmp;
-    void* prev_loc;
+void createAliasError(int group, void const* prev_loc, void const* new_loc, bool shouldAlias) {
+    AnnotErr() << "Annotation verification failed!\n";
+    AnnotErr() << "Alias group " << group << " has two values which " << (shouldAlias ? "do not alias" : "alias") << " even though they should" << (shouldAlias ? "" : " not") << "\n";
+    AnnotErr() << "First value found at " << getFileRefStr(prev_loc) << "\n";
+    AnnotErr() << "Second value found at " << getFileRefStr(new_loc) << "\n";
+}
+
+struct AliasEntry {
+    void* ptr;
+    void* loc;
 };
-std::vector<AliasGroupAbstr> aliasinfo;
+std::unordered_map<int,AliasEntry> aliasInfo;
+std::unordered_map<int,std::unordered_map<void*,void*>> noAliasInfo;
 extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* ptr, bool shouldAlias, int group) {
-    for (AliasGroupAbstr const& Agroup : aliasinfo) {
-        if (Agroup.idx == group) {
-            if (shouldAlias && ptr == Agroup.cmp) return;
-            if (!shouldAlias && ptr != Agroup.cmp) return;
-            AnnotErr() << "Annotation verification failed!\n";
-            AnnotErr() << "Alias group " << group << " has two values which " << (shouldAlias ? "do not alias" : "alias") << " even though they should" << (shouldAlias ? "" : " not") << "\n";
-            AnnotErr() << "First value found at " << getFileRefStr(Agroup.prev_loc) << "\n";
-            AnnotErr() << "Second value found at " << getFileRefStr(__builtin_return_address(0)) << "\n";
-            return;
-        }
+    void* loc = __builtin_return_address(0);
+    if (shouldAlias) {
+        auto [it, inserted] = aliasInfo.try_emplace(group, AliasEntry{ptr, loc});
+        if (!inserted && it->second.ptr != ptr) createAliasError(group, it->second.loc, loc, true);
+    } else {
+        auto [it, inserted] = noAliasInfo[group].try_emplace(ptr, loc);
+        if (!inserted && it->second != loc) createAliasError(group, it->second, loc, false);
     }
-    aliasinfo.push_back({group, ptr, __builtin_return_address(0)});
 }
 extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAliasEpoch(int group) {
-    std::erase_if(aliasinfo, [group](AliasGroupAbstr const& Agroup) { return Agroup.idx == group; });
+    aliasInfo.erase(group);
+    noAliasInfo.erase(group);
 }
 
 namespace {
