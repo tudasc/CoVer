@@ -131,13 +131,13 @@ MemoryAccess const* getReachingDef(LoadInst const* LI) {
 }
 
 // IR edits invalidate the memory SSA of the edited function
-void invalidateFunctionAnalyses(Function* F) {
+export void invalidateFunctionAnalyses(Function* F) {
     if (curFAM && F) curFAM->invalidate(*F, PreservedAnalyses::none());
 }
 
 // Whether both values are computed the same way from the same values, e.g. two loads of a variable
 // without a store to it in between, or two GEPs into the same array with equivalent indices
-bool equivalentValues(Value const* A, Value const* B) {
+export bool equivalentValues(Value const* A, Value const* B) {
     if (A == B) return true;
     Instruction const* IA = dyn_cast<Instruction>(A);
     Instruction const* IB = dyn_cast<Instruction>(B);

@@ -132,6 +132,9 @@ export namespace llvm {
     using llvm::CloneFunctionInto;
     using llvm::UndefValue;
     using llvm::CastInst;
+    using llvm::BitCastInst;
+    using llvm::AddrSpaceCastInst;
+    using llvm::ICmpInst;
     using llvm::InvokeInst;
     using llvm::DIType;
     using llvm::DIGlobalVariableExpression;

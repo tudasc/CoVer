@@ -118,6 +118,14 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* pt
         if (!inserted && it->second != loc) createAliasError(group, it->second, loc, false);
     }
 }
+// Inserted by the analysis in place of no-alias annotations whose value is only used to load or store.
+// Called directly before each such access. The value is checked against the values of the group that are in use, but not recorded itself
+extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAliasAccess(void* ptr, int group) {
+    void* loc = __builtin_return_address(0);
+    if (!noAliasInfo.contains(group)) return;
+    std::unordered_map<void*,void*> const& seen = noAliasInfo.at(group);
+    if (seen.contains(ptr)) createAliasError(group, seen.at(ptr), loc, false);
+}
 extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAliasEpoch(int group) {
     aliasInfo.erase(group);
     noAliasInfo.erase(group);

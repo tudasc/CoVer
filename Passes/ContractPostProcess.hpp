@@ -21,6 +21,7 @@ class ContractPostProcessingPass : public PassInfoMixin<ContractPostProcessingPa
         Fulfillment checkExpressions(ContractManagerAnalysis::Contract const& C, bool output);
         std::pair<Fulfillment,std::optional<std::string>> resolveFormula(std::shared_ptr<ContractFormula> contrF, std::map<std::shared_ptr<ContractFormula>, ErrorMessage>& reasons);
         void outputSubformulaErrs(std::string type, const ContractManagerAnalysis::Contract C, std::map<std::shared_ptr<ContractFormula>, ErrorMessage> const& reasons);
+        void convertAccessAnnotations(Module& M);
         raw_ostream& printMsg();
 
         Json::Value json_messages;
