@@ -66,7 +66,7 @@ set_target_properties(CoVerIRPatch PROPERTIES POSITION_INDEPENDENT_CODE ON)
 # LLM chat uses libcurl for communication, the frontends are loaded with dlopen
 find_package(CURL REQUIRED)
 
-target_link_libraries(CoVerCore PUBLIC CoVerLang CoVerIRPatch LLVM PRIVATE CURL::libcurl ${CMAKE_DL_LIBS})
+target_link_libraries(CoVerCore PUBLIC CoVerLang CoVerIRPatch PRIVATE CURL::libcurl ${CMAKE_DL_LIBS})
 
 ##
 ## LLVM Analysis Passes
