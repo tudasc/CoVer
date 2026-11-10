@@ -5,7 +5,7 @@
 
 import std;
 import LLVMModule;
-import ContractPassUtility;
+import Worklist;
 import InteractiveUI;
 import ErrorMessage;
 
@@ -35,9 +35,9 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
             }
         }
 
-        static bool handleDebug(ContractPassUtility::WorklistResult<ReleaseStatus> WLRes, Instruction* Forbidden, ContractManagerAnalysis::DebugContext const& context) {
+        static bool handleDebug(Worklist::WorklistResult<ReleaseStatus> WLRes, Instruction* Forbidden, ContractManagerAnalysis::DebugContext const& context) {
             // Start trace right after the first forbidden operation found
-            return InteractiveUI::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, ContractPassUtility::getTraceAfter(WLRes.JumpTraces, Forbidden), releaseStatusToStr, context);
+            return InteractiveUI::ShowTrace<ReleaseStatus>(WLRes.JumpTraces, Worklist::getTraceAfter(WLRes.JumpTraces, Forbidden), releaseStatusToStr, context);
         }
 };
 

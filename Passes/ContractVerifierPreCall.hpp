@@ -5,7 +5,7 @@
 
 import std;
 import LLVMModule;
-import ContractPassUtility;
+import Worklist;
 import InteractiveUI;
 
 namespace llvm {
@@ -38,13 +38,13 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
             }
         }
 
-        static bool handleDebug(ContractPassUtility::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C, ContractManagerAnalysis::DebugContext const& context) {
-            ContractPassUtility::JumpTraceEntry<CallStatus>* startloc = nullptr;
+        static bool handleDebug(Worklist::WorklistResult<CallStatus> WLRes, ContractManagerAnalysis::LinearizedContract C, ContractManagerAnalysis::DebugContext const& context) {
+            Worklist::JumpTraceEntry<CallStatus>* startloc = nullptr;
             for (auto const& AI : WLRes.AnalysisInfo) {
                 if (CallBase* CB = dyn_cast<CallBase>(AI.first)) {
                     if (CB->getCalledFunction() == C.F) {
                         if (AI.second.CurVal == CallStatusVal::ERROR) {
-                            startloc = ContractPassUtility::getTraceAfter(WLRes.JumpTraces, CB);
+                            startloc = Worklist::getTraceAfter(WLRes.JumpTraces, CB);
                             break;
                         }
                     }

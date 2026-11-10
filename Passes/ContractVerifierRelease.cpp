@@ -5,6 +5,7 @@
 import std;
 import LLVMModule;
 import ContractPassUtility;
+import Worklist;
 import ErrorMessage;
 
 using namespace llvm;
@@ -185,8 +186,8 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
     std::vector<CallParam> releaseParam = static_cast<const CallOperation&>(*relOp.Until).Params;
 
     IterTypeRelease data = { {}, {}, forbiddenType, param, releaseFunc, releaseParam, nullptr, DB->Tags, isTagRel};
-    ContractPassUtility::TransferFunction<ReleaseStatus> transfer = std::bind(&ContractVerifierReleasePass::transferRelease, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-    ContractPassUtility::MergeFunction<ReleaseStatus> merge = std::bind(&ContractVerifierReleasePass::mergeRelease, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    Worklist::TransferFunction<ReleaseStatus> transfer = std::bind(&ContractVerifierReleasePass::transferRelease, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    Worklist::MergeFunction<ReleaseStatus> merge = std::bind(&ContractVerifierReleasePass::mergeRelease, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
 
     // Get all call sites of function, and run analysis
     ReleaseStatus result = ReleaseStatus::FORBIDDEN;
@@ -194,7 +195,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::checkRel
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand() == C.F) {
                 data.callsite = CB;
-                ContractPassUtility::WorklistResult<ReleaseStatus> WLRes = ContractPassUtility::GenericWorklist<ReleaseStatus>(CB, false, transfer, merge, &data, ReleaseStatus::FORBIDDEN);
+                Worklist::WorklistResult<ReleaseStatus> WLRes = Worklist::GenericWorklist<ReleaseStatus>(CB, false, transfer, merge, &data, ReleaseStatus::FORBIDDEN);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 data.dbg.clear();
                 DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());

@@ -36,6 +36,7 @@ add_library(CoVerCore SHARED)
 target_sources(CoVerCore PUBLIC FILE_SET CXX_MODULES FILES
   Utils/AnalysisReports.cppm
   Utils/ContractPassUtility.cppm
+  Utils/Worklist.cppm
   Utils/LLVMModule.cppm
   Utils/ErrorMessage.cppm
   Utils/UserConfig.cppm

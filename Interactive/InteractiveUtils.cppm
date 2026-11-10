@@ -8,6 +8,7 @@ import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
 import ContractPassUtility;
+import Worklist;
 
 using namespace ContractTree;
 
@@ -105,13 +106,13 @@ export std::vector<std::shared_ptr<ContractTree::ContractExpression>> Debuggable
     return leaves;
 }
 
-export std::string traceKindToStr(ContractPassUtility::TraceKind kind) {
+export std::string traceKindToStr(Worklist::TraceKind kind) {
     switch (kind) {
-        case ContractPassUtility::TraceKind::LINEAR: return "LINEAR";
-        case ContractPassUtility::TraceKind::BRANCH: return "BRANCH";
-        case ContractPassUtility::TraceKind::SWITCH: return "SWITCH";
-        case ContractPassUtility::TraceKind::FUNCENTRY: return "FUNCENTRY";
-        case ContractPassUtility::TraceKind::FUNCEXIT: return "FUNCEXIT";
+        case Worklist::TraceKind::LINEAR: return "LINEAR";
+        case Worklist::TraceKind::BRANCH: return "BRANCH";
+        case Worklist::TraceKind::SWITCH: return "SWITCH";
+        case Worklist::TraceKind::FUNCENTRY: return "FUNCENTRY";
+        case Worklist::TraceKind::FUNCEXIT: return "FUNCEXIT";
     }
 }
 

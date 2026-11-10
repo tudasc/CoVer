@@ -6,6 +6,7 @@
 import std;
 import LLVMModule;
 import ContractPassUtility;
+import Worklist;
 import ErrorMessage;
 
 using namespace llvm;
@@ -210,7 +211,7 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
     auto bound_transfer = std::bind(&ContractVerifierAllocPass::transferAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
     auto bound_merge = std::bind(&ContractVerifierAllocPass::mergeAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
     auto bound_callreturn = std::bind(&ContractVerifierAllocPass::callReturnAllocStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    ContractPassUtility::WorklistResult<AllocStatus> WLRes = ContractPassUtility::GenericWorklist<AllocStatus>(Entry, true, bound_transfer, bound_merge, &data, init, bound_callreturn);
+    Worklist::WorklistResult<AllocStatus> WLRes = Worklist::GenericWorklist<AllocStatus>(Entry, true, bound_transfer, bound_merge, &data, init, bound_callreturn);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());

@@ -5,6 +5,7 @@
 import std;
 import LLVMModule;
 import ContractPassUtility;
+import Worklist;
 
 using namespace llvm;
 using namespace ContractTree;
@@ -134,9 +135,9 @@ ContractVerifierPreCallPass::CallStatusVal ContractVerifierPreCallPass::checkPre
 
     IterTypePreCall data = { {}, {}, cOP->Function, C.F, cOP->Params, isTag, DB->Tags };
     CallStatus init = { CallStatusVal::NOTCALLED, {}};
-    ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPreCallPass::transferPreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-    ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPreCallPass::mergePreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
-    ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(Entry, true, transfer, merge, &data, init);
+    Worklist::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPreCallPass::transferPreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    Worklist::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPreCallPass::mergePreCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    Worklist::WorklistResult<CallStatus> WLRes = Worklist::GenericWorklist<CallStatus>(Entry, true, transfer, merge, &data, init);
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());

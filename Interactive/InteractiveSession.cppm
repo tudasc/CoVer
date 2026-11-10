@@ -7,6 +7,7 @@ import std;
 import AnalysisReports;
 import LLVMModule;
 import ContractPassUtility;
+import Worklist;
 import InteractiveUtils;
 
 using namespace ContractTree;
@@ -16,9 +17,9 @@ using namespace llvm;
 // Frontend independent state of the trace debugger. The frontends and trace commands only see the non-template TraceSession.
 namespace InteractiveSession {
 
-using ContractPassUtility::JumpTraceEntry;
-using ContractPassUtility::TraceDB;
-using ContractPassUtility::TraceKind;
+using Worklist::JumpTraceEntry;
+using Worklist::TraceDB;
+using Worklist::TraceKind;
 
 export enum struct CmdResultCode {
     UNKNOWN_COMMAND,

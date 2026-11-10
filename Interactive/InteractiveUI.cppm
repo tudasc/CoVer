@@ -8,7 +8,7 @@ export module InteractiveUI;
 import std;
 import LLVMModule;
 import AnalysisReports;
-import ContractPassUtility;
+import Worklist;
 import InteractiveSession;
 import InteractiveUtils;
 import InteractiveFrontend;
@@ -100,7 +100,7 @@ bool ShowTrace(InteractiveSession::TraceSession& session) {
 }
 
 export template<typename T>
-bool ShowTrace(ContractPassUtility::TraceDB<T> traceDB, ContractPassUtility::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, AnalysisReports::DebugContext context) {
+bool ShowTrace(Worklist::TraceDB<T> traceDB, Worklist::JumpTraceEntry<T>* trace, std::function<std::string(T)> infoToStr, AnalysisReports::DebugContext context) {
     if (!trace) return false;
     InteractiveSession::TraceSessionImpl<T> session(traceDB, trace, infoToStr, std::move(context));
     return ShowTrace(session);

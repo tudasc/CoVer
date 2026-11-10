@@ -5,6 +5,7 @@
 import std;
 import LLVMModule;
 import ContractPassUtility;
+import Worklist;
 
 using namespace llvm;
 using namespace ContractTree;
@@ -107,14 +108,14 @@ std::pair<ContractVerifierPostCallPass::CallStatus,bool> ContractVerifierPostCal
 ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::checkPostCall(const CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error) {
     IterTypePostCall data = { {}, {}, cOP->Function, nullptr, cOP->Params, isTag, DB->Tags };
 
-    ContractPassUtility::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPostCallPass::transferPostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
-    ContractPassUtility::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPostCallPass::mergePostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
+    Worklist::TransferFunction<CallStatus> transfer = std::bind(&ContractVerifierPostCallPass::transferPostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3);
+    Worklist::MergeFunction<CallStatus> merge = std::bind(&ContractVerifierPostCallPass::mergePostCallStat, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4);
 
     for (User* U : C.F->users()) {
         if (CallBase* CB = dyn_cast<CallBase>(U)) {
             if (CB->getCalledOperand() == C.F) {
                 data.callsite = CB;
-                ContractPassUtility::WorklistResult<CallStatus> WLRes = ContractPassUtility::GenericWorklist<CallStatus>(CB, false, transfer, merge, &data, CallStatus::NOTCALLED);
+                Worklist::WorklistResult<CallStatus> WLRes = Worklist::GenericWorklist<CallStatus>(CB, false, transfer, merge, &data, CallStatus::NOTCALLED);
                 C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
                 data.dbg.clear();
                 for (auto const& x : WLRes.AnalysisInfo) {
