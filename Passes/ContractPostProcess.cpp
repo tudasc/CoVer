@@ -172,73 +172,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
         file.close();
     }
 
-    convertAccessAnnotations(M);
-
     return PreservedAnalyses::none();
-}
-
-// Collects the loads and stores accessing memory through V, following GEPs and casts. Each access is recorded with the annotated value it was reached from.
-// Returns false if V is used in another way, i.e. it may be kept beyond the access (call argument, stored, merged with other values, ...)
-static bool collectAccesses(Value* V, Value* annotated, std::map<Instruction*, Value*>& accesses) {
-    for (User* U : V->users()) {
-        if (CallBase* CB = dyn_cast<CallBase>(U)) {
-            if (CB->getCalledOperand()->getName().starts_with("CoVer_Annot")) continue;
-            return false;
-        }
-        if (LoadInst* LI = dyn_cast<LoadInst>(U)) {
-            accesses.try_emplace(LI, annotated);
-        } else if (StoreInst* SI = dyn_cast<StoreInst>(U)) {
-            if (SI->getValueOperand() == V) return false;
-            accesses.try_emplace(SI, annotated);
-        } else if (isa<GetElementPtrInst>(U) || isa<BitCastInst>(U) || isa<AddrSpaceCastInst>(U)) {
-            if (!collectAccesses(U, annotated, accesses)) return false;
-        } else if (!isa<ICmpInst>(U)) {
-            return false;
-        }
-    }
-    return true;
-}
-void ContractPostProcessingPass::convertAccessAnnotations(Module& M) {
-    Function* AnnotAlias = M.getFunction("CoVer_AnnotAlias");
-    if (!AnnotAlias) return;
-
-    // Classify first: The memory SSA used to find equivalent values is invalidated by the conversion
-    struct Conversion {
-        CallBase* annot;
-        std::map<Instruction*, Value*> accesses;
-    };
-    std::vector<Conversion> conversions;
-    for (User* U : AnnotAlias->users()) {
-        CallBase* CB = dyn_cast<CallBase>(U);
-        if (!CB || CB->getCalledOperand() != AnnotAlias) continue;
-        ConstantInt* shouldAlias = dyn_cast<ConstantInt>(CB->getArgOperand(1));
-        if (!shouldAlias || !shouldAlias->isZero()) continue;
-        Instruction* V = dyn_cast<Instruction>(CB->getArgOperand(0));
-        if (!V || !V->getType()->isPointerTy()) continue;
-
-        // For source level annotations, the uses load the variable separately: Also consider equivalent values, as the analysis does
-        std::vector<Value*> instances = {V};
-        for (Instruction& I : instructions(*V->getFunction())) {
-            if (&I != V && ContractPassUtility::equivalentValues(V, &I)) instances.push_back(&I);
-        }
-        Conversion conv = {CB, {}};
-        bool onlyAccesses = std::ranges::all_of(instances, [&conv](Value* inst) { return collectAccesses(inst, inst, conv.accesses); });
-        if (onlyAccesses && !conv.accesses.empty()) conversions.push_back(std::move(conv));
-    }
-    if (conversions.empty()) return;
-
-    FunctionType* accessType = FunctionType::get(Type::getVoidTy(M.getContext()), {PointerType::getUnqual(M.getContext()), Type::getInt32Ty(M.getContext())}, false);
-    FunctionCallee accessCallee = M.getOrInsertFunction("CoVer_AnnotAliasAccess", accessType);
-    dyn_cast<Function>(accessCallee.getCallee())->setMemoryEffects(MemoryEffects::inaccessibleMemOnly());
-    for (Conversion const& conv : conversions) {
-        for (auto const& [access, annotated] : conv.accesses) {
-            CallInst* CI = CallInst::Create(accessCallee, {annotated, conv.annot->getArgOperand(2)});
-            CI->insertBefore(access->getIterator());
-            CI->setDebugLoc(access->getDebugLoc());
-        }
-        ContractPassUtility::invalidateFunctionAnalyses(conv.annot->getFunction());
-        conv.annot->eraseFromParent();
-    }
 }
 
 std::pair<Fulfillment,std::optional<std::string>> ContractPostProcessingPass::resolveFormula(std::shared_ptr<ContractFormula> contrF, std::map<std::shared_ptr<ContractFormula>,ErrorMessage>& reasons) {

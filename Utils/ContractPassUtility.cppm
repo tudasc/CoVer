@@ -154,7 +154,7 @@ export std::set<Function*> getFPAnnots(CallBase const* CB) {
     if (!annot) return {};
     std::set<Function*> fp_targets;
     for (unsigned i = 2; i < annot->arg_size(); i++) {
-        fp_targets.insert(CB->getModule()->getFunction(annot->getArgOperand(i)->getName()));
+        fp_targets.insert(dyn_cast<Function>(annot->getArgOperand(i)->stripPointerCastsAndAliases()));
     }
     return fp_targets;
 }

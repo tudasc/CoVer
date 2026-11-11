@@ -11,6 +11,7 @@
 
 import LLVMModule;
 import AnalysisCleanup;
+import InstrumentAnnotations;
 
 using namespace llvm;
 
@@ -38,6 +39,10 @@ namespace {
         }
         if (Name == "contractPostProcess") {
             MPM.addPass(ContractPostProcessingPass());
+            return true;
+        }
+        if (Name == "instrumentAnnotations") {
+            MPM.addPass(InstrumentAnnotationsPass());
             return true;
         }
         if (Name == "instrumentIntrinsics") {

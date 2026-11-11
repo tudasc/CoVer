@@ -36,6 +36,7 @@ add_cover_test_c(Param-SendRecvOverlap)
 add_cover_test_c(Alloc-BufNotAllocated)
 add_cover_test_c(Alloc-BufUseAfterFree)
 add_cover_test_c(Annot-NoAliasAccessWrite)
+add_cover_test_c(Annot-FPCoverage)
 
 add_cover_test_fort(Correct-Minimal)
 add_cover_test_fort(Correct-P2P)

@@ -344,7 +344,7 @@ int main(int argc, const char** argv) {
     }
 
     // Call LLVM passes
-    std::string passlist = "@OPT_PASSLIST_PREFIX@instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess";
+    std::string passlist = "@OPT_PASSLIST_PREFIX@instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess,instrumentAnnotations";
     // ALWAYS FIRST OPT THEN INSTR!
     // Otherwise significant performance loss!
     if (InstrumentContracts.empty()) passlist += ",analysisCleanup"; // If no instr: Cleanup now so stack instr doesnt hinder opt

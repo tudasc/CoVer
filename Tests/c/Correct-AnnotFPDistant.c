@@ -34,3 +34,5 @@ int main(int argc, char** argv) {
 // CHECK-NOT: Contract violation detected!
 // CHECK-NOT: Annotation verification failed!
 // CHECK: Analysis finished.
+// CHECK: CoVer-AnnotVerifier: Info: Checked annotation coverage of 2 processes
+// CHECK-NOT: CoVer-AnnotVerifier: Warning

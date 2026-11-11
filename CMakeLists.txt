@@ -87,6 +87,7 @@ add_llvm_pass_plugin(CoVerPlugin
 target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES FILES
   Passes/AnalysisCleanup.cppm
   Passes/BasicTypes.cppm
+  Passes/InstrumentAnnotations.cppm
 )
 target_link_libraries(CoVerPlugin PRIVATE CoVerCore)
 

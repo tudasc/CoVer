@@ -167,6 +167,8 @@ export namespace llvm {
     using llvm::ModRefInfo;
     using llvm::DominatorTree;
     using llvm::DominatorTreeAnalysis;
+    using llvm::DILocation;
+    using llvm::LLVMContext;
 }
 
 export namespace llvm::cl {

@@ -115,5 +115,10 @@ This can be done by passing the option `--instrument-contracts` to the CoVer com
 
 Then, launch the program as usual.
 The analysis should run automatically.
-To further check for coverage issues (using static-dynamic interaction, see TODO ref), run the same executable again including only the `--cover-check-coverage` flag.
+To further check for coverage issues (using static-dynamic interaction, see TODO ref), run the same executable again including only the `--cover:check-coverage` flag.
 This will make it read off the generated coverage files.
+
+### Annotation Coverage
+
+Programs with annotations from interactive mode verify them at runtime, also without `--instrument-contracts`.
+At exit, the runtime annotation verifier warns about annotations that were never visited, and function pointer annotations with a target that was never called.

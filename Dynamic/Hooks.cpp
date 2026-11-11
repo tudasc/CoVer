@@ -18,6 +18,9 @@
 
 #include "Hooks.hpp"
 
+// Provided by the annotation verifier, if the program has annotations
+extern "C" __attribute__((weak)) void CoVer_AnnotDiscardCoverage();
+
 extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t* argc, char*** argv, ContractDB_t const* DB) {
     DynamicUtils::createMessage("Initializing...");
     DynamicUtils::Initialize(DB);
@@ -26,6 +29,8 @@ extern "C" void __attribute__((visibility("default"))) PPDCV_Initialize(int32_t*
         std::string arg = (*argv)[1];
         if (arg == "--cover:check-coverage") {
             DynamicUtils::createMessage("Coverage check requested!");
+            // The program is not executed, so its annotations are not visited either
+            if (CoVer_AnnotDiscardCoverage) CoVer_AnnotDiscardCoverage();
             // Fill relevant locs
             std::unordered_set<Reference_t*> relevantLocs;
             for (int i = 0; i < DB->num_references; i++)
