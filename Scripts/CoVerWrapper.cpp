@@ -102,7 +102,7 @@ enum struct LinkKind { LINK, ONLY_COMPILE, ONLY_PREPROCESS };
 LinkKind cur_linkkind = LinkKind::LINK;
 
 std::string dest_arg;
-std::string opt_level;
+int opt_level = -1; // Level of opt and llc (0-3) for the optimization flag, -1 if none was given
 
 std::regex const link_file_ending(".*(\\.a|\\.so)");
 
@@ -149,6 +149,27 @@ void execSafe(std::string const& cmd) {
     if (ExecVerbose || ExecDryRun)
         std::cout << "Wrapper " << (ExecDryRun ? "would execute: " : "is executing: ") << cmd << "\n";
     if (!ExecDryRun) exec(cmd);
+}
+
+// Level of opt and llc for an optimization flag. Size and fast-math are applied by the frontend as attributes, which the pipeline respects
+int parseOptLevel(std::string const& flag) {
+    std::string level = flag.substr(2);
+    if (level.empty() || level == "g") return 1;
+    if (level == "s" || level == "z") return 2;
+    if (level == "fast") return 3;
+    if (std::all_of(level.begin(), level.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); })) return std::min(std::stoi(level), 3);
+    std::cerr << "Unknown optimization level \"" << flag << "\"!\n";
+    exit(EXIT_FAILURE);
+}
+
+// Frontend flags to generate IR for the analysis. The frontend uses the optimization level for its codegen
+// (e.g. TBAA, defining __OPTIMIZE__, size and fast-math attributes), but never runs the LLVM pipeline, not even at -O0: It runs after the analysis.
+std::string frontendOptFlags() {
+    if (compiler_ident.find("clang") != std::string::npos) {
+        return " -Xclang -disable-llvm-passes -Xclang -disable-O0-optnone -Xclang -disable-lifetime-markers";
+    }
+    // Flang has no option to disable the LLVM pipeline, but its optional passes can be skipped
+    return " -mllvm -opt-bisect-limit=0 -mllvm -opt-bisect-verbose=false";
 }
 
 std::string getOptParam(std::string param, std::string full) {
@@ -205,7 +226,9 @@ std::pair<std::string,std::string> parseCompilerParams(std::vector<std::string> 
         } else if (arg == "-MT") {
             rem_args_compile += " " + arg + " " + all_args[++i];
         } else if (arg.starts_with("-O")) {
-            opt_level = arg;
+            // The frontend gets the flag as given (e.g. -Os, -Ofast), opt and llc the corresponding level
+            opt_level = parseOptLevel(arg);
+            rem_args_compile += " " + arg;
         } else {
             rem_args_link += " " + arg;
             rem_args_compile += " " + arg;
@@ -280,13 +303,14 @@ int main(int argc, const char** argv) {
 
     // Generate IR for source files
     if (!source_file_paths.empty()) {
-        std::string common_options = " -fPIC -g -emit-llvm " + std::string(compiler_ident.find("clang") != std::string::npos ? "-Xclang -disable-O0-optnone " : "");
+        std::string common_options = " -fPIC -g -emit-llvm" + frontendOptFlags() + " ";
         execSafe(WrapTarget + common_options + (cur_linkkind < LinkKind::ONLY_PREPROCESS ? "-c" : "-E") + " -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.second + source_file_paths + (cur_linkkind > LinkKind::LINK ? dest_arg : ""));
 
         if (cur_linkkind == LinkKind::ONLY_COMPILE && dest_arg.empty()) {
-            // No output dir, but want "object" files. Rename generated .ll to .o
+            // No output dir, but want "object" files. Rename generated .bc to .o
             for (std::string file : source_file_names) {
-                std::filesystem::rename(file + ".bc", file + ".o");
+                if (ExecVerbose || ExecDryRun) std::cout << (ExecDryRun ? "Would rename: " : "Renaming: ") << file << ".bc to " << file << ".o\n";
+                if (!ExecDryRun) std::filesystem::rename(file + ".bc", file + ".o");
             }
         } else if (cur_linkkind == LinkKind::LINK) {
             // Linking, so move bitcode files to tmp dir
@@ -301,8 +325,8 @@ int main(int argc, const char** argv) {
                     // Cannot use rename, because it is on other fs. Copy-delete instead
                     std::filesystem::copy_file(source, destination, std::filesystem::copy_options::overwrite_existing);
                     std::filesystem::remove(source);
-                    bitcode_files += " " + destination;
                 }
+                bitcode_files += " " + destination;
                 close(fd);
             }
         }
@@ -348,8 +372,8 @@ int main(int argc, const char** argv) {
     // ALWAYS FIRST OPT THEN INSTR!
     // Otherwise significant performance loss!
     if (InstrumentContracts.empty()) passlist += ",analysisCleanup"; // If no instr: Cleanup now so stack instr doesnt hinder opt
-    if (!opt_level.empty()) {
-        passlist += ",default<" + opt_level.substr(1) + ">"; // opt_level substr cuts "-" from "-O<num>"
+    if (opt_level >= 0) {
+        passlist += ",default<O" + std::to_string(opt_level) + ">";
     }
     if (!InstrumentContracts.empty()) {
         // Need instrumentation, so add instr pass...
@@ -366,7 +390,7 @@ int main(int argc, const char** argv) {
 
     // Finalize executable
     if(!NoBinary) {
-        execSafe("llc -filetype=obj --relocation-model=pic " + opt_level + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
+        execSafe("llc -filetype=obj --relocation-model=pic " + (opt_level >= 0 ? "-O" + std::to_string(opt_level) : "") + " " + tmpfile + ".opt -o " + tmpfile + ".opt.o");
         execSafe(WrapTarget + " -fPIC -lm -ldl -lffi -lpthread -g -I\"@CONTR_INCLUDE_PATH@\"" + rem_args.first + " " + tmpfile + ".opt.o @COVER_INTRINSICS_LIB_PATH@ @COVER_ANNOT_VERIFIER_PATH@ -lstdc++ " + dest_arg);
     }
     return 0;
