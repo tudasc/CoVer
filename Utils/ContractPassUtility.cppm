@@ -14,6 +14,7 @@ export module ContractPassUtility;
 import std;
 import LLVMModule;
 import ErrorMessage;
+import ValueOrder;
 
 using namespace llvm;
 
@@ -172,13 +173,17 @@ Function const* getParentFunction(Value const* V) {
     return nullptr;
 }
 
-std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int curSteps, std::map<const Value*,int> const& candidatesConsidered) {
+// Ordered deterministically: The candidate search stops at the first match
+using CandidateMap = std::map<const Value*, int, ValueOrder::Less>;
+using CandidateSet = std::set<std::pair<const Value*, int>, ValueOrder::Less>;
+
+CandidateSet resolveArgForFuncDiff(Value const* I, int curSteps, CandidateMap const& candidatesConsidered) {
     // First step: Collect the arguments represented by the value
     std::set<Argument const*> args;
     if (const Argument* Arg = dyn_cast<Argument>(I)) {
         args.insert(Arg);
     }
-    std::set<std::pair<const Value*, int>> candidates;
+    CandidateSet candidates;
     if (const AllocaInst* AI = dyn_cast<AllocaInst>(I)) {
         // Pre-sroa: Possibly a function parameter, check args against storeinst users
         const Function* tmp = AI->getFunction();
@@ -237,10 +242,10 @@ std::set<std::pair<const Value*, int>> resolveArgForFuncDiff(Value const* I, int
     return candidates;
 }
 
-std::map<const Value*,int> getFunctionParentInstrCandidatesUncached(const Value* Ip) {
+CandidateMap getFunctionParentInstrCandidatesUncached(const Value* Ip) {
     if (!isa<Instruction>(Ip) && !isa<Argument>(Ip)) return {};
-    std::set<std::pair<const Value*,int>> candidates = {{Ip, 0}};
-    std::map<const Value*,int> candidatesConsidered;
+    CandidateSet candidates = {{Ip, 0}};
+    CandidateMap candidatesConsidered;
     while (!candidates.empty()) {
         const Value* I = candidates.begin()->first;
         int curSteps = candidates.begin()->second;
@@ -255,23 +260,23 @@ std::map<const Value*,int> getFunctionParentInstrCandidatesUncached(const Value*
                 I = dyn_cast<Instruction>(ContractPassUtility::betterGetPointerOperand(I));
             }
         }
-        std::set<std::pair<const Value*,int>> parentFuncCandidates = resolveArgForFuncDiff(I, curSteps, candidatesConsidered);
+        CandidateSet parentFuncCandidates = resolveArgForFuncDiff(I, curSteps, candidatesConsidered);
         candidates.insert(parentFuncCandidates.begin(), parentFuncCandidates.end());
     }
     return candidatesConsidered;
 }
 
-static DenseMap<const Value*, std::shared_ptr<const std::map<const Value*,int>>> parentInstrCandidatesCache;
+static DenseMap<const Value*, std::shared_ptr<const CandidateMap>> parentInstrCandidatesCache;
 
-std::shared_ptr<const std::map<const Value*,int>> getFunctionParentInstrCandidates(const Value* Ip) {
-    std::shared_ptr<const std::map<const Value*,int>>& entry = parentInstrCandidatesCache[Ip];
-    if (!entry) entry = std::make_shared<const std::map<const Value*,int>>(getFunctionParentInstrCandidatesUncached(Ip));
+std::shared_ptr<const CandidateMap> getFunctionParentInstrCandidates(const Value* Ip) {
+    std::shared_ptr<const CandidateMap>& entry = parentInstrCandidatesCache[Ip];
+    if (!entry) entry = std::make_shared<const CandidateMap>(getFunctionParentInstrCandidatesUncached(Ip));
     return entry;
 }
 
 int resolveFunctionDifference(const Value** A, const Value** B) {
-    std::shared_ptr<const std::map<const Value*,int>> CandidatesA = getFunctionParentInstrCandidates(*A);
-    std::shared_ptr<const std::map<const Value*,int>> CandidatesB = getFunctionParentInstrCandidates(*B);
+    std::shared_ptr<const CandidateMap> CandidatesA = getFunctionParentInstrCandidates(*A);
+    std::shared_ptr<const CandidateMap> CandidatesB = getFunctionParentInstrCandidates(*B);
     for (std::pair<const Value* const, int> const& Av : *CandidatesA) {
         for (std::pair<const Value* const, int> const& Bv : *CandidatesB) {
             if (Av.first == Bv.first) {
@@ -337,6 +342,7 @@ void determinizeModule() {
             });
         }
     }
+    ValueOrder::determinize(*curM);
 
     NamedMDNode *CUs = curM->getNamedMetadata("llvm.dbg.cu");
     SmallVector<MDNode *, 8> Nodes(CUs->operands());
