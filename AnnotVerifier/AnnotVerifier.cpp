@@ -174,10 +174,19 @@ namespace {
             std::erase_if(pending, [&resolve, &aliasVisited, &fpVisited](std::filesystem::path const& path) {
                 std::ifstream in(path);
                 if (!in) return true; // Removed in the meantime
-                // Files are replaced at once when written, so a file without "END" is still empty
-                std::string visit;
-                while (std::getline(in, visit)) {
-                    if (visit == "END") return true;
+                // Files are written in place and end with "END": Without it, the file is still being written and its last line may be cut off
+                std::vector<std::string> visits;
+                std::string line;
+                bool complete = false;
+                while (std::getline(in, line)) {
+                    if (line == "END") {
+                        complete = true;
+                        break;
+                    }
+                    visits.push_back(std::move(line));
+                }
+                if (!complete) return false;
+                for (std::string const& visit : visits) {
                     // "A|file|offset" or "F|file|offset|target file|target offset"
                     std::vector<std::string> fields = visit | std::views::split('|') | std::ranges::to<std::vector<std::string>>();
                     if (fields.size() == 3 && fields[0] == "A") {
@@ -186,7 +195,7 @@ namespace {
                         fpVisited[resolve(fields[1], fields[2])].insert(fields[3] + "|" + fields[4]);
                     }
                 }
-                return false;
+                return true;
             });
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
@@ -224,9 +233,8 @@ namespace {
     // At exit: Write this process' visits, then report if this process has the smallest postfix
     void writeCoverage() {
         if (!coverage || coverage->file.empty() || getpid() != coverage->owner) return;
-        std::filesystem::path tmp = coverage->folder / ("." + coverage->file.filename().string()); // Hidden, so it is not listed as a coverage file
         {
-            std::ofstream file(tmp);
+            std::ofstream file(coverage->file, std::ios::in | std::ios::out);
             std::lock_guard lock(coverage->mutex);
             for (Visit const& visit : coverage->visits) {
                 std::optional<std::pair<std::string, std::uintptr_t>> loc = getDLInfo((char const*)visit.loc - 1);
@@ -240,8 +248,6 @@ namespace {
             }
             file << "END\n";
         }
-        // Replace the reserved file at once, so it is never read partially written
-        std::filesystem::rename(tmp, coverage->file);
 
         // Only the process with the smallest postfix reports.
         // If the own file is gone, a process with a smaller postfix already read it and is reporting: The listing may have missed its file
