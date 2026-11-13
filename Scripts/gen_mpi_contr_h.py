@@ -489,10 +489,10 @@ void* operator new[](size_t size) CONTRACT(POST {{alloc!(R[0 _arg])}});
 extern "C" {{
 #endif
 
-void __attribute__((weak)) CoVer_AllocStack(void* ptr, size_t size) CONTRACT( POST {{ alloc!(0[1 _arg]) }}) {{}};
-void __attribute__((weak)) CoVer_FreeStack(void* ptr) CONTRACT( POST {{ free!(0) }}) {{}};
+void __attribute__((weak)) CONTRACT( POST {{ alloc!(0[1 _arg]) }}) CoVer_AllocStack(void* ptr, size_t size) {{}};
+void __attribute__((weak)) CONTRACT( POST {{ free!(0) }}) CoVer_FreeStack(void* ptr) {{}};
 
-void __attribute__((weak)) CoVer_RegisterGlobal(void* ptr, int64_t size) CONTRACT( POST {{ alloc!(0[ 1 _arg ]) }}) {{}};
+void __attribute__((weak)) CONTRACT( POST {{ alloc!(0[ 1 _arg ]) }}) CoVer_RegisterGlobal(void* ptr, int64_t size) {{}};
 
 
 void* calloc(size_t num, size_t size) __THROW CONTRACT( POST {{ alloc!(R[ 0 _arg * 1 _arg]) }});
