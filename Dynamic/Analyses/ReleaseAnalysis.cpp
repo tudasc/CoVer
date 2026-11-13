@@ -101,6 +101,7 @@ Fulfillment ReleaseAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo c
     // Finally, check if supplier.
     // Needs to be done after check for forbidden, so that new supplier is not accidentally checked against itself
     if (func == func_supplier) {
+        supplierSeen = true;
         for (int i = 0; i < forbiddenCallsites.size(); i++) {
             if (forbiddenCallsites[i].location == callsite.location) {
                 forbiddenCallsites[i] = callsite;

@@ -47,6 +47,7 @@ Fulfillment PostCallAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo 
     }
 
     if (func == func_supplier) {
+        supplierSeen = true;
         for (CallsiteInfo& uncheckedCallsite : uncheckedCallsites) {
             if (uncheckedCallsite.location == callsite.location) {
                 uncheckedCallsite = callsite;
@@ -62,6 +63,7 @@ Fulfillment PostCallAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo 
 }
 
 Fulfillment PostCallAnalysis::exitCBImpl(CodePtr const& location) {
+    if (!supplierSeen) return Fulfillment::INACTIVE;
     for (CallsiteInfo const& callsite : uncheckedCallsites) {
         references.push_back(callsite.location);
     }

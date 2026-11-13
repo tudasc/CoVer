@@ -11,7 +11,7 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
         ANALYSIS_PREAMBLE Fulfillment functionPreCBImpl(void* const& func, CallsiteInfo const& callsite);
         ANALYSIS_PREAMBLE Fulfillment functionPostCBImpl(void* const& func, CallsiteInfo const& callsite) { return Fulfillment::UNKNOWN; };
         ANALYSIS_PREAMBLE Fulfillment memoryCBImpl(CodePtr const& location, void const* const& memory, bool const& isWrite);
-        ANALYSIS_PREAMBLE Fulfillment exitCBImpl(CodePtr const& location) const { return Fulfillment::FULFILLED; };
+        ANALYSIS_PREAMBLE Fulfillment exitCBImpl(CodePtr const& location) const { return supplierSeen ? Fulfillment::FULFILLED : Fulfillment::INACTIVE; };
 
         CallBacks requiredCallbacksImpl() const;
 
@@ -32,4 +32,5 @@ struct ReleaseAnalysis : BaseAnalysis<ReleaseAnalysis> {
         // Analysis temporaries
         std::vector<CallsiteInfo> forbiddenCallsites;
         std::vector<ConcreteParam> forbMem;
+        bool supplierSeen = false; // Without a supplier call, there is nothing to decide at exit
 };

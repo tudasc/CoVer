@@ -28,4 +28,5 @@ struct PostCallAnalysis : public BaseAnalysis<PostCallAnalysis> {
 
         // Analysis temporaries
         std::vector<CallsiteInfo> uncheckedCallsites;
+        bool supplierSeen = false; // Without a supplier call, there is nothing to decide at exit
 };
