@@ -18,6 +18,7 @@ class Cover(CMakePackage):
     variant("bundled_jsoncpp", default=True, description="Use the vendored jsoncpp submodule")
     variant("tui", default=False, description="Build the terminal UI for the interactive mode")
     variant("gui", default=False, description="Build the Qt-based GUI for the interactive mode")
+    variant("stdcxx", default=False, description="Build CoVerStdCXX, which verifies contracts using C++26 contracts")
 
     # C++20 modules and import std require CMake >= 4.5 + Ninja
     generator("ninja")
@@ -38,6 +39,7 @@ class Cover(CMakePackage):
     depends_on("curl")
     depends_on("jsoncpp", when="~bundled_jsoncpp")
     depends_on("qt-base +gui +widgets", when="+gui")
+    depends_on("gcc@16: languages=c,c++", when="+stdcxx", type=("build", "run"))
 
     # GCC trips over TU-local entities in LLVM headers inside C++20 module fragments
     conflicts("%cxx=gcc", msg="CoVer must be built with clang (C++20 modules + LLVM headers)")
@@ -47,8 +49,11 @@ class Cover(CMakePackage):
             self.define_from_variant("BUNDLED_JSONCPP", "bundled_jsoncpp"),
             self.define_from_variant("ENABLE_TUI", "tui"),
             self.define_from_variant("ENABLE_GUI", "gui"),
+            self.define_from_variant("ENABLE_STDCXX", "stdcxx"),
             self.define("MPI_APIS_JSON", self.spec["py-pympistandard"].package.apis_json),
         ]
+        if self.spec.satisfies("+stdcxx"):
+            args.append(self.define("COVER_PLUGIN_HOST_GCC", join_path(self.spec["gcc"].prefix.bin, "g++")))
         # clang-scan-deps is invoked with Spack's compiler wrapper as argv[0], so it
         # looks for clang.cfg/clang++.cfg next to the wrapper instead of the real clang
         # and silently falls back to the system GCC headers. Pass the configs explicitly.

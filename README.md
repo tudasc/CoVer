@@ -22,6 +22,7 @@ Optionally:
 - MPI (for premade headers)
     - If OpenMPI with OpenSHMEM support is used, premade OpenSHMEM headers are generated as well.
 - Qt6 (for the graphical interactive mode)
+- GCC 16 or newer with plugin headers (for `CoVerStdCXX`)
 
 ## Building
 
@@ -35,6 +36,7 @@ and `spack_repo/` contains a Spack package definition.
 | ------ | ------- | ----------- |
 | `ENABLE_TUI` | `OFF` | Build the terminal UI of the interactive mode. |
 | `ENABLE_GUI` | `OFF` | Build the graphical UI of the interactive mode. Requires Qt6. |
+| `ENABLE_STDCXX` | `OFF` | Build `CoVerStdCXX`, which checks contracts at runtime using C++26 contracts. Requires GCC 16 or newer with plugin headers. |
 | `ENABLE_TESTS` | `OFF` | Enable testing |
 | `BUNDLED_JSONCPP` | `OFF` | Use bundled jsoncpp instead of the system one. |
 | `MPI_APIS_JSON` | unset | Local copy of the pympistandard `apis.json` used for the premade MPI contracts. If unset, it is downloaded during configuration. |

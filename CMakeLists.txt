@@ -268,6 +268,15 @@ create_compile_wrapper("CoVerFC" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contract
 create_compile_wrapper("CoVerFC-no-ts" "mpifort" ".*(\\\\.f90|\\\\.F90)$" "" "Contracts.F90;mpi_contracts.f90;mpi_contracts_f08.f90" "function(sroa),")
 
 ##
+## Verification using C++26 Contracts
+##
+
+option(ENABLE_STDCXX "Build CoVerStdCXX, which verifies contracts using C++26 contracts" OFF)
+if (ENABLE_STDCXX)
+  add_subdirectory(StdContr)
+endif(ENABLE_STDCXX)
+
+##
 ## Testing
 ##
 
@@ -276,9 +285,3 @@ if (ENABLE_TESTS)
   enable_testing()
   add_subdirectory(Tests/)
 endif(ENABLE_TESTS)
-
-##
-## Verification using C++26 Contracts
-##
-
-add_subdirectory(StdContr)

@@ -44,12 +44,24 @@ find_program(COVER_PLUGIN_HOST_GCC
   DOC "GCC whose plugin headers the backend is built against"
 )
 
-if(COVER_PLUGIN_HOST_GCC)
-  execute_process(COMMAND ${COVER_PLUGIN_HOST_GCC} -print-file-name=plugin
-    OUTPUT_VARIABLE GCC_PLUGIN_PREFIX
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-  )
+if(NOT COVER_PLUGIN_HOST_GCC)
+  message(FATAL_ERROR "No GCC found for CoVerStdCXX")
 endif()
+
+# C++26 contracts (-fcontracts) are available from GCC 16 on
+set(COVER_STDCXX_GCC_MIN 16)
+execute_process(COMMAND ${COVER_PLUGIN_HOST_GCC} -dumpfullversion
+  OUTPUT_VARIABLE COVER_PLUGIN_HOST_GCC_VERSION
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+if(COVER_PLUGIN_HOST_GCC_VERSION VERSION_LESS COVER_STDCXX_GCC_MIN)
+  message(FATAL_ERROR "CoVerStdCXX requires GCC ${COVER_STDCXX_GCC_MIN} or newer, but ${COVER_PLUGIN_HOST_GCC} is version ${COVER_PLUGIN_HOST_GCC_VERSION}!")
+endif()
+
+execute_process(COMMAND ${COVER_PLUGIN_HOST_GCC} -print-file-name=plugin
+  OUTPUT_VARIABLE GCC_PLUGIN_PREFIX
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
 find_path(GCCPlugin_INCLUDE_DIR gcc-plugin.h
   HINTS "${GCC_PLUGIN_PREFIX}/include"
@@ -80,7 +92,7 @@ if(GCCPlugin_INCLUDE_DIR)
     LIBRARY DESTINATION lib/
   )
 else()
-  message(FATAL_ERROR "GCC plugin headers not found, cannot build backend!")
+  message(FATAL_ERROR "GCC plugin headers of ${COVER_PLUGIN_HOST_GCC} not found, cannot build the CoVerStdCXX backend!")
 endif()
 
 ##

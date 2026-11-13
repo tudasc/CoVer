@@ -9,14 +9,24 @@ config.substitutions += [
     ("%CoVerCC", config.binaries + "/CoVerCC"),
     ("%CoVerCXX", config.binaries + "/CoVerCXX"),
     ("%CoVerFC", config.binaries + ("/CoVerFC" if not "NO_TS29113" in os.environ else "/CoVerFC-no-ts")),
-    ("%CoVerStdCXX", "env OMPI_CXX=g++ MPICH_CXX=g++ " + config.binaries + "/CoVerStdCXX "
-        "--contract-file=@COVER_INSTALLED_INCLUDE_DIR@/mpi_contracts.h "
-        "--wrap-target-gcc=mpicxx --temp-path=%t_stdcxx_tmp -I@MPI_C_HEADER_DIR@"),
     ("%run_compile", "--predefined-contracts --instrument-contracts %s -o %t.exe 2>&1 | tee %t.test_out"),
     ("%run_dynamic", "env COVER_COVERAGE_FOLDER='%t_coverage' mpiexec -np 2 %t.exe >> %t.test_out 2>&1 || true && FileCheck %s < %t.test_out"),
-    ("%run_stdcxx_compile", "%s -o %t_stdcxx.exe 2>&1 | tee %t_stdcxx.test_out"),
-    ("%run_stdcxx_dynamic", "mpiexec -np 2 %t_stdcxx.exe >> %t_stdcxx.test_out 2>&1 || true && FileCheck %s --check-prefix=STDCXX < %t_stdcxx.test_out")
 ]
+
+if @COVER_STDCXX_ENABLED@:
+    config.substitutions += [
+        ("%CoVerStdCXX", "env OMPI_CXX=g++ MPICH_CXX=g++ " + config.binaries + "/CoVerStdCXX "
+            "--contract-file=@COVER_INSTALLED_INCLUDE_DIR@/mpi_contracts.h "
+            "--wrap-target-gcc=mpicxx --temp-path=%t_stdcxx_tmp -I@MPI_C_HEADER_DIR@"),
+        ("%run_stdcxx_compile", "%s -o %t_stdcxx.exe 2>&1 | tee %t_stdcxx.test_out"),
+        ("%run_stdcxx_dynamic", "mpiexec -np 2 %t_stdcxx.exe >> %t_stdcxx.test_out 2>&1 || true && FileCheck %s --check-prefix=STDCXX < %t_stdcxx.test_out"),
+    ]
+else:
+    config.substitutions += [
+        ("%CoVerStdCXX", ":"),
+        ("%run_stdcxx_compile", ""),
+        ("%run_stdcxx_dynamic", ":"),
+    ]
 
 config.environment["OMPI_CC"] = "clang"
 config.environment["OMPI_CXX"] = "clang++"
