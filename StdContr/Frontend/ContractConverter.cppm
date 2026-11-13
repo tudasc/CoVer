@@ -47,7 +47,8 @@ std::string PostCallChecks;
 
 struct ReleaseInfo {
     std::set<FunctionDecl const*> forbFuncs;
-    std::set<FunctionDecl const*> relFuncs;
+    // Release function, and the statements dropping the supplier callsites it releases
+    std::map<FunctionDecl const*, std::set<std::string>> relFuncs;
     std::string relStr;
 };
 std::map<FunctionDecl const*, ReleaseInfo> ReleaseChecks;
@@ -212,6 +213,26 @@ std::string termArgs(ContractFormula const& form, std::string_view kind) {
     return toLiteral(std::string(kind) + "{" + formula + "}") + ", \"" + *form.Message + "\"";
 }
 
+// Drop the supplier callsites in store released by a call to relDecl
+std::string createReleaseStr(FunctionDecl const* relDecl, CallOperation const& rcOp, std::string const& store, ContractInfo const& DB) {
+    if (rcOp.Params.empty()) return "    " + store + ".clear();\n";
+    std::string res;
+    for (CallParam const& param : rcOp.Params) {
+        std::vector<int> callIndices;
+        if (!param.callPisTagVar) {
+            callIndices.push_back(param.callP);
+        } else {
+            for (TagUnit const& tag : DB.DeclToTags.at(relDecl)) {
+                if (tag.tag == rcOp.Function && tag.param) callIndices.push_back(*tag.param);
+            }
+        }
+        for (int callIdx : callIndices) {
+            res += "    " + store + ".eraseOnMatchContrParam(" + std::to_string(param.contrP) + ", (uintptr_t)" + relDecl->getParamDecl(callIdx)->getNameAsString() + ", " + std::to_string((int)param.contrParamAccess) + ");\n";
+        }
+    }
+    return res;
+}
+
 enum struct ConstructMode { PRE, POSTCALL, RELEASE };
 std::string constructFormula(std::shared_ptr<ContractFormula> const& form, ConstructMode mode, FunctionDecl const* decl, ContractInfo const& DB) {
     if (form->Children.empty()) {
@@ -333,8 +354,8 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                 }
                 // For relop, dont need sentinels. They just need to delete the matching funccalls on match
                 std::shared_ptr<CallOperation const> rcOp = std::static_pointer_cast<CallOperation const>(rOP->Until);
-                if (rcOp->type() == FormulaType::CALL) ReleaseChecks[decl].relFuncs.insert(lookupDecl(rcOp->Function));
-                else ReleaseChecks[decl].relFuncs.insert(DB.TagsToDecl.at(rcOp->Function).begin(), DB.TagsToDecl.at(rcOp->Function).end());
+                for (FunctionDecl const* relDecl : getCallOpTgts(rcOp, DB, false))
+                    ReleaseChecks[decl].relFuncs[relDecl].insert(createReleaseStr(relDecl, *rcOp, store, DB));
                 return "TERM(" + forbID + ", " + termArgs(*expr, "POST") + ")";
             }
             case FormulaType::PARAM: {
@@ -495,9 +516,9 @@ void performOutput(std::string output_path) {
             if (!DeclToPreConds[forbDecl].empty()) DeclToPreConds[forbDecl] += " && ";
             DeclToPreConds[forbDecl] += ("(!" + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + " || " + concrete_templ + ")").str();
         }
-        for (FunctionDecl const* relF : info.relFuncs) {
+        for (auto const& [relF, releaseStrs] : info.relFuncs) {
             declRename.insert(relF);
-            functionBodiesPost[relF] += ("    " + COVER_OPTMP_PREFIX + "Callsites_REL" + supplier->getNameAsString() + ".clear();\n").str();
+            for (std::string const& releaseStr : releaseStrs) functionBodiesPost[relF] += releaseStr;
         }
     }
 

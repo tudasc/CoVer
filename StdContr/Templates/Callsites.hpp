@@ -30,6 +30,11 @@ class FuncCallsites {
                 return primitiveMatch(val, callsite.params[idx], (ParamAccess)acc);
             });
         }
+        void eraseOnMatchContrParam(int32_t const& idx, uintptr_t const& val, int8_t const& acc) {
+            std::erase_if(callsites, [&](Callsite const& callsite){
+                return primitiveMatch(callsite.params[idx], val, (ParamAccess)acc);
+            });
+        }
         void eraseOnMatchTag(uintptr_t const& val, int8_t const& acc) {
             std::erase_if(callsites, [&](Callsite const& callsite){
                 for (int idx : callsite.tag_idx) {
