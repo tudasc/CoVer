@@ -114,11 +114,28 @@ def add_contract(func: str, scope: str, contr: str):
     else:
         print(f"WARNING: Function \"{func}\" not found in MPI header! Probably an outdated MPI implementation!", file=sys.stderr)
 
+# Functions that may be called at any time, also before MPI initialization and after finalization
+# From: MPI 5.0, Section 12.4.1 "MPI Functionality that is Always Available", Table 9
+# https://www.mpi-forum.org/docs/mpi-5.0/mpi50-report/node279.htm
+always_available = [
+    "MPI_Initialized", "MPI_Finalized",
+    "MPI_Get_version", "MPI_Get_library_version",
+    "MPI_Abi_get_version", "MPI_Abi_get_info",
+    "MPI_Info_create", "MPI_Info_create_env", "MPI_Info_set", "MPI_Info_delete", "MPI_Info_get_string",
+    "MPI_Info_get_nkeys", "MPI_Info_get_nthkey", "MPI_Info_dup", "MPI_Info_free", "MPI_Info_f2c", "MPI_Info_c2f",
+    "MPI_Session_create_errhandler", "MPI_Session_call_errhandler",
+    "MPI_Errhandler_free", "MPI_Errhandler_f2c", "MPI_Errhandler_c2f",
+    "MPI_Error_string", "MPI_Error_class",
+    "MPI_Add_error_class", "MPI_Remove_error_class", "MPI_Add_error_code", "MPI_Remove_error_code",
+    "MPI_Add_error_string", "MPI_Remove_error_string",
+]
+
 # Call MPI initializer
 for func in function_decls.keys():
     if func in ["MPI_Init", "MPI_Init_thread", "MPI_Session_init"]:
         add_contract(func, "TAGS", "mpi_init")
         continue
+    if func in always_available: continue
     add_contract(func, "PRE", "call_tag!(mpi_init) MSG \"Missing Initialization call\"")
 
 # Call MPI finalizer
@@ -126,6 +143,7 @@ for func in function_decls.keys():
     if func in ["MPI_Finalize", "MPI_Abort"]:
         add_contract(func, "TAGS", "mpi_exit")
         continue
+    if func in always_available: continue
     add_contract(func, "POST", "call_tag!(mpi_exit) MSG \"Missing Finalization call\"")
 
 # No request reuse until p2pcomplete for persistent comms, request must be completed
