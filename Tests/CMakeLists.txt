@@ -1,4 +1,5 @@
 set(COVER_INSTALLED_BINARIES_DIR "${CMAKE_INSTALL_PREFIX}/bin")
+set(COVER_INSTALLED_INCLUDE_DIR "${CMAKE_INSTALL_PREFIX}/include")
 configure_file(lit.cfg.in ${CMAKE_CURRENT_LIST_DIR}/lit.cfg @ONLY)
 
 function(add_cover_test_c TEST_NAME)

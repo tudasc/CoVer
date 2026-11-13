@@ -1,5 +1,7 @@
 // RUN: %CoVerCC %run_compile
 // RUN: %run_dynamic
+// RUN: %CoVerStdCXX %run_stdcxx_compile
+// RUN: %run_stdcxx_dynamic
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,3 +39,7 @@ int main(int argc, char** argv) {
 // CHECK: Contract violation detected!
 // CHECK: Buffer is not allocated
 // Dont check for analysis finished, MPI implementation might crash.
+
+// STDCXX: CoVer-StdCXX: ## Contract violation detected! ##
+// STDCXX: CoVer-StdCXX: Message: {{Parameter is null, MPI_IN_PLACE, or MPI_BOTTOM|Buffer is not allocated}}
+// Uninitialized buffer, so either the NULL or the allocation check fails

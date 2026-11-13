@@ -55,12 +55,13 @@ std::string bitcode_files;
 std::string dest_arg;
 std::string opt_level;
 std::string stop_flag;
+std::string preproc_args; // Also needed by the frontend, e.g. for the includes of the contract header
 bool isLinking = true;
 
 // Files kept in the temp path between invocations of one build
 std::string markerFile() { return TempPath + "/frontend_done"; }       // Frontend has run, wrapfile exists
 std::string usedListFile() { return TempPath + "/cover_used_funcs"; }  // Functions the program references
-std::string flagsFile() { return TempPath + "/cover_compile_flags"; }  // Compile flags to build the wrappers with
+std::string flagsFile() { return TempPath + "/cover_compile_flags"; }  // Compile flags to build the wrappers with, then preprocessor flags for the frontend
 
 void removeTemporaries() {
     std::filesystem::remove(markerFile());
@@ -72,7 +73,8 @@ std::string exec(std::string const& cmd, bool interactive = true) {
     int rc;
     std::string res;
     if (interactive) {
-        rc = std::system(cmd.c_str());
+        int status = std::system(cmd.c_str());
+        rc = (status != -1 && WIFEXITED(status)) ? WEXITSTATUS(status) : EXIT_FAILURE;
         res = "";
     } else {
         std::array<char, 128> buffer;
@@ -106,13 +108,23 @@ std::string getOptParam(std::string param, std::string full) {
     return "";
 }
 
+// Allowed forwarded flags for both clang and GCC, here: preproc flags
+constexpr std::array preproc_flags = std::to_array<std::string_view>({"-I", "-D", "-U", "-isystem", "-iquote", "-idirafter", "-include"});
+
 std::pair<std::string,std::string> parseCompilerParams(std::vector<std::string> const& all_args) {
     std::string rem_args_link;
     std::string rem_args_compile;
 
     for (int i = 0; i < all_args.size(); i++) {
         std::string arg = all_args[i];
-        if (std::regex_match(arg, source_file_ending)) {
+        bool const isPreprocFlag = std::ranges::any_of(preproc_flags, [&](std::string_view flag) { return arg.starts_with(flag); });
+        if (isPreprocFlag) {
+            bool const separateValue = std::ranges::contains(preproc_flags, arg) && i + 1 < all_args.size();
+            if (separateValue) arg += " " + all_args[++i];
+            preproc_args += " " + arg;
+            rem_args_link += " " + arg;
+            rem_args_compile += " " + arg;
+        } else if (std::regex_match(arg, source_file_ending)) {
             source_files.push_back(arg);
         } else if (arg == "-o") {
             dest_arg = " " + arg + " " + all_args[++i];
@@ -178,20 +190,24 @@ int main(int argc, const char** argv) {
     std::string rem_link, rem_compile;
     std::tie(rem_link, rem_compile) = parseCompilerParams(CompilerParams);
 
-    std::string FrontendCmd = ClangPath + " -I\"@CONTR_INCLUDE_PATH@\" "
-                            + "-fplugin=@COVER_STDCXX_FRONTEND_PATH@ "
-                            + "-fplugin-arg-CoVerStdCXXFrontend-output-folder=\"" + TempPath + "\" "
-                            + "-g -x c++-header " + ContractFile;
+    auto const frontendCmd = [](std::string const& frontendFlags) {
+        return ClangPath + " -I\"@CONTR_INCLUDE_PATH@\"" + frontendFlags + " "
+               + "-fplugin=@COVER_STDCXX_FRONTEND_PATH@ "
+               + "-fplugin-arg-CoVerStdCXXFrontend-output-folder=\"" + TempPath + "\" "
+               + "-g -x c++-header " + ContractFile;
+    };
 
     if (!std::filesystem::exists(markerFile())) {
         // Run frontend pass on input header, generating the wrapfile for the backend
-        execSafe(FrontendCmd);
+        execSafe(frontendCmd(preproc_args));
 
         // List of referenced functions, filled by the backend for each unit. Not truncated, as parallel
-        // first invocations may race here. A stale list only adds wrappers, it is removed after linking
-        std::ofstream{usedListFile(), std::ios::app};
-        std::ofstream(flagsFile()) << rem_compile << opt_level;
-        std::ofstream{markerFile()};
+        // first invocations may race here. A stale list only adds wrappers, it is removed after linking.
+        if (!ExecDryRun) {
+            std::ofstream{usedListFile(), std::ios::app};
+            std::ofstream(flagsFile()) << rem_compile << opt_level << "\n" << preproc_args;
+            std::ofstream{markerFile()};
+        }
     }
 
     std::string GCCPluginLoad = " -g -fplugin=@COVER_STDCXX_BACKEND_PATH@ -fplugin-arg-CoVerStdCXXBackend-list=" + TempPath + "/cover_wrapfile "
@@ -216,15 +232,18 @@ int main(int argc, const char** argv) {
 
     // Generate wrappers only for the functions the program calls, then compile them
     // with the flags of the first invocation, as those can find the contract header's includes
-    execSafe(FrontendCmd + " -fplugin-arg-CoVerStdCXXFrontend-used-list=" + usedListFile());
     std::string wrapper_flags = rem_compile + opt_level;
-    if (std::ifstream in(flagsFile()); in) std::getline(in, wrapper_flags);
+    std::string frontend_flags = preproc_args;
+    if (std::ifstream in(flagsFile()); in) {
+        std::getline(in, wrapper_flags);
+        std::getline(in, frontend_flags);
+    }
+    execSafe(frontendCmd(frontend_flags) + " -fplugin-arg-CoVerStdCXXFrontend-used-list=" + usedListFile());
     execSafe(GCCPath + " " + wrapper_flags + " -fplugin=@COVER_STDCXX_BACKEND_PATH@ -fplugin-arg-CoVerStdCXXBackend-runtime -c" + common_flags + TempPath + "/include.cpp -o " + TempPath + "/include.o");
 
     // Finish normal compilation process.
     // include.o has to stay behind the objects here!
-    #warning TODO check if need to remove -lstdc++exp once contract and std::stacktrace support matures
-    execSafe(GCCPath + rem_link + opt_level + common_flags + objects + dest_arg + " " + TempPath + "/include.o -Wl,--whole-archive @COVER_INTRINSICS_LIB_PATH@ -Wl,--no-whole-archive -lstdc++ -lstdc++exp");
+    execSafe(GCCPath + rem_link + opt_level + common_flags + objects + dest_arg + " " + TempPath + "/include.o -Wl,--whole-archive @COVER_INTRINSICS_LIB_PATH@ -Wl,--no-whole-archive -lstdc++");
 
     // Delete old temporaries at end
     for (std::string const& obj : source_objects) std::filesystem::remove(obj);

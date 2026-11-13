@@ -1,5 +1,7 @@
 // RUN: %CoVerCC %run_compile
 // RUN: %run_dynamic
+// RUN: %CoVerStdCXX %run_stdcxx_compile
+// RUN: %run_stdcxx_dynamic
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,3 +39,6 @@ int main(int argc, char** argv) {
 // CHECK: Contract violation detected!
 // CHECK: Local Data Race - Local write
 // Dont check for analysis finished, MPI implementation might crash.
+
+// STDCXX: CoVer-StdCXX: ## Contract violation detected! ##
+// STDCXX: CoVer-StdCXX: Message: Local Data Race - Local write

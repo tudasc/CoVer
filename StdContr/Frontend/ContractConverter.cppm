@@ -196,6 +196,22 @@ std::set<FunctionDecl const*> getCallOpTgts(std::shared_ptr<CallOperation const>
     }
 }
 
+// Subformula text as a C++ string literal
+std::string toLiteral(std::string_view str) {
+    std::string res = "\"";
+    for (char c : str) {
+        if (c == '"') res += '\\';
+        res += c;
+    }
+    return res + "\"";
+}
+
+std::string termArgs(ContractFormula const& form, std::string_view kind) {
+    std::string formula = form.ExprStr;
+    if (!form.Message) return toLiteral(std::string(kind) + "{" + formula + "}");
+    return toLiteral(std::string(kind) + "{" + formula + "}") + ", \"" + *form.Message + "\"";
+}
+
 enum struct ConstructMode { PRE, POSTCALL, RELEASE };
 std::string constructFormula(std::shared_ptr<ContractFormula> const& form, ConstructMode mode, FunctionDecl const* decl, ContractInfo const& DB) {
     if (form->Children.empty()) {
@@ -214,7 +230,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
             case FormulaType::ALLOC: {
                 std::shared_ptr<AllocOperation const> aOP = std::static_pointer_cast<AllocOperation const>(expr->OP);
                 if (mode == ConstructMode::PRE) {
-                    return ("TERM(" + COVER_OPTMP_PREFIX + "Allocs.contains((std::uintptr_t)" + decl->getParamDecl(aOP->contrP)->getNameAsString() + "), \"PRE{" + expr->ExprStr + "}\")").str();
+                    return ("TERM(" + COVER_OPTMP_PREFIX + "Allocs.contains((std::uintptr_t)" + decl->getParamDecl(aOP->contrP)->getNameAsString() + "), ").str() + termArgs(*expr, "PRE") + ")";
                 } else {
                     std::string base_ptr = aOP->contrP == 99 ? "_ret" : decl->getParamDecl(aOP->contrP)->getNameAsString();
                     std::string allocSizeStr;
@@ -261,10 +277,10 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                         }
                         callCheck += ", " + std::to_string((int)param.contrParamAccess) + ")";
                     }
-                    return "TERM(" + callCheck + ", \"PRE{" + expr->ExprStr + "}\")";
+                    return "TERM(" + callCheck + ", " + termArgs(*expr, "PRE") + ")";
                 } else if (mode == ConstructMode::POSTCALL) {
                     DeclToMods[decl].CallSentinels[decl->getNameAsString()] = {};
-                    return ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_" + decl->getNameAsString() + " || " + COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function + "), \"POST{" + expr->ExprStr + "}\")").str();
+                    return ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_" + decl->getNameAsString() + " || " + COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function + "), ").str() + termArgs(*expr, "POST") + ")";
                 } else return "true";
                 break;
             }
@@ -319,7 +335,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                 std::shared_ptr<CallOperation const> rcOp = std::static_pointer_cast<CallOperation const>(rOP->Until);
                 if (rcOp->type() == FormulaType::CALL) ReleaseChecks[decl].relFuncs.insert(lookupDecl(rcOp->Function));
                 else ReleaseChecks[decl].relFuncs.insert(DB.TagsToDecl.at(rcOp->Function).begin(), DB.TagsToDecl.at(rcOp->Function).end());
-                return "TERM(" + forbID + ", \"POST{" + expr->ExprStr + "}\")";
+                return "TERM(" + forbID + ", " + termArgs(*expr, "POST") + ")";
             }
             case FormulaType::PARAM: {
                 std::shared_ptr<ParamOperation const> pOP = std::static_pointer_cast<ParamOperation const>(expr->OP);
@@ -339,7 +355,7 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                             paramreq_str += callVal + compstr + compVal + " && ";
                         }
                     }
-                    return "TERM(((" + exceptions + " false) || (" + paramreq_str + " true)), \"PRE{" + expr->ExprStr + "}\")";
+                    return "TERM(((" + exceptions + " false) || (" + paramreq_str + " true)), " + termArgs(*expr, "PRE") + ")";
                 } else {
                     llvm_unreachable("Unexpected ParamOp in postcondition!\n");
                 }
@@ -370,7 +386,9 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
             res += act_sep + constructFormula(child, mode, decl, DB);
             act_sep = sep;
         }
-        return "(" + res + postfix + ")";
+        std::string group = "(" + res + postfix + ")";
+        if (!form->Message) return group;
+        return "TERM(" + group + ", " + termArgs(*form, mode == ConstructMode::PRE ? "PRE" : "POST") + ")";
     }
 }
 
