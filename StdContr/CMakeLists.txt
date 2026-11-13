@@ -27,7 +27,6 @@ target_sources(CoVerStdCXXFrontend PRIVATE FILE_SET cover_front_cxx_modules TYPE
   Frontend/ContractConverter.cppm
   Frontend/ContractValueCollector.cppm
   Include/ContractInfo.cppm
-  Include/FunctionMods.cppm
 )
 
 target_link_libraries(CoVerStdCXXFrontend PRIVATE CoVerLang)

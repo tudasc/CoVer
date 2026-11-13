@@ -27,7 +27,6 @@ export module ContractConverter;
 import std;
 import ContractDataExtractor;
 import ContractInfo;
-import FunctionMods;
 
 using namespace clang;
 using namespace llvm;
