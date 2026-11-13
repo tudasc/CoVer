@@ -41,9 +41,14 @@ struct DeclModifiers {
     std::set<std::string> PreCallChecks;
     std::set<std::string> PostAllocProcessing;
     std::set<std::string> PostFreeProcessing;
+    std::set<std::string> PostCallPending;
+    std::set<std::string> PostCallRemovals;
 };
 
 std::string PostCallChecks;
+std::set<std::string> PostCallFlags;
+std::set<std::string> PostCallStores;
+int PostIdxMax = 0;
 
 struct ReleaseInfo {
     std::set<FunctionDecl const*> forbFuncs;
@@ -213,6 +218,21 @@ std::string termArgs(ContractFormula const& form, std::string_view kind) {
     return toLiteral(std::string(kind) + "{" + formula + "}") + ", \"" + *form.Message + "\"";
 }
 
+std::string createCallsiteParamStr(FunctionDecl const* decl, std::string name, std::set<int> indices) {
+    std::string res;
+    res += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + name + ".addCallsite({{").str();
+    for (int i = 0; i+1 < decl->getNumParams(); i++) {
+        res += "(uintptr_t)" + decl->getParamDecl(i)->getNameAsString() + ", ";
+    }
+    if (decl->getNumParams() != 0) res += "(uintptr_t)" + decl->getParamDecl(decl->getNumParams() - 1)->getNameAsString();
+    res += "}, {";
+    for (int idx : indices) {
+        res += std::to_string(idx) + ", ";
+    }
+    res += "}});\n";
+    return res;
+}
+
 // Drop the supplier callsites in store released by a call to relDecl
 std::string createReleaseStr(FunctionDecl const* relDecl, CallOperation const& rcOp, std::string const& store, ContractInfo const& DB) {
     if (rcOp.Params.empty()) return "    " + store + ".clear();\n";
@@ -283,8 +303,8 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
             case FormulaType::CALL:
             case FormulaType::CALLTAG: {
                 std::shared_ptr<CallOperation const> cOP = std::static_pointer_cast<CallOperation const>(expr->OP);
-                getCallOpTgts(cOP, DB, true);
                 if (mode == ConstructMode::PRE) {
+                    getCallOpTgts(cOP, DB, true);
                     DeclToMods[decl].PreCallChecks.insert(cOP->Function);
                     // Currently building precond, so need to return the sentinel as the boolean expr
                     std::string callCheck = (COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function).str();
@@ -300,8 +320,25 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
                     }
                     return "TERM(" + callCheck + ", " + termArgs(*expr, "PRE") + ")";
                 } else if (mode == ConstructMode::POSTCALL) {
-                    DeclToMods[decl].CallSentinels[decl->getNameAsString()] = {};
-                    return ("TERM((!" + COVER_OPTMP_PREFIX + "Callsites_" + decl->getNameAsString() + " || " + COVER_OPTMP_PREFIX + "Callsites_" + cOP->Function + "), ").str() + termArgs(*expr, "POST") + ")";
+                    // Each supplier call stays pending until a later target call satisfies it
+                    std::string const id = std::to_string(PostIdxMax++);
+                    std::string pending;
+                    if (cOP->Params.empty()) {
+                        // Any target call satisfies every pending call, so a flag suffices
+                        pending = (COVER_OPTMP_PREFIX + "PostPending_" + id).str();
+                        PostCallFlags.insert(pending);
+                        DeclToMods[decl].PostCallPending.insert("    " + pending + " = true;\n");
+                    } else {
+                        std::string const storeName = "POST_" + id;
+                        pending = (COVER_OPTMP_PREFIX + "Callsites_" + storeName).str();
+                        PostCallStores.insert(storeName);
+                        DeclToMods[decl].PostCallPending.insert(createCallsiteParamStr(decl, storeName, {}));
+                    }
+                    for (FunctionDecl const* target : getCallOpTgts(cOP, DB, false)) {
+                        std::string const removal = cOP->Params.empty() ? "    " + pending + " = false;\n" : createReleaseStr(target, *cOP, pending, DB);
+                        DeclToMods[target].PostCallRemovals.insert(removal);
+                    }
+                    return "TERM(!" + pending + ", " + termArgs(*expr, "POST") + ")";
                 } else return "true";
                 break;
             }
@@ -413,21 +450,6 @@ std::string constructFormula(std::shared_ptr<ContractFormula> const& form, Const
     }
 }
 
-std::string createCallsiteParamStr(FunctionDecl const* decl, std::string name, std::set<int> indices) {
-    std::string res;
-    res += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + name + ".addCallsite({{").str();
-    for (int i = 0; i+1 < decl->getNumParams(); i++) {
-        res += "(uintptr_t)" + decl->getParamDecl(i)->getNameAsString() + ", ";
-    }
-    if (decl->getNumParams() != 0) res += "(uintptr_t)" + decl->getParamDecl(decl->getNumParams() - 1)->getNameAsString();
-    res += "}, {";
-    for (int idx : indices) {
-        res += std::to_string(idx) + ", ";
-    }
-    res += "}});\n";
-    return res;
-}
-
 // Group release responsibilities by store for efficiency
 std::string createReleaseBodyStr(std::set<ReleaseResponsibility> const& resps) {
     std::string res;
@@ -478,6 +500,9 @@ void performOutput(std::string output_path) {
     for (auto& [decl, mods] : DeclToMods) {
         declRename.insert(decl);
 
+        // Satisfy pending postcalls before this call becomes pending itself, so it cannot satisfy itself
+        for (std::string const& removal : mods.PostCallRemovals) functionBodiesPre[decl] += removal;
+
         // PreCallSentinel needs wrap + set of sentinel value + decl of sentinel value
         if (!mods.CallSentinels.empty()) {
             for (std::pair<std::string,std::set<int>> sentinel : mods.CallSentinels) {
@@ -485,6 +510,9 @@ void performOutput(std::string output_path) {
                 functionBodiesPre[decl] += createCallsiteParamStr(decl, sentinel.first, sentinel.second);
             }
         }
+
+        // PostCallPending marks this call as pending until a matching postcall target is called
+        for (std::string const& pending : mods.PostCallPending) functionBodiesPre[decl] += pending;
 
         // PostFreeProcessing removes alloc'd value
         if (!mods.PostFreeProcessing.empty()) {            
@@ -553,8 +581,12 @@ void performOutput(std::string output_path) {
     R.InsertTextBefore(SM.getLocForStartOfFile(SM.getMainFileID()), "#include <map>\n");
     R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "int8_t COVER_EXIT_SENTINEL = 0;\n");
     R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("range_set " + COVER_OPTMP_PREFIX + "Allocs" + ";\n").str());
+    sentinel_strs.insert(PostCallStores.begin(), PostCallStores.end());
     for (std::string sentinel : sentinel_strs) {
         R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("FuncCallsites " + COVER_OPTMP_PREFIX + "Callsites_" + sentinel + ";\n").str());
+    }
+    for (std::string const& flag : PostCallFlags) {
+        R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "bool " + flag + " = false;\n");
     }
     // Add sentinels for release
     for (int i = 0; i < ReleaseIdxMax; i++) {
@@ -672,9 +704,7 @@ export namespace ContractConverter {
                 DeclToPreConds[Decl] = constructFormula(Data.Pre, ConstructMode::PRE, Decl, DB);
             }
             if (Data.Post) {
-                // Always construct, the sentinels it registers may be needed by other checks
-                std::string postCall = constructFormula(Data.Post, ConstructMode::POSTCALL, Decl, DB);
-                if (isUsed(Decl)) PostCallChecks += postCall + " && ";
+                if (isUsed(Decl)) PostCallChecks += constructFormula(Data.Post, ConstructMode::POSTCALL, Decl, DB) + " && ";
                 std::string newRel = constructFormula(Data.Post, ConstructMode::RELEASE, Decl, DB);
                 if (ReleaseChecks.contains(Decl)) ReleaseChecks[Decl].relStr = newRel; // Avoid adding useless conditions if decl did not contain relops
             }

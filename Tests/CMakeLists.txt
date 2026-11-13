@@ -30,6 +30,7 @@ add_cover_test_c(Correct-AnnotNoAliasIndex)
 add_cover_test_c(Correct-AnnotNoAliasAccess)
 
 add_cover_test_c(PostCall-MissingFinalize)
+add_cover_test_c(PostCall-RequestLeak)
 add_cover_test_c(PreCall-MissingInit)
 add_cover_test_c(Release-DataRace)
 add_cover_test_c(Release-DataRace-SharedCallee)
