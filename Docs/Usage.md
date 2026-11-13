@@ -122,3 +122,59 @@ This will make it read off the generated coverage files.
 
 Programs with annotations from interactive mode verify them at runtime, also without `--instrument-contracts`.
 At exit, the runtime annotation verifier warns about annotations that were never visited, and function pointer annotations with a target that was never called.
+
+## C++26 Contracts (CoVerStdCXX)
+
+`CoVerStdCXX` is an alternative to the runtime analysis above.
+Instead of instrumenting LLVM IR, it converts the CoVer contracts into C++26 contracts and lets GCC check them while the program runs.
+
+### Compiling
+
+`CoVerStdCXX` wraps `g++`. Pass the contract header using `--contract-file`, followed by the usual compiler arguments:
+
+```sh
+OMPI_CXX=g++ CoVerStdCXX --contract-file=<CoVer prefix>/include/mpi_contracts.h \
+    --wrap-target-gcc=mpicxx -I<MPI include directory> main.c -o main
+```
+
+| Option | Default | Description |
+| ------ | ------- | ----------- |
+| `--contract-file=<header>` | required | Header with the CoVer contracts, e.g. the predefined `mpi_contracts.h`. |
+| `--wrap-target-gcc=<compiler>` | `g++` | Compiler used for the program. Must be the GCC the backend plugin was built against. To use an MPI compiler wrapper, also point it to that GCC (`OMPI_CXX=g++` for Open MPI, `MPICH_CXX=g++` for MPICH). |
+| `--wrap-target-clang=<compiler>` | `clang++` | Compiler used to read the contract header. |
+| `--temp-path=<directory>` | `/tmp/CoVerStdCXX` | Directory for the generated files. |
+| `--verbose`, `--dry-run` | off | Print the commands that are executed, or only print them. |
+
+The contract header is read by clang, so it has to find the headers the contract header includes.
+In the example above, `-I` adds the directory containing `mpi.h`.
+Preprocessor flags (`-I`, `-D`, `-U`, `-include`, ...) are passed on to both compilers.
+
+All invocations belonging to one build must use the same `--temp-path`, and different builds must not share it at the same time.
+
+### Running
+
+Run the program as usual. Each violation is printed to stderr, together with the stack trace and the parts of the contract that are not satisfied:
+
+```
+CoVer-StdCXX: ## Contract violation detected! ##
+CoVer-StdCXX: At function call to MPI_Isend
+CoVer-StdCXX: Call Location: /tmp/CoVerStdCXX/include.cpp:1618
+CoVer-StdCXX: Full Stacktrace:
+CoVer-StdCXX:    0#  CoVer_RealMain at /home/user/Param-InvalidComm.c:22 [0x55e4c479c758]
+CoVer-StdCXX:    1#  main at /tmp/CoVerStdCXX/include.cpp:1541 [0x55e4c47a185a]
+...
+CoVer-StdCXX: Detected 1 failing subformula(s):
+CoVer-StdCXX: --> Subformula 0:
+CoVer-StdCXX:     PRE{param!(5:^=MPI_COMM_WORLD,!=NULL,!=MPI_COMM_NULL)}
+CoVer-StdCXX:     Message: Communicator is invalid
+```
+
+By default, the program is terminated after the first violation.
+To report all violations instead, compile with `-fcontract-evaluation-semantic=observe`.
+
+### Limitations
+
+Compared to `CoVerCC`/`CoVerCXX` with `--instrument-contracts`:
+- Only C and C++ are supported. C sources are compiled as C++, so they must also be valid C++ (e.g. the result of `malloc` must be cast).
+- There is no static analysis, so the interactive mode, `--ir-patches`, `--generate-json-report` and the coverage check (`--cover:check-coverage`) are not available.
+- Requirements checked at the end of the program (e.g. a missing `MPI_Finalize`) are only checked if `main` returns, not if the program ends by calling `exit()`.
