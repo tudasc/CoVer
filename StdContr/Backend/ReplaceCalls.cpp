@@ -1,8 +1,3 @@
-#include <string>
-#include <string_view>
-#include <set>
-#include <fstream>
-
 #include <gcc-plugin.h>
 #include <plugin-version.h>
 #include <tree.h>
@@ -17,6 +12,8 @@
 #include <tree-cfg.h>
 #include <cgraph.h>
 #include <stringpool.h>
+
+import std;
 
 // Names of functions whose calls should be rewritten.
 static std::set<std::string> targets;

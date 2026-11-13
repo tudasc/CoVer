@@ -1,11 +1,10 @@
 module;
 
-#include <map>
-#include <set>
 #include <clang/AST/Decl.h>
 #include "ContractTree.hpp"
 
 export module ContractInfo;
+import std;
 import ContractDataExtractor;
 
 using namespace clang;

@@ -1,11 +1,10 @@
-#include <fstream>
-#include <string>
-
 #include <gcc-plugin.h>
 #include <plugin-version.h>
 #include <tree.h>
 #include <cgraph.h>
 #include <diagnostic-core.h>
+
+import std;
 
 static std::string list_file;
 

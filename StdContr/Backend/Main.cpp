@@ -1,7 +1,8 @@
 #include <gcc-plugin.h>
 #include <diagnostic-core.h>
 #include <plugin-version.h>
-#include <string>
+
+import std;
 
 int plugin_is_GPL_compatible;
 

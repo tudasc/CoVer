@@ -11,11 +11,9 @@ module;
 
 #include "llvm/Support/raw_ostream.h"
 #include <clang/AST/Attrs.inc>
-#include <optional>
-#include <map>
-#include <set>
 
 export module ContractCollector;
+import std;
 import ContractDataExtractor;
 import ContractInfo;
 

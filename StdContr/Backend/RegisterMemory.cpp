@@ -1,5 +1,3 @@
-#include <string>
-
 #include <gcc-plugin.h>
 #include <plugin-version.h>
 #include <tree.h>
@@ -17,6 +15,8 @@
 #include <stringpool.h>
 #include <value-range.h>
 #include <tree-ssanames.h>
+
+import std;
 
 static bool runtime_tu = false;
 bool cover_is_rewrite_target(std::string mangled);

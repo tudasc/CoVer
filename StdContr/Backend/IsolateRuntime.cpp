@@ -1,5 +1,3 @@
-#include <vector>
-
 #include <gcc-plugin.h>
 #include <plugin-version.h>
 #include <tree.h>
@@ -7,6 +5,8 @@
 #include <context.h>
 #include <function.h>
 #include <cgraph.h>
+
+import std;
 
 static bool runtime_tu = false;
 

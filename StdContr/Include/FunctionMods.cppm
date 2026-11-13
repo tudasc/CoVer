@@ -1,9 +1,5 @@
-module;
-
-#include <string_view>
-#include <string>
-
 export module FunctionMods;
+import std;
 
 export namespace FunctionMods {
     struct ModBase {

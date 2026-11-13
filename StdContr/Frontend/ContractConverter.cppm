@@ -10,32 +10,21 @@ module;
 #include <clang/Basic/SourceLocation.h>
 #include <clang/Basic/SourceManager.h>
 #include <clang/Basic/Specifiers.h>
-#include <filesystem>
-#include <fstream>
 #include <llvm/ADT/RewriteBuffer.h>
 #include <llvm/ADT/StringRef.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/raw_ostream.h>
-#include <map>
 #include <clang/AST/Decl.h>
 #include <clang/AST/Mangle.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Rewrite/Core/Rewriter.h>
 #include <clang/Lex/Lexer.h>
 #include <llvm/Support/ErrorHandling.h>
-#include <memory>
-#include <optional>
-#include <ranges>
-#include <set>
-#include <sstream>
-#include <string>
-#include <string_view>
-#include <system_error>
-#include <vector>
 
 #include "ContractTree.hpp"
 
 export module ContractConverter;
+import std;
 import ContractDataExtractor;
 import ContractInfo;
 import FunctionMods;

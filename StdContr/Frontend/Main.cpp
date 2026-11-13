@@ -1,12 +1,8 @@
 #include <clang/AST/ASTConsumer.h>
 #include <clang/Frontend/CompilerInstance.h>
 #include <clang/Frontend/FrontendPluginRegistry.h>
-#include <fstream>
-#include <memory>
-#include <optional>
-#include <set>
-#include <string>
 
+import std;
 import ContractCollector;
 import ContractValueCollector;
 import ContractConverter;

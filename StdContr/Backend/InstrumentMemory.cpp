@@ -1,6 +1,3 @@
-#include <string>
-#include <vector>
-
 #include <gcc-plugin.h>
 #include <plugin-version.h>
 #include <tree.h>
@@ -18,6 +15,8 @@
 #include <fold-const.h>
 #include <tree-cfg.h>
 #include <stringpool.h>
+
+import std;
 
 static bool runtime_tu = false;
 bool cover_is_internal_name(std::string const& mangled);

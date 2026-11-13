@@ -10,9 +10,8 @@ module;
 #include <llvm/Support/Format.h>
 #include <llvm/Support/raw_ostream.h>
 
-#include <string>
-
 export module ContractValueCollector;
+import std;
 import ContractInfo;
 
 using namespace clang;

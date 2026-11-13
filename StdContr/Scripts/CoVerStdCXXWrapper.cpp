@@ -1,12 +1,6 @@
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
 #include <llvm/Support/CommandLine.h>
-#include <regex>
-#include <string>
-#include <string_view>
-#include <vector>
+
+import std;
 
 using namespace llvm;
 
