@@ -574,9 +574,9 @@ void performOutput(std::string output_path) {
     // Memory instr func
     std::string memFuncs;
     for (FunctionDecl* memDecl : {memRF, memWF}) {
-        memFuncs += "\nextern \"C\" void " + memDecl->getNameAsString() + "(uintptr_t ptr)";
+        memFuncs += "\nextern \"C\" [[gnu::no_stack_protector]] void " + memDecl->getNameAsString() + "(uintptr_t ptr)";
         if (DeclToPreConds.contains(memDecl)) memFuncs += " pre(cr::check{}(" + DeclToPreConds[memDecl] + "))";
-        memFuncs += ";\nextern \"C\" void " + memDecl->getNameAsString() + "(uintptr_t ptr) {\n";
+        memFuncs += ";\nextern \"C\" [[gnu::no_stack_protector]] void " + memDecl->getNameAsString() + "(uintptr_t ptr) {\n";
         memFuncs += functionBodiesPre[memDecl] + "\n" + functionBodiesPost[memDecl] + "}\n";
     }
     R.InsertTextAfter(SM.getLocForEndOfFile(SM.getMainFileID()), memFuncs);
