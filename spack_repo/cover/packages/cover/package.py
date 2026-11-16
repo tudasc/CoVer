@@ -30,6 +30,8 @@ class Cover(CMakePackage):
     depends_on("ninja", type="build")
     depends_on("pkgconfig", type="build")
     depends_on("java", type="build")  # ANTLR4 grammar generation
+    depends_on("antlr4-complete@4.13", type="build")
+    depends_on("antlr4-cpp-runtime@4.13")
     depends_on("python", type="build")  # premade MPI/SHMEM contract headers
     depends_on("py-pympistandard", type="build")  # apis.json for the MPI contract headers
 
