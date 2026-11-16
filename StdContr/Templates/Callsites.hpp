@@ -1,4 +1,8 @@
 #include <algorithm>
+#include <array>
+#include <bit>
+#include <bitset>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <vector>
@@ -16,14 +20,18 @@ namespace {
     }
 }
 
+// Calls recorded for one store
+// N is the largest parameter count among functions recording into it
+template <std::size_t N>
 class FuncCallsites {
     public:
         struct Callsite {
-            std::vector<uintptr_t> params;
-            std::vector<int> tag_idx;
+            std::array<uintptr_t, N> params;
+            // Set for the parameters carrying the tag this callsite was recorded for
+            std::bitset<N> tag_params;
         };
-        void addCallsite(Callsite const& callsite) {
-            callsites.push_back(callsite);
+        void addCallsite(std::array<uintptr_t, N> const& params, std::bitset<N> const& tag_params) {
+            callsites.push_back({params, tag_params});
         }
         void eraseOnMatchParam(int32_t const& idx, uintptr_t const& val, int8_t const& acc) {
             std::erase_if(callsites, [&](Callsite const& callsite){
@@ -37,10 +45,7 @@ class FuncCallsites {
         }
         void eraseOnMatchTag(uintptr_t const& val, int8_t const& acc) {
             std::erase_if(callsites, [&](Callsite const& callsite){
-                for (int idx : callsite.tag_idx) {
-                    if (primitiveMatch(val, callsite.params[idx], (ParamAccess)acc)) return true;
-                }
-                return false;
+                return tagMatch(callsite, val, (ParamAccess)acc);
             });
         }
         void clear() { callsites.clear(); }
@@ -51,13 +56,16 @@ class FuncCallsites {
         }
         bool checkMatchTag(uintptr_t const& val, int8_t const& acc) const {
             return std::any_of(callsites.begin(), callsites.end(), [&](Callsite const& callsite){
-                for (int idx : callsite.tag_idx) {
-                    if (primitiveMatch(val, callsite.params[idx], (ParamAccess)acc)) return true;
-                }
-                return false;
+                return tagMatch(callsite, val, (ParamAccess)acc);
             });
         }
         operator bool() const { return !callsites.empty(); }
     private:
+        static bool tagMatch(Callsite const& callsite, uintptr_t const& val, ParamAccess const& acc) {
+            for (unsigned long long mask = callsite.tag_params.to_ullong(); mask != 0; mask &= mask - 1) {
+                if (primitiveMatch(val, callsite.params[std::countr_zero(mask)], acc)) return true;
+            }
+            return false;
+        }
         std::vector<Callsite> callsites;
 };

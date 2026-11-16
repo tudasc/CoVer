@@ -218,18 +218,26 @@ std::string termArgs(ContractFormula const& form, std::string_view kind) {
     return toLiteral(std::string(kind) + "{" + formula + "}") + ", \"" + *form.Message + "\"";
 }
 
+// Largest parameter count recording into each store
+std::map<std::string, unsigned> StoreArity;
+
 std::string createCallsiteParamStr(FunctionDecl const* decl, std::string name, std::set<int> indices) {
+    StoreArity[name] = std::max(StoreArity[name], decl->getNumParams());
+
     std::string res;
-    res += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + name + ".addCallsite({{").str();
+    res += ("    " + COVER_OPTMP_PREFIX + "Callsites_" + name + ".addCallsite({").str();
     for (int i = 0; i+1 < decl->getNumParams(); i++) {
         res += "(uintptr_t)" + decl->getParamDecl(i)->getNameAsString() + ", ";
     }
     if (decl->getNumParams() != 0) res += "(uintptr_t)" + decl->getParamDecl(decl->getNumParams() - 1)->getNameAsString();
-    res += "}, {";
-    for (int idx : indices) {
-        res += std::to_string(idx) + ", ";
+
+    // Tag positions
+    std::string tagBits = "0b0";
+    if (!indices.empty()) {
+        tagBits = "0b" + std::string(*indices.rbegin() + 1, '0');
+        for (int idx : indices) tagBits[tagBits.size() - 1 - idx] = '1';
     }
-    res += "}});\n";
+    res += "}, " + tagBits + ");\n";
     return res;
 }
 
@@ -583,7 +591,7 @@ void performOutput(std::string output_path) {
     R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("range_set " + COVER_OPTMP_PREFIX + "Allocs" + ";\n").str());
     sentinel_strs.insert(PostCallStores.begin(), PostCallStores.end());
     for (std::string sentinel : sentinel_strs) {
-        R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), ("FuncCallsites " + COVER_OPTMP_PREFIX + "Callsites_" + sentinel + ";\n").str());
+        R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "FuncCallsites<" + std::to_string(StoreArity[sentinel]) + "> " + std::string(COVER_OPTMP_PREFIX) + "Callsites_" + sentinel + ";\n");
     }
     for (std::string const& flag : PostCallFlags) {
         R.InsertTextAfter(SM.getLocForStartOfFile(SM.getMainFileID()), "bool " + flag + " = false;\n");
