@@ -187,6 +187,10 @@ export namespace llvm::dwarf {
     using llvm::dwarf::DW_ATE_boolean;
 }
 
+export namespace llvm::CallingConv {
+    using llvm::CallingConv::C;
+}
+
 export namespace llvm::Intrinsic {
     using llvm::Intrinsic::getOrInsertDeclaration;
     using llvm::Intrinsic::frameaddress;

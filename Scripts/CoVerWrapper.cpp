@@ -61,14 +61,15 @@ static cl::opt<std::string> DebuggerCoVerPlugin("debugger-cover-plugin",
     cl::value_desc("Debugger path"),
     cl::cat(WrapperCategory));
 
-// String option with ValueOptional to handle "full", "funconly", and "filtered=path.json"
+// String option with ValueOptional to handle "full", "nofuncptr", "funconly", and "filtered=path.json"
 static cl::opt<std::string> InstrumentContracts("instrument-contracts",
     cl::desc("Perform instrumentation for runtime analysis.\n"
              "  full: Full instrumentation (default if instrumenting)\n"
+             "  nofuncptr: Full instrumentation, except for calls through unannotated function pointers\n"
              "  funconly: Disable costly memory instrumentation\n"
              "  filtered[=<detection json>]: Only instrument potential issues from static analysis."),
     cl::ValueOptional,
-    cl::value_desc("(full|funconly|filtered)"),
+    cl::value_desc("(full|nofuncptr|funconly|filtered)"),
     cl::cat(WrapperCategory));
 
 static cl::opt<bool> IROutput("ir-output",

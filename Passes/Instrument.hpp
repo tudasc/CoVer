@@ -38,6 +38,10 @@ class InstrumentPass : public PassInfoMixin<InstrumentPass> {
         void instrumentRW(Module &M);
         void instrumentFunctions(Module &M);
         void insertFunctionInstrCallback(Function* CB);
+        void instrumentIndirectCalls(Module& M);
+        bool isForwardableCall(CallBase const* CB) const;
+        std::vector<Value*> createCallbackHeader(CallBase* callsite); // Funcptr, return size, number of args
+        Value* encodeCArgument(std::vector<Value*>& params, CallBase* callsite, Value* arg); // Appends size, returns the value to pass
         void insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I, Type* OrigRT);
         bool isRelevant(Instruction const* I) const;
         std::set<Function*> already_instrumented;

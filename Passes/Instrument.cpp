@@ -16,7 +16,7 @@ using namespace ContractTree;
 
 static cl::opt<std::string> ClInstrumentType(
     "cover-instrument-type", cl::init("full"),
-    cl::desc("Kind of instrumentation to apply. Choices: full, filtered[=<detection json>], funconly"),
+    cl::desc("Kind of instrumentation to apply. Choices: full, nofuncptr, filtered[=<detection json>], funconly"),
     cl::Hidden);
 
 PreservedAnalyses InstrumentPass::run(Module &M,
@@ -89,7 +89,9 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     // Create callback function for rel func call
     // Call sig: isRel, Function ptr, ret size, num operands, vararg list of operands. Format: {int64-as-bool isptr, size of param, param} for each param.
     FunctionType* FunctionCBType = FunctionType::get(Basic_Types.Ptr_Type, {Basic_Types.Bool_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Int_Type}, true);
-    callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType, fnAttr);
+    // Calls through function pointers may reach any function of the module, which the callback then calls
+    AttributeList funcCBAttr = ClInstrumentType != "nofuncptr" ? fnAttr.removeFnAttribute(M.getContext(), Attribute::NoCallback) : fnAttr;
+    callbackFuncCallee = M.getOrInsertFunction("PPDCV_FunctionCallback", FunctionCBType, funcCBAttr);
     Function* callbackFunc = dyn_cast<Function>(callbackFuncCallee.getCallee());
     callbackFunc->setLinkage(GlobalValue::ExternalWeakLinkage);
 
@@ -148,6 +150,9 @@ PreservedAnalyses InstrumentPass::run(Module &M,
     if (ClInstrumentType != "funconly")
         instrumentRW(M);
     instrumentFunctions(M);
+    // After the annotated indirect calls, which instrumentFunctions has replaced
+    if (ClInstrumentType != "nofuncptr")
+        instrumentIndirectCalls(M);
 
     return PreservedAnalyses::none();
 }
@@ -534,31 +539,14 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
     }
     for (CallBase* callsite : callsites) {
         int stringnum = 0;
-        std::vector<Value*> params;
-        params.push_back(callsite->getCalledOperand()); // First param is funcptr
-
-        // Get return value size
-        if (!callsite->getType()->isSized()) {
-            params.push_back(Basic_Types.getInt(0));
-        } else {
-            int ret_size = callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType());
-            if (callsite->getType()->isFloatingPointTy()) ret_size |= 2 << 16; // Set bit 2 > float tag
-            params.push_back(Basic_Types.getInt(ret_size));
-        }
-
-        params.push_back(Basic_Types.getInt(callsite->arg_size()));
+        std::vector<Value*> params = createCallbackHeader(callsite);
         for (Use const& U : callsite->args()) {
             Value* actual_param = U;
             int const cur_argno = callsite->getArgOperandNo(&U);
 
             // Store size of data type
             if (isC) {
-                int size_act = callsite->getDataLayout().getTypeStoreSizeInBits(U->getType());
-                int size_meta = (size_act << 8) | size_act;
-                if (isa<UndefValue>(actual_param)) size_meta |= 0b100 << 16;
-                params.push_back(Basic_Types.getInt(size_meta));
-                // Store actual parameter, making sure to cast if necessary
-                anyValToPtr(&actual_param, callsite);
+                actual_param = encodeCArgument(params, callsite, actual_param);
             } else {
                 DISubprogram const* Dbg = F->getSubprogram();
                 int size_call = 0;
@@ -607,6 +595,84 @@ void InstrumentPass::insertFunctionInstrCallback(Function* F) {
         insertCBIfNeeded(callbackFuncCallee, params, callsite, F->getReturnType());
     }
     already_instrumented.insert(F);
+}
+
+std::vector<Value*> InstrumentPass::createCallbackHeader(CallBase* callsite) {
+    std::vector<Value*> params;
+    params.push_back(callsite->getCalledOperand()); // First param is funcptr
+
+    // Get return value size
+    if (!callsite->getType()->isSized()) {
+        params.push_back(Basic_Types.getInt(0));
+    } else {
+        int ret_size = callsite->getDataLayout().getTypeStoreSizeInBits(callsite->getType());
+        if (callsite->getType()->isFloatingPointTy()) ret_size |= 2 << 16; // Set bit 2 > float tag
+        params.push_back(Basic_Types.getInt(ret_size));
+    }
+
+    params.push_back(Basic_Types.getInt(callsite->arg_size()));
+    return params;
+}
+
+Value* InstrumentPass::encodeCArgument(std::vector<Value*>& params, CallBase* callsite, Value* arg) {
+    int size_act = callsite->getDataLayout().getTypeStoreSizeInBits(arg->getType());
+    int size_meta = (size_act << 8) | size_act;
+    if (isa<UndefValue>(arg)) size_meta |= 0b100 << 16;
+    params.push_back(Basic_Types.getInt(size_meta));
+    // Store actual parameter, making sure to cast if necessary
+    anyValToPtr(&arg, callsite);
+    return arg;
+}
+
+bool InstrumentPass::isForwardableCall(CallBase const* CB) const {
+    CallInst const* CI = dyn_cast<CallInst>(CB);
+    if (!CI || CI->isMustTailCall()) return false; // invoke: The callback does not unwind
+    if (CB->hasOperandBundles() || CB->getCallingConv() != CallingConv::C) return false;
+    FunctionType const* FT = CB->getFunctionType();
+    if (FT->isVarArg()) return false;
+    Type const* RT = FT->getReturnType();
+    bool const retOk = RT->isVoidTy() || RT->isPointerTy() || RT->isDoubleTy() || (RT->isIntegerTy() && RT->getIntegerBitWidth() <= 64);
+    if (!retOk) return false;
+    for (unsigned i = 0; i < CB->arg_size(); i++) {
+        Type const* T = CB->getArgOperand(i)->getType();
+        if (!T->isPointerTy() && !(T->isIntegerTy() && T->getIntegerBitWidth() <= 64)) return false;
+        for (Attribute::AttrKind kind : {Attribute::ByVal, Attribute::StructRet, Attribute::InAlloca, Attribute::Preallocated}) {
+            if (CB->paramHasAttr(i, kind)) return false;
+        }
+    }
+    return true;
+}
+
+void InstrumentPass::instrumentIndirectCalls(Module& M) {
+    // Fortran parameter sizes come from the debug info of the called function, which is unknown for indirect calls
+    if (!isC) return;
+
+    std::vector<CallBase*> indirectCalls;
+    for (Function& F : M) {
+        for (Instruction& I : instructions(F)) {
+            CallBase* CB = dyn_cast<CallBase>(&I);
+            if (CB && CB->isIndirectCall()) indirectCalls.push_back(CB);
+        }
+    }
+
+    std::size_t skipped = 0;
+    for (CallBase* callsite : indirectCalls) {
+        if (!isForwardableCall(callsite)) {
+            if (ContractPassUtility::isDebug()) WithColor::note() << "Indirect call at " << ContractPassUtility::getInstrLocStr(callsite) << " has an unsupported signature, not instrumented\n";
+            skipped++;
+            continue;
+        }
+        std::vector<Value*> params = createCallbackHeader(callsite);
+        for (Value* arg : callsite->args()) {
+            Value* encoded = encodeCArgument(params, callsite, arg);
+            params.push_back(encoded);
+        }
+        insertCBIfNeeded(callbackFuncCallee, params, callsite, callsite->getType());
+    }
+    if (skipped) {
+        WithColor::note() << "CoVer: " << skipped << " of " << indirectCalls.size()
+                          << " indirect calls have a signature the runtime analysis cannot forward and are not instrumented\n";
+    }
 }
 
 void InstrumentPass::insertCBIfNeeded(FunctionCallee FC, std::vector<Value *> params, Instruction* I, Type* OrigRT) {
