@@ -29,6 +29,17 @@ Fulfillment AllocAnalysis::functionPreCBImpl(void* const& func, CallsiteInfo con
 }
 
 Fulfillment AllocAnalysis::functionPostCBImpl(void* const& func, CallsiteInfo const& callsite) {
+    // A function may do both (realloc). Release first, the new block can start at the same address.
+    if (int idx = vecContains(mem_deallocators, func); idx != -1) {
+        MemOpFunc_t const& memop = mem_deallocators[idx];
+        uintptr_t const& target = (uintptr_t)(memop.rwOp->idx == 99 ? callsite.retval : callsite.params[memop.rwOp->idx].value);
+        for (int i = 0; i < allocated.size(); i++) {
+            if (target == allocated[i].first) {
+                allocated.erase(allocated.begin() + i);
+                break;
+            }
+        }
+    }
     if (int idx = vecContains(mem_allocators, func); idx != -1) {
         MemOpFunc_t const& memop = mem_allocators[idx];
         uintptr_t alloc = (uintptr_t)(memop.rwOp->idx == 99 ? callsite.retval : callsite.params[memop.rwOp->idx].value);
@@ -46,16 +57,6 @@ Fulfillment AllocAnalysis::functionPostCBImpl(void* const& func, CallsiteInfo co
             cur = cur->other;
         }
         allocated.push_back({alloc, res});
-    }
-    else if (int idx = vecContains(mem_deallocators, func); idx != -1) {
-        MemOpFunc_t const& memop = mem_deallocators[idx];
-        uintptr_t const& target = (uintptr_t)(memop.rwOp->idx == 99 ? callsite.retval : callsite.params[memop.rwOp->idx].value);
-        for (int i = 0; i < allocated.size(); i++) {
-            if (target == allocated[i].first) {
-                allocated.erase(allocated.begin() + i);
-                break;
-            }
-        }
     }
     return Fulfillment::UNKNOWN;
 }

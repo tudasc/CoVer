@@ -515,6 +515,7 @@ void __attribute__((weak)) CONTRACT( POST {{ alloc!(0[ 1 _arg ]) }}) CoVer_Regis
 
 void* calloc(size_t num, size_t size) __THROW CONTRACT( POST {{ alloc!(R[ 0 _arg * 1 _arg]) }});
 void* malloc(size_t size) __THROW CONTRACT( POST {{ alloc!(R[0 _arg]) }});
+void* realloc(void* ptr, size_t size) __THROW CONTRACT( POST {{ free!(0), alloc!(R[1 _arg]) }});
 
 void free(void* ptr) __THROW CONTRACT( POST {{ free!(0) }});
 
