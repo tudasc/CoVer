@@ -14,8 +14,6 @@ class IntrinsicsPass : public PassInfoMixin<IntrinsicsPass> {
 
         FunctionCallee calleeHelper(Module& M, std::string name, FunctionType* type);
         void createCallees(Module& M);
-        FunctionCallee allocStackCallee;
-        FunctionCallee freeStackCallee;
         FunctionCallee globalRegCallee;
         FunctionCallee fallocPointerCallee;
         FunctionCallee fdeallocPointerCallee;

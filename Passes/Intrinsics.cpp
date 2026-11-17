@@ -34,12 +34,12 @@ PreservedAnalyses IntrinsicsPass::run(Module &M, ModuleAnalysisManager &AM) {
 }
 
 void IntrinsicsPass::createCallees(Module& M) {
-    // Get callee for alloca instr
+    // Declare alloca intrinsics now, but calls are inserted by StackIntrinsicsPass
     FunctionType* FunctionAllocStackType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int64_Type}, false);
-    allocStackCallee = calleeHelper(M, "CoVer_AllocStack", FunctionAllocStackType);
+    calleeHelper(M, "CoVer_AllocStack", FunctionAllocStackType);
 
     FunctionType* FunctionFreeStackType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type}, false);
-    freeStackCallee = calleeHelper(M, "CoVer_FreeStack", FunctionFreeStackType);
+    calleeHelper(M, "CoVer_FreeStack", FunctionFreeStackType);
 
     // Get callee for global vals
     FunctionType* FunctionGlobalRegType = FunctionType::get(Basic_Types.Void_Type, {Basic_Types.Ptr_Type, Basic_Types.Int64_Type}, false);
@@ -74,41 +74,6 @@ void IntrinsicsPass::createCallees(Module& M) {
 }
 
 void IntrinsicsPass::instrumentIntrinsics(Module& M) {
-    // Instrument all allocas
-    Function *FrameAddrIntrin = Intrinsic::getOrInsertDeclaration(&M, Intrinsic::frameaddress, {Basic_Types.Ptr_Type});
-    Function *StackSaveIntrin = Intrinsic::getOrInsertDeclaration(&M, Intrinsic::stacksave, {Basic_Types.Ptr_Type});
-    for (Function& F : M) {
-        if (F.isDeclaration()) continue;
-        if (F.getFnAttribute("CoVer_Instrumented").getValueAsString() == "y") continue;
-        F.addFnAttr("CoVer_Instrumented", "y");
-        bool hasAlloca = false;
-        for (BasicBlock const& BB : F) {
-            for (Instruction const& I : BB) {
-                if (isa<AllocaInst>(&I)) {
-                    hasAlloca = true;
-                    break;
-                }
-            }
-        }
-        if (!hasAlloca) continue;
-
-        IRBuilder<> Builder(&*F.getEntryBlock().getFirstNonPHIOrDbgOrAlloca());
-
-        CallInst *BasePtr = Builder.CreateCall(FrameAddrIntrin, {Basic_Types.getInt(0)}, "base_ptr");
-        CallInst *StackPtr = Builder.CreateCall(StackSaveIntrin, {}, "stack_ptr");
-
-        Value *BaseInt = Builder.CreatePtrToInt(BasePtr, Basic_Types.Int64_Type, "base_int");
-        Value *StackInt = Builder.CreatePtrToInt(StackPtr, Basic_Types.Int64_Type, "stack_int");
-
-        Value *StackSize = Builder.CreateSub(BaseInt, StackInt, "stack_size");
-        Builder.CreateCall(allocStackCallee, {StackPtr, StackSize});
-
-        EscapeEnumerator EE(F, "", false);
-        while (IRBuilder<>* IRB = EE.Next()) {
-            IRB->CreateCall(freeStackCallee, {StackPtr});
-        }
-    }
-
     // Instrument global vars
     if (M.getFunction("main")) {
         Function* mainF = M.getFunction("main");

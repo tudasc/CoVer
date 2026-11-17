@@ -89,6 +89,7 @@ target_sources(CoVerPlugin PRIVATE FILE_SET cover_cxx_modules TYPE CXX_MODULES F
   Passes/AnalysisCleanup.cppm
   Passes/BasicTypes.cppm
   Passes/InstrumentAnnotations.cppm
+  Passes/StackIntrinsics.cppm
 )
 target_link_libraries(CoVerPlugin PRIVATE CoVerCore)
 

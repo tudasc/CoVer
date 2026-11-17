@@ -371,13 +371,13 @@ int main(int argc, const char** argv) {
     std::string passlist = "@OPT_PASSLIST_PREFIX@instrumentIntrinsics,contractVerifierPreCall,contractVerifierPostCall,contractVerifierRelease,contractVerifierParam,contractVerifierAlloc,contractPostProcess,instrumentAnnotations";
     // ALWAYS FIRST OPT THEN INSTR!
     // Otherwise significant performance loss!
-    if (InstrumentContracts.empty()) passlist += ",analysisCleanup"; // If no instr: Cleanup now so stack instr doesnt hinder opt
+    if (InstrumentContracts.empty()) passlist += ",analysisCleanup"; // If no instr: Cleanup now so intrinsics dont hinder opt
     if (opt_level >= 0) {
         passlist += ",default<O" + std::to_string(opt_level) + ">";
     }
     if (!InstrumentContracts.empty()) {
-        // Need instrumentation, so add instr pass...
-        passlist += ",instrumentContracts,analysisCleanup";
+        // Need instrumentation, so add instr passes...
+        passlist += ",instrumentStack,instrumentContracts,analysisCleanup";
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }

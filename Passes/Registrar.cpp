@@ -12,6 +12,7 @@
 import LLVMModule;
 import AnalysisCleanup;
 import InstrumentAnnotations;
+import StackIntrinsics;
 
 using namespace llvm;
 
@@ -47,6 +48,10 @@ namespace {
         }
         if (Name == "instrumentIntrinsics") {
             MPM.addPass(IntrinsicsPass());
+            return true;
+        }
+        if (Name == "instrumentStack") {
+            MPM.addPass(StackIntrinsicsPass());
             return true;
         }
         if (Name == "instrumentContracts") {
