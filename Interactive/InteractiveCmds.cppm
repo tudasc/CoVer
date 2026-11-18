@@ -45,6 +45,7 @@ export struct CmdInfo {
     int num_params;
     CmdAccess access;
     std::function<CmdResult(std::vector<std::string> const&, TraceSession&, CmdFrontend const&)> handler;
+    bool variadic = false;
 };
 
 export std::vector<CmdInfo> const& GetTraceCommands();
@@ -191,10 +192,23 @@ CmdResult CmdAliasAdd(std::vector<std::string> const& args, TraceSession& sessio
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
     std::expected<Function*, std::string> F = ParseValueFunction(args[1], session);
     if (!F) return {CmdResultCode::INVALID_INPUT, F.error()};
-    std::expected<Value*, std::string> V = ParseValue(args[2], *F);
-    if (!V) return {CmdResultCode::INVALID_INPUT, V.error()};
-    ContractPassUtility::addToAliasGroup(*group, *V);
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Values {} added to alias group {}", (*V)->getNameOrAsOperand(), *group)};
+    // All values are looked up before adding any, so that a wrong one does not leave the group partially extended
+    std::vector<Value*> values;
+    for (std::string const& name : args | std::views::drop(2)) {
+        std::expected<Value*, std::string> V = ParseValue(name, *F);
+        if (!V) return {CmdResultCode::INVALID_INPUT, V.error()};
+        values.push_back(*V);
+    }
+    std::vector<std::string> added;
+    std::vector<std::string> present;
+    for (Value* V : values) {
+        (ContractPassUtility::getAliasAnnots().at(*group).members.contains(V) ? present : added).push_back(V->getNameOrAsOperand());
+        ContractPassUtility::addToAliasGroup(*group, V);
+    }
+    auto join = [](std::vector<std::string> const& names) { return names | std::views::join_with(std::string_view(", ")) | std::ranges::to<std::string>(); };
+    std::string res = added.empty() ? std::format("No values added to alias group {}", *group) : std::format("Values {} added to alias group {}", join(added), *group);
+    if (!present.empty()) res += std::format(", already in the group: {}", join(present));
+    return {CmdResultCode::SUCCESS_CONTINUE, res};
 }
 
 CmdResult CmdAliasType(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
@@ -382,7 +396,7 @@ std::vector<CmdInfo> const TraceCommands = {
     {"toggle-view",   "",                                                         "Toggle whether expanded blocks are shown as IR or a source code approximation", 0, CmdAccess::USER, CmdToggleView},
     {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdAccess::USER, CmdFpTarget},
     {"alias-create",  "[yes|no] [block num|function 1] [value 1] [block num|function 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group. Values are looked up in the given function, or in the function of the given block.", 5, CmdAccess::ANY, CmdAliasCreate},
-    {"alias-add",     "[group num] [block num|function] [value]",                 "Add a value to an existing alias group. The value is looked up in the given function, or in the function of the given block.", 3, CmdAccess::ANY, CmdAliasAdd},
+    {"alias-add",     "[group num] [block num|function] [value...]",              "Add one or more values to an existing alias group. The values are looked up in the given function, or in the function of the given block.", 3, CmdAccess::ANY, CmdAliasAdd, true},
     {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAccess::ANY, CmdAliasType},
     {"alias-rm",      "[group num] [value num|e<epoch num>]",                     "Remove a value or an epoch (prefixed with e) from an existing alias group (by index in group, see alias-get)", 2, CmdAccess::ANY, CmdAliasRm},
     {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAccess::ANY, CmdAliasEpoch},
@@ -403,14 +417,14 @@ std::vector<CmdInfo> const TraceCommands = {
 
 std::vector<CmdInfo> const& GetTraceCommands() { return TraceCommands; }
 
-// Arguments following the command name, if there are exactly num_params
-std::optional<std::vector<std::string>> SplitArgs(std::string const& input, int num_params) {
+// Arguments following the command name, if their number fits the command
+std::optional<std::vector<std::string>> SplitArgs(std::string const& input, CmdInfo const& cmd) {
     std::istringstream iss(input);
     std::string arg;
     iss >> arg; // Command name
     std::vector<std::string> args;
     while (iss >> arg) args.push_back(arg);
-    if (args.size() != num_params) return std::nullopt;
+    if (cmd.variadic ? args.size() < cmd.num_params : args.size() != cmd.num_params) return std::nullopt;
     return args;
 }
 
@@ -433,7 +447,7 @@ export CmdResult ExecuteCommand(TraceSession& session, std::string const& input_
     CmdResult result;
     if (!used_cmd) {
         result = {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
-    } else if (std::optional<std::vector<std::string>> args = SplitArgs(input_command, used_cmd->num_params)) {
+    } else if (std::optional<std::vector<std::string>> args = SplitArgs(input_command, *used_cmd)) {
         running_commands++;
         result = used_cmd->handler(*args, session, frontend);
         running_commands--;
