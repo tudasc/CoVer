@@ -70,6 +70,15 @@ bool ModelMayRun(std::string const& command) {
     return !cmd || cmd->access == InteractiveCmds::CmdAccess::ANY; // Unknown commands fail like the user's
 }
 
+// Usage of the commands the model may run. Needs no trace, so it is available before one is opened.
+export std::string CommandsSection() {
+    std::string out = "# Trace debugger commands\nAvailable through run_command:\n";
+    for (InteractiveCmds::CmdInfo const& cmd : InteractiveCmds::GetTraceCommands()) {
+        if (cmd.access == InteractiveCmds::CmdAccess::ANY) out += std::format("- {} {}: {}\n", cmd.name, cmd.usage, cmd.helptext);
+    }
+    return out;
+}
+
 std::string Truncate(std::string text, std::size_t max) {
     if (text.size() <= max) return text;
     std::size_t omitted = text.size() - max;
@@ -193,10 +202,7 @@ export class TraceTools {
 
         // The report being debugged, available commands and the current trace
         std::string Context() const {
-            std::string out = "# Trace debugger commands\nAvailable through run_command, with the same syntax as the debugger's command line:\n";
-            for (InteractiveCmds::CmdInfo const& cmd : InteractiveCmds::GetTraceCommands()) {
-                if (cmd.access == InteractiveCmds::CmdAccess::ANY) out += std::format("- {} {}: {}\n", cmd.name, cmd.usage, cmd.helptext);
-            }
+            std::string out = CommandsSection();
             AnalysisReports::DebugContext const& ctx = session.Context();
             out += "\n# The report being debugged\n";
             out += std::format("Contract of function {}: {}\nFormula whose trace is shown: {} (status: {})\n", ctx.function, ctx.contract, ctx.formula, ctx.status);
@@ -271,7 +277,7 @@ export class TraceTools {
             if (!command) return {"Missing string argument command", true, "run_command"};
             if (!ModelMayRun(*command)) {
                 std::string cmd_name = command->substr(0, command->find(' '));
-                return {std::format("The command {} is not available to you", cmd_name), true, *command + "  ->  not allowed"};
+                return {std::format("The command {} is not available to you, help lists the commands that are", cmd_name), true, *command + "  ->  not allowed"};
             }
             return RunCommand(*command);
         }

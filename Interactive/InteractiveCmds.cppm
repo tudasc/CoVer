@@ -361,9 +361,14 @@ CmdResult CmdHelp(std::vector<std::string> const&, TraceSession& session, CmdFro
         "",
         "Commands:",
     };
-    for (CmdInfo const& cmd : GetTraceCommands()) {
-        lines.push_back(std::format("    {} {}", cmd.name, cmd.usage));
-        lines.push_back(std::format("        {}", cmd.helptext));
+    // Grouped by access, as the LLM chat and MCP clients run help as well
+    for (bool any : {true, false}) {
+        if (!any) lines.insert(lines.end(), {"", "Reserved for users, no LLM/MCP access:"});
+        for (CmdInfo const& cmd : GetTraceCommands()) {
+            if ((cmd.access == CmdAccess::ANY) != any) continue;
+            lines.push_back(std::format("    {} {}", cmd.name, cmd.usage));
+            lines.push_back(std::format("        {}", cmd.helptext));
+        }
     }
     frontend.showLines(lines, "Worklist Trace Help Menu");
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
@@ -393,7 +398,7 @@ std::vector<CmdInfo> const TraceCommands = {
     {"mcp",           "",                                                         "Let MCP clients inspect the trace and add annotations", 0, CmdAccess::FRONTEND, CmdMCP},
     {"exit",          "",                                                         "Exit the debugger", 0, CmdAccess::USER, CmdExit},
     {"quit",          "",                                                         "Exit the debugger", 0, CmdAccess::USER, CmdExit},
-    {"help",          "",                                                         "Show this help text", 0, CmdAccess::USER, CmdHelp},
+    {"help",          "",                                                         "Show this help text", 0, CmdAccess::ANY, CmdHelp},
 };
 
 std::vector<CmdInfo> const& GetTraceCommands() { return TraceCommands; }

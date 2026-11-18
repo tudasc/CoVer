@@ -128,7 +128,7 @@ std::vector<TraceTools::Tool<State>> BuildTools() {
     for (ToolSpec const& spec : TraceTools::Specs()) {
         if (spec.name == TraceTools::CONTEXT_TOOL) {
             tools.push_back({spec, [](State& s, Json::Value const&) -> ToolResult {
-                std::string trace = s.trace ? s.trace->Context() : "# The current trace\nNo trace is open, use open_report.\n";
+                std::string trace = s.trace ? s.trace->Context() : TraceTools::CommandsSection() + "\n# The current trace\nNo trace is open, use open_report.\n";
                 return {TraceTools::GUIDANCE + "\n\n" + WORKFLOW + "\n\n" + trace + "\n" + ReportsText(s), false, TraceTools::CONTEXT_TOOL};
             }});
             continue;
