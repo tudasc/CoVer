@@ -90,9 +90,35 @@ MemoryAccess const* getReachingDef(LoadInst const* LI) {
     return MSSA.getWalker()->getClobberingMemoryAccess(LI);
 }
 
-// IR edits invalidate the memory SSA of the edited function
+class SlotTrackerUtil {
+    private:
+        std::unique_ptr<ModuleSlotTracker> tracker;
+    public:
+        ModuleSlotTracker& getSlotTracker(Function const& F) {
+            if (!tracker) tracker = std::make_unique<ModuleSlotTracker>(curM, true);
+            tracker->incorporateFunction(F);
+            return *tracker;
+        }
+        void reset() { tracker.reset(); }
+};
+
+SlotTrackerUtil slotTracker;
+
+// IR edits invalidate the memory SSA and the value numbering of the edited function
 export void invalidateFunctionAnalyses(Function* F) {
+    slotTracker.reset();
     if (curFAM && F) curFAM->invalidate(*F, PreservedAnalyses::none());
+}
+
+// Name of a value as written in the IR and accepted by getValueByName, e.g. %42 or %buf. Globals and constants without %
+export std::string getValueName(Value const* V) {
+    Function const* F = nullptr;
+    if (Instruction const* I = dyn_cast<Instruction>(V)) F = I->getFunction();
+    else if (Argument const* A = dyn_cast<Argument>(V)) F = A->getParent();
+    if (!F) return V->getNameOrAsOperand();
+    if (V->hasName()) return "%" + V->getName().str();
+    int slot = slotTracker.getSlotTracker(*F).getLocalSlot(V);
+    return slot >= 0 ? std::format("%{}", slot) : V->getNameOrAsOperand();
 }
 
 // Whether both values are computed the same way from the same values, e.g. two loads of a variable
@@ -393,6 +419,7 @@ export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
 
     // Function list and basic blocks must be sorted for clean diff on interactive analysis
     determinizeModule();
+    slotTracker.reset(); // Numbering follows the new order
 
     Function* AnnotAlias = M.getFunction("CoVer_AnnotAlias");
     for (User* U : AnnotAlias->users()) {
@@ -456,9 +483,8 @@ export std::string getInstrLocStr(const Instruction* I, bool longform = true) {
             static llvm::DenseMap<const Instruction*, std::string> cache;
             auto [it, inserted] = cache.try_emplace(I);
             if (inserted) {
-                llvm::ModuleSlotTracker MST(I->getModule());
-                MST.incorporateFunction(*I->getFunction());
-                llvm::raw_string_ostream(it->second) << *I;
+                llvm::raw_string_ostream os(it->second);
+                I->print(os, slotTracker.getSlotTracker(*I->getFunction()));
             }
             return std::format("IR {} in {}", it->second, I->getFunction()->getName().str());
         }
@@ -688,21 +714,24 @@ export bool checkCallParamApplies(const CallBase* Source, const CallBase* Target
 export Value* getValueByName(std::string name, Function* F) {
     if (name.empty()) return nullptr;
     if (name.starts_with("%")) {
-        if (F && !F->isDeclaration()) {
-            // Try arguments
+        if (!F || F->isDeclaration()) return nullptr;
+        std::string_view local = std::string_view(name).substr(1);
+        // Unnamed values by their number. Getting it from the shared tracker instead of printing each value keeps this linear
+        if (std::optional<int> slot = parseInt(local); slot && *slot >= 0) {
+            ModuleSlotTracker& MST = slotTracker.getSlotTracker(*F);
             for (Argument& A : F->args()) {
-                if (A.getNameOrAsOperand() == name || "%" + A.getNameOrAsOperand() == name) {
-                    return &A;
-                }
+                if (!A.hasName() && MST.getLocalSlot(&A) == *slot) return &A;
             }
-            // Then instructions
-            for (BasicBlock& BB : *F) {
-                for (Instruction& I : BB) {
-                    if (I.getNameOrAsOperand() == name || "%" + I.getNameOrAsOperand() == name) {
-                        return &I;
-                    }
-                }
+            for (Instruction& I : instructions(*F)) {
+                if (!I.hasName() && MST.getLocalSlot(&I) == *slot) return &I;
             }
+        }
+        // Named values
+        for (Argument& A : F->args()) {
+            if (A.getName() == StringRef(local)) return &A;
+        }
+        for (Instruction& I : instructions(*F)) {
+            if (I.getName() == StringRef(local)) return &I;
         }
         return nullptr;
     }
@@ -744,6 +773,7 @@ export void printWithoutRemovedAnnots(Module& M, raw_ostream& out) {
 export void eraseRemovedAnnots(Module& M) {
     Function* removedFunc = M.getFunction(REMOVED_ANNOT_FUNC);
     if (!removedFunc) return;
+    slotTracker.reset(); // Must not keep erased instructions
     for (User* U : make_early_inc_range(removedFunc->users())) {
         if (Instruction* annot = dyn_cast<Instruction>(U)) annot->eraseFromParent();
     }
@@ -858,6 +888,7 @@ export std::string setAllocAnnot(Instruction* I, std::uint64_t size) {
         insertPt = I->getNextNode();
     }
 
+    invalidateFunctionAnalyses(I->getFunction());
     ConstantInt* sizeConst = ConstantInt::get(Type::getInt64Ty(curM->getContext()), size);
     // Already annotated: Only update size
     for (CallBase* CB = dyn_cast<CallBase>(insertPt); CB && CB->getCalledOperand()->getName() == "CoVer_AnnotAlloc"; CB = dyn_cast_or_null<CallBase>(CB->getNextNode())) {

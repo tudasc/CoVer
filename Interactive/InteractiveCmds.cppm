@@ -85,9 +85,15 @@ std::expected<Function*, std::string> ParseValueFunction(std::string_view s, Tra
     return F;
 }
 
+// A value to annotate as alias group member, which CoVer_AnnotAlias takes as pointer
 std::expected<Value*, std::string> ParseValue(std::string const& name, Function* F) {
     Value* V = ContractPassUtility::getValueByName(name, F);
     if (!V) return std::unexpected(std::format("Could not identify value {} in function {}", name, F->getName().str()));
+    if (!V->getType()->isPointerTy()) {
+        std::string type;
+        raw_string_ostream(type) << *V->getType();
+        return std::unexpected(std::format("Value {} in function {} is not a pointer but {}, only pointers can be annotated", name, F->getName().str(), type));
+    }
     return V;
 }
 
@@ -183,8 +189,10 @@ CmdResult CmdAliasCreate(std::vector<std::string> const& args, TraceSession& ses
     if (!V1) return {CmdResultCode::INVALID_INPUT, V1.error()};
     std::expected<Value*, std::string> V2 = ParseValue(args[4], *F2);
     if (!V2) return {CmdResultCode::INVALID_INPUT, V2.error()};
+    // Named before the edit, which discards the value numbering
+    std::string res = std::format("Values {} and {} {} alias", ContractPassUtility::getValueName(*V1), ContractPassUtility::getValueName(*V2), isAlias ? "should" : "should not");
     ContractPassUtility::createAliasGroup(isAlias, *V1, *V2);
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Values {} and {} {} alias", (*V1)->getNameOrAsOperand(), (*V2)->getNameOrAsOperand(), isAlias ? "should" : "should not")};
+    return {CmdResultCode::SUCCESS_CONTINUE, res};
 }
 
 CmdResult CmdAliasAdd(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
@@ -199,10 +207,12 @@ CmdResult CmdAliasAdd(std::vector<std::string> const& args, TraceSession& sessio
         if (!V) return {CmdResultCode::INVALID_INPUT, V.error()};
         values.push_back(*V);
     }
+    // Named before the edits, which discard the value numbering
+    std::vector<std::string> names = values | std::views::transform(ContractPassUtility::getValueName) | std::ranges::to<std::vector>();
     std::vector<std::string> added;
     std::vector<std::string> present;
-    for (Value* V : values) {
-        (ContractPassUtility::getAliasAnnots().at(*group).members.contains(V) ? present : added).push_back(V->getNameOrAsOperand());
+    for (auto const& [V, name] : std::views::zip(values, names)) {
+        (ContractPassUtility::getAliasAnnots().at(*group).members.contains(V) ? present : added).push_back(name);
         ContractPassUtility::addToAliasGroup(*group, V);
     }
     auto join = [](std::vector<std::string> const& names) { return names | std::views::join_with(std::string_view(", ")) | std::ranges::to<std::string>(); };
@@ -296,9 +306,10 @@ CmdResult CmdAllocCreate(std::vector<std::string> const& args, TraceSession& ses
     if (args[2].starts_with("-")) return {CmdResultCode::INVALID_INPUT, "Size argument must not be negative!"};
     std::expected<std::uint64_t, std::string> size = ParseIntArg(args[2], "Size");
     if (!size) return {CmdResultCode::INVALID_INPUT, size.error()};
+    std::string name = ContractPassUtility::getValueName(*selected); // Before the edit, which discards the value numbering
     std::string err = ContractPassUtility::setAllocAnnot(*selected, *size);
     if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} at {}.{} is now annotated as allocated{}", (*selected)->getNameOrAsOperand(), *block, args[1], *size ? std::format(" with at least {} bytes", *size) : "")};
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} at {}.{} is now annotated as allocated{}", name, *block, args[1], *size ? std::format(" with at least {} bytes", *size) : "")};
 }
 
 // Default file of the patch files written by the frontends
