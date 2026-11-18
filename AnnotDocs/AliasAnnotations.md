@@ -7,8 +7,8 @@ This document demonstrates the annotation framework for CoVer, specifically for 
 These functions are used in a contract such that `f` must occur before `g`, and must be called with the same input:
 
 ```c
-void f(int a) {};
-void g(int b) CONTRACT(
+void f(int* a) {};
+void g(int* b) CONTRACT(
     PRE {
         call!(f,0:0)
     }
@@ -18,13 +18,14 @@ void g(int b) CONTRACT(
 The `aliasgenerator` function artificially defeats the alias analysis of the tool:
 
 ```c
-void aliasgenerator(int* a, int* b) {
+void aliasgenerator(int** a, int** b) {
     *a = *b;
 }
 
 int main() {
-    int a;
-    int b;
+    int x;
+    int* a;
+    int* b = &x;
     aliasgenerator(&a, &b);
     f(a);
     g(b);
@@ -46,14 +47,16 @@ Below is the corresponding IR, with annotations prefixed by `+`:
 ; Function Attrs: noinline nounwind sspstrong uwtable
 define i32 @main() #0 {
   %1 = alloca i32, align 4
-  %2 = alloca i32, align 4
-  call void @aliasgenerator(ptr noundef %1, ptr noundef %2)
-  %3 = load i32, ptr %1, align 4
-+ call void @CoVer_AnnotAlias(i32 %3, i1 true, i32 0)
-  call void @f(i32 noundef %3)
-  %4 = load i32, ptr %2, align 4
-+ call void @CoVer_AnnotAlias(i32 %4, i1 true, i32 0)
-  call void @g(i32 noundef %4)
+  %2 = alloca ptr, align 8
+  %3 = alloca ptr, align 8
+  store ptr %1, ptr %3, align 8
+  call void @aliasgenerator(ptr noundef %2, ptr noundef %3)
+  %4 = load ptr, ptr %2, align 8
++ call void @CoVer_AnnotAlias(ptr %4, i1 true, i32 0)
+  call void @f(ptr noundef %4)
+  %5 = load ptr, ptr %3, align 8
++ call void @CoVer_AnnotAlias(ptr %5, i1 true, i32 0)
+  call void @g(ptr noundef %5)
   ret i32 0
 }
 ```
@@ -91,7 +94,7 @@ For no-alias groups, two values referring to the same annotated variable are not
 
 | Position | Description |
 |----------|-------------|
-| 1st | The value being annotated |
+| 1st | The pointer being annotated |
 | 2nd | Whether the group is an alias/no-alias annotation (`true`/`false`) |
 | 3rd | The group it belongs to |
 
@@ -111,6 +114,7 @@ define void @comm_round() {
 
 ## Constraints
 
+- Only pointer values can be annotated
 - All alias annotations **must** share the same type within a group (aliasing or not aliasing).
 - All alias annotations in IR **must** occur after the value they reference is created.
 - A source level annotation applies to the uses of the variable until the variable may have been written.
