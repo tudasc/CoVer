@@ -154,7 +154,8 @@ The get_annotation_docs tool returns CoVer's documentation of each annotation ki
 - Explain the root cause of the report in terms of the source code, citing locations as file:line.
 - Decide whether the report is a real bug or a false positive. If it is a real bug, say so, suggest a fix to the source code, and do not add annotations to hide it.
 - If an annotation is justified, add it, then tell the user exactly which annotations you added and why they are correct. If the user only asked a question, ask before annotating.
-- Undo annotations that turn out to be wrong (alias-rm, or set_fp_targets with the previous targets).)";
+- Undo annotations that turn out to be wrong (alias-rm, or set_fp_targets with the previous targets).
+- The tools run locally in CoVer and are cheap, so make as many tool calls as the task needs: dozens or hundreds of calls and annotations for one report are normal and no problem. Do not skip steps, leave out annotations, or stop to ask the user whether to continue because of the number of calls. Finish the work, then report. Independent tool calls can be made in one response.)";
 
 // Name of the tool returning Context(), not needed when the context is part of the system prompt
 export constexpr char const* CONTEXT_TOOL = "get_debug_context";
@@ -333,7 +334,7 @@ export class TraceTools {
                   Schema({{"block", "integer", "Block number"}, {"view", "string", "\"ir\" (default) or \"source\""}}, {"block"})},
                  [](TraceTools& t, Json::Value const& input) { return t.ShowBlock(input); }},
                 {{"run_command", "Run one of CoVer's trace debugger commands (listed in the debug context), e.g. \"alias-create yes main %5 _Z4sendPi %buf\", \"alias-add 0 main %7 %9 %12\", \"alloc-create 3 7 1024\", \"child 4 1\" or \"alias-get\". "
-                                 "Annotation commands are recorded in the user's command history. Use set_fp_targets instead of fp-target.",
+                                 "Commands run locally and are cheap, run as many as needed. Annotation commands are recorded in the user's command history. Use set_fp_targets instead of fp-target.",
                   Schema({{"command", "string", "The command line"}}, {"command"})},
                  [](TraceTools& t, Json::Value const& input) { return t.RunModelCommand(input); }},
                 {{"set_fp_targets", "Annotate the possible targets of an indirect call. Replaces previous targets of the call, an empty list removes the annotation.", fp_schema},
