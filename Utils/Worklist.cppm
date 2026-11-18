@@ -133,6 +133,8 @@ WorklistResult<T> GenericWorklist(Instruction* Start, bool transferFirst, Transf
                 }
                 // Either tmpNext is set, or null because tail-call stack end or stack was empty
                 if (!tmpNext) break;
+                // The callee was analysed further from here before, continue the trace at the callsite
+                updateJumpTrace(jumptraces, tmpNext, stopped, TraceKind::FUNCEXIT, postAccess[stopped]);
                 cur = tmpNext;
                 if (callReturn) {
                     // Callee info is shared by all callsites. Continue with the info of this callsite instead,
@@ -227,6 +229,7 @@ WorklistResult<T> GenericWorklist(Instruction* Start, bool transferFirst, Transf
                     if (CallBase* CB = dyn_cast<CallBase>(U)) {
                         if (ContractPassUtility::getCalleeThroughAlias(CB) != func) continue;
                         // Add callsite next to todoList
+                        updateJumpTrace(jumptraces, getContinuation(CB), cur, TraceKind::FUNCEXIT, prevInfo);
                         todoList.push( {getContinuation(CB), prevInfo, stack} );
                     }
                 }
