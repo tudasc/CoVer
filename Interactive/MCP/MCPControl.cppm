@@ -75,24 +75,29 @@ std::string OpenTraceKey(State const& s) {
     return s.trace ? TraceKey(s.trace->Session().Context()) : "";
 }
 
-std::string ReportsText(State const& s) {
+std::string ReportsText(State const& s, bool details) {
     if (!s.results) return "# Reports\nNot available yet, the analysis is still running.\n";
     std::string open_key = OpenTraceKey(s);
-    std::string out = std::format("# Reports\n{} reports.\n", s.results->size());
+    std::string out = std::format("# Reports\n{} reports.{}\n", s.results->size(), details ? "" : " list_reports shows their formulas, error reports and the leaves whose traces can be opened.");
     for (int i = 0; i < s.results->size(); i++) {
         ReportedFormula const& report = (*s.results)[i];
         std::vector<std::shared_ptr<ContractTree::ContractExpression>> leaves = DebuggableLeaves(report, *s.result_debug_handlers);
-        out += std::format("Report {}: {}{}\n", i, report.Summary(), leaves.empty() ? " [no debuggable trace]" : "");
-        out += std::format("    Formula: {} ({})\n", report.formula->ExprStr, ContractTree::FulfillmentStr(*report.formula->Status));
-        if (s.result_texts && s.result_texts->contains(report.formula.get())) {
-            for (ErrorMessage const& err : s.result_texts->at(report.formula.get())) {
-                out += "    Error: " + err.text + "\n";
-                for (FileReference const& ref : err.references) out += std::format("    At {}:{}:{}\n", ref.file, ref.line, ref.column);
+        if (!details) {
+            bool open = std::ranges::any_of(leaves, [&](std::shared_ptr<ContractTree::ContractExpression> const& leaf) { return !open_key.empty() && TraceKey(report, *leaf) == open_key; });
+            out += std::format("Report {}: {}{}\n", i, report.Summary(), leaves.empty() ? " [no debuggable trace]" : open ? " [trace open]" : "");
+        } else {
+            out += std::format("Report {}: {}{}\n", i, report.Summary(), leaves.empty() ? " [no debuggable trace]" : "");
+            out += std::format("    Formula: {} ({})\n", report.formula->ExprStr, ContractTree::FulfillmentStr(*report.formula->Status));
+            if (s.result_texts && s.result_texts->contains(report.formula.get())) {
+                for (ErrorMessage const& err : s.result_texts->at(report.formula.get())) {
+                    out += "    Error: " + err.text + "\n";
+                    for (FileReference const& ref : err.references) out += std::format("    At {}:{}:{}\n", ref.file, ref.line, ref.column);
+                }
             }
-        }
-        for (int leaf = 0; leaf < leaves.size(); leaf++) {
-            bool open = !open_key.empty() && TraceKey(report, *leaves[leaf]) == open_key;
-            out += std::format("    Leaf {}: {} ({}){}\n", leaf, leaves[leaf]->ExprStr, ContractTree::FulfillmentStr(*leaves[leaf]->Status), open ? " [trace open]" : "");
+            for (int leaf = 0; leaf < leaves.size(); leaf++) {
+                bool open = !open_key.empty() && TraceKey(report, *leaves[leaf]) == open_key;
+                out += std::format("    Leaf {}: {} ({}){}\n", leaf, leaves[leaf]->ExprStr, ContractTree::FulfillmentStr(*leaves[leaf]->Status), open ? " [trace open]" : "");
+            }
         }
     }
     return out;
@@ -129,7 +134,7 @@ std::vector<TraceTools::Tool<State>> BuildTools() {
         if (spec.name == TraceTools::CONTEXT_TOOL) {
             tools.push_back({spec, [](State& s, Json::Value const&) -> ToolResult {
                 std::string trace = s.trace ? s.trace->Context() : TraceTools::CommandsSection() + "\n# The current trace\nNo trace is open, use open_report.\n";
-                return {TraceTools::GUIDANCE + "\n\n" + WORKFLOW + "\n\n" + trace + "\n" + ReportsText(s), false, TraceTools::CONTEXT_TOOL};
+                return {TraceTools::GUIDANCE + "\n\n" + WORKFLOW + "\n\n" + trace + "\n" + ReportsText(s, false), false, TraceTools::CONTEXT_TOOL};
             }});
             continue;
         }
@@ -144,7 +149,7 @@ std::vector<TraceTools::Tool<State>> BuildTools() {
     }
     Json::Value open_schema = TraceTools::Schema({{"report", "integer", "Report number, see list_reports"}, {"leaf", "integer", "Index of the violated leaf whose trace to open, see list_reports"}}, {"report", "leaf"});
     tools.push_back({{"list_reports", "Reports of the current analysis with their number, contract, message, error report and locations, and the violated leaves of their formula that have a trace, with their index and whose trace is open.", TraceTools::Schema({}, {})},
-                     [](State& s, Json::Value const&) -> ToolResult { return {ReportsText(s), false, "list_reports"}; }});
+                     [](State& s, Json::Value const&) -> ToolResult { return {ReportsText(s, true), false, "list_reports"}; }});
     tools.push_back({{"open_report", "Open the trace of a violated leaf of a report in the trace debugger, closing the currently open trace. Annotations added so far are kept.", open_schema}, OpenReport});
     tools.push_back({{"reanalyse", "Rerun the analysis with all annotations added so far, possible while a trace is open. CoVer restarts, so the server is unreachable for a few seconds.", TraceTools::Schema({}, {})}, Reanalyse});
     return tools;
