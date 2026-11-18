@@ -387,7 +387,7 @@ std::vector<CmdInfo> const TraceCommands = {
     {"alias-rm",      "[group num] [value num|e<epoch num>]",                     "Remove a value or an epoch (prefixed with e) from an existing alias group (by index in group, see alias-get)", 2, CmdAccess::ANY, CmdAliasRm},
     {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAccess::ANY, CmdAliasEpoch},
     {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAccess::ANY, CmdAliasGet},
-    {"alloc-create",  "[block num|function] [instr num|value] [size]",            "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size). The instruction is given by block and instruction number, or by function and value name.", 3, CmdAccess::ANY, CmdAllocCreate},
+    {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size).", 3, CmdAccess::ANY, CmdAllocCreate},
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdAccess::USER, CmdReanalyse},
     {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdAccess::USER, CmdDiff},
     {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdAccess::USER, CmdPatch},
