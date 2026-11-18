@@ -83,7 +83,6 @@ export Rgb StateColor(ChatState state) {
     return CHAT_COLORS.error;
 }
 
-constexpr int MAX_TOOL_ROUNDS = 40; // Per user message, to bound cost if the model gets stuck
 std::string const CUT_OFF_INFO = "The response was cut off at the maximum length. Send a message to let it continue.";
 
 std::string const CHAT_PROMPT = R"(You are an assistant built into CoVer's trace debugger. The user chats with you in a small window, possibly in a terminal: be concise, prefer short paragraphs and lists, avoid tables and headings. Annotations you add are shown in the trace once the user closes the chat. You cannot reanalyse, the user does that after closing the chat. The conversation continues when the user opens another trace or reanalyses, you are told when that happens.)";
@@ -278,7 +277,6 @@ export class ChatSession {
             // After a cancelled or failed turn the conversation already ends with a user message, which is continued
             if (conv.messages.empty() || conv.messages.back().role != Message::Role::USER) conv.messages.push_back({Message::Role::USER});
             conv.messages.back().texts.push_back(content);
-            tool_rounds = 0;
             Request();
         }
 
@@ -304,7 +302,6 @@ export class ChatSession {
         std::uint64_t generation = 0; // Identifies the pending request, responses to older ones are dropped
         std::shared_ptr<std::atomic<bool>> cancel;
         std::shared_ptr<bool> alive = std::make_shared<bool>(true); // Expires with the session, guards posted tasks
-        int tool_rounds = 0;
         std::chrono::steady_clock::time_point request_start;
         std::size_t seen_history = 0; // History entries the model knows about
 
@@ -391,10 +388,6 @@ export class ChatSession {
                 return Notify();
             }
             if (!used_tools) return Notify();
-            if (++tool_rounds >= MAX_TOOL_ROUNDS) {
-                conv.transcript.push_back({ChatEntry::Kind::INFO, std::format("Paused after {} rounds of tool use. Send a message to let it continue.", MAX_TOOL_ROUNDS)});
-                return Notify();
-            }
             Request();
         }
 };
