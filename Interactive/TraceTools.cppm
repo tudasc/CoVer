@@ -180,6 +180,76 @@ export ToolResult AnnotationDocs(Json::Value const& input) {
     return {out, false, std::format("{} {}", DOCS_TOOL, topic.value_or("(all)"))};
 }
 
+// Attributes that only inform LLVM's optimisations, left out of the IR shown to the model. Attributes changing how a
+// value is passed (byval, sret, ...) and noalias, which concerns aliasing, are kept.
+constexpr std::array HINT_ATTRIBUTES = std::to_array<std::string_view>({
+    "align", "captures", "dead_on_return", "dead_on_unwind", "dereferenceable", "dereferenceable_or_null", "immarg", "initializes", "inreg",
+    "nocapture", "nofpclass", "nofree", "noext", "nonnull", "noundef", "range", "readnone", "readonly", "returned", "signext", "writable",
+    "writeonly", "zeroext"});
+
+// A line of printed IR without metadata attachments (", !dbg !12"), attribute group references (#0), alignment
+// (", align 4") and the HINT_ATTRIBUTES of parameters and return values, which only matter to LLVM
+export std::string CompactIR(std::string_view ir) {
+    // Metadata attachments of instructions come last
+    for (std::size_t attach = ir.find(", !"); attach != std::string_view::npos; attach = ir.find(", !", attach + 1)) {
+        if (attach + 3 < ir.size() && std::isalpha(static_cast<unsigned char>(ir[attach + 3]))) {
+            ir = ir.substr(0, attach);
+            break;
+        }
+    }
+    auto is_word_char = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.'; };
+    std::string out;
+    std::size_t pos = 0;
+    while (pos < ir.size()) {
+        char c = ir[pos];
+        if (c == '"') { // String constants and quoted names are kept as they are
+            std::size_t end = ir.find('"', pos + 1);
+            end = end == std::string_view::npos ? ir.size() : end + 1;
+            out += ir.substr(pos, end - pos);
+            pos = end;
+            continue;
+        }
+        bool token_start = pos == 0 || ir[pos - 1] == ' ' || ir[pos - 1] == '(';
+        // A word, or a name with its prefix (%x, @f, #0, !dbg) so that names are never mistaken for attributes
+        std::size_t end = pos + 1;
+        if (is_word_char(c) || c == '%' || c == '@' || c == '#' || c == '!') {
+            while (end < ir.size() && is_word_char(ir[end])) end++;
+        }
+        std::string_view token = ir.substr(pos, end - pos);
+        bool drop = false;
+        if (token_start && c == '#' && token.size() > 1) { // Attribute group, e.g. "#3"
+            drop = std::ranges::all_of(token.substr(1), [](char d) { return std::isdigit(static_cast<unsigned char>(d)); });
+        } else if (token_start && c == '!' && token.size() > 1 && ir.substr(end).starts_with(" !")) { // Metadata attachment of a function, e.g. "!dbg !12"
+            drop = true;
+            end += 2;
+            while (end < ir.size() && is_word_char(ir[end])) end++;
+        } else if (token_start && std::ranges::contains(HINT_ATTRIBUTES, token)) {
+            drop = true;
+            if (end < ir.size() && ir[end] == '(') { // Argument in parentheses, e.g. "dereferenceable(8)"
+                for (int depth = 0; end < ir.size(); end++) {
+                    if (ir[end] == '(') depth++;
+                    else if (ir[end] == ')' && --depth == 0) break;
+                }
+                end = std::min(end + 1, ir.size());
+            } else if (token == "align" && ir.substr(end).starts_with(" ")) { // Alignment, e.g. "align 8"
+                end++;
+                while (end < ir.size() && std::isdigit(static_cast<unsigned char>(ir[end]))) end++;
+            }
+        }
+        if (!drop) {
+            out += token;
+            pos = end;
+            continue;
+        }
+        // Remove one space next to the dropped token, and a comma left without an operand (", align 4" at the end)
+        if (end < ir.size() && ir[end] == ' ') end++;
+        else if (out.ends_with(' ')) out.pop_back();
+        if (out.ends_with(',') && (end == ir.size() || ir[end] == ',')) out.pop_back();
+        pos = end;
+    }
+    return out;
+}
+
 // Marks the instruction lines of a printed function, so they can be filtered and given their source location
 class InstructionMarker : public AssemblyAnnotationWriter {
     public:
@@ -366,7 +436,7 @@ export class TraceTools {
                 raw_string_ostream os(ir);
                 entry.loc->print(os, MST);
                 ir.erase(0, ir.find_first_not_of(' '));
-                out += std::format("{:0>3} [{}] {}    ; {}\n", index, entry.info, ir, ContractPassUtility::getInstrLocStr(entry.loc, false));
+                out += std::format("{:0>3} [{}] {}    ; {}\n", index, entry.info, CompactIR(ir), ContractPassUtility::getInstrLocStr(entry.loc, false));
             }
             return out;
         }
@@ -431,7 +501,7 @@ export class TraceTools {
                 std::string_view line = std::string_view(printed).substr(pos, next - pos);
                 std::size_t mark = line.find(InstructionMarker::MARK);
                 if (mark == std::string_view::npos) {
-                    if (!filtered) lines.emplace_back(line);
+                    if (!filtered && !line.starts_with("; Function Attrs:")) lines.push_back(CompactIR(line));
                     else if (line.find(':') < line.find(' ')) label = line; // A label like "12:", followed by spaces and the predecessors
                     continue;
                 }
@@ -439,15 +509,7 @@ export class TraceTools {
                 int src_line = I->getDebugLoc() ? I->getDebugLoc().getLine() : 0;
                 if (filtered && (src_line < first_line.value_or(0) || src_line > last_line.value_or(std::numeric_limits<int>::max()))) continue;
                 if (!label.empty()) lines.push_back(std::exchange(label, ""));
-                // Without the metadata attachments (", !dbg !12, !tbaa !34"), which only matter to LLVM
-                std::string_view ir = line.substr(0, mark);
-                for (std::size_t attach = ir.find(", !"); attach != std::string_view::npos; attach = ir.find(", !", attach + 1)) {
-                    if (attach + 3 < ir.size() && std::isalpha(static_cast<unsigned char>(ir[attach + 3]))) {
-                        ir = ir.substr(0, attach);
-                        break;
-                    }
-                }
-                lines.push_back(std::format("{}    ; {}", ir, ContractPassUtility::getInstrLocStr(I, false)));
+                lines.push_back(std::format("{}    ; {}", CompactIR(line.substr(0, mark)), ContractPassUtility::getInstrLocStr(I, false)));
             }
 
             int num_lines = lines.size();
