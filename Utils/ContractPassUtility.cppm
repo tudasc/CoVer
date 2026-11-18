@@ -709,6 +709,47 @@ export Value* getValueByName(std::string name, Function* F) {
     return F->getParent()->getNamedValue(name.substr(1));
 }
 
+constexpr std::string_view REMOVED_ANNOT_FUNC = "CoVer_AnnotRemoved";
+
+void removeAnnot(CallBase* annot) {
+    FunctionType* removedType = FunctionType::get(Type::getVoidTy(curM->getContext()), true);
+    annot->setCalledFunction(curM->getOrInsertFunction(REMOVED_ANNOT_FUNC, removedType));
+}
+
+export bool isRemovedAnnot(Instruction const* I) {
+    CallBase const* CB = dyn_cast<CallBase>(I);
+    return CB && CB->getCalledOperand()->getName().str() == REMOVED_ANNOT_FUNC;
+}
+
+// Prints the module as if the removed annotations were already erased
+export void printWithoutRemovedAnnots(Module& M, raw_ostream& out) {
+    Function* removedFunc = M.getFunction(REMOVED_ANNOT_FUNC);
+    if (!removedFunc) return M.print(out, nullptr);
+    // Detach the removed annotations and the function for printing. Annotations are no terminators, so each has a next instruction to be reinserted before
+    std::vector<std::pair<Instruction*, Instruction*>> detached;
+    for (User* U : removedFunc->users()) {
+        Instruction* annot = dyn_cast<Instruction>(U);
+        if (!annot || !annot->getParent()) continue;
+        detached.push_back({annot, annot->getNextNode()});
+        annot->removeFromParent();
+    }
+    removedFunc->removeFromParent();
+    M.print(out, nullptr);
+    M.getFunctionList().push_back(removedFunc);
+    // Reverse order, so that the next instruction of each annotation is in place again when reinserting it
+    for (auto const& [annot, next] : std::views::reverse(detached)) annot->insertBefore(next->getIterator());
+}
+
+// Erases the removed annotations. Only valid once no trace refers to them anymore
+export void eraseRemovedAnnots(Module& M) {
+    Function* removedFunc = M.getFunction(REMOVED_ANNOT_FUNC);
+    if (!removedFunc) return;
+    for (User* U : make_early_inc_range(removedFunc->users())) {
+        if (Instruction* annot = dyn_cast<Instruction>(U)) annot->eraseFromParent();
+    }
+    removedFunc->eraseFromParent();
+}
+
 export void addToAliasGroup(int idx, Value* V) {
     if (aliasInfo[idx].members.contains(V)) return; // Need to do early return to not double-instrument
     aliasInfo[idx].members.insert(V);
@@ -755,9 +796,7 @@ export std::vector<CallBase*> getAliasEpochs(int group) {
     return res;
 }
 export void removeAliasEpoch(int group, int idx) {
-    CallBase* epoch = getAliasEpochs(group)[idx];
-    invalidateFunctionAnalyses(epoch->getFunction());
-    epoch->eraseFromParent();
+    removeAnnot(getAliasEpochs(group)[idx]);
 }
 
 export void removeFromAliasGroup(int group, int idx) {
@@ -768,17 +807,13 @@ export void removeFromAliasGroup(int group, int idx) {
             if (CB->getCalledOperand()->getName() != "CoVer_AnnotAlias") continue;
             if (CB->getArgOperand(0) != V) continue;
             if (dyn_cast<ConstantInt>(CB->getArgOperand(2))->getZExtValue() != group) continue;
-            invalidateFunctionAnalyses(CB->getFunction());
-            CB->eraseFromParent();
+            removeAnnot(CB);
             break;
         }
     }
     if (aliasInfo[group].members.empty()) {
         // Group is gone, delete its epochs
-        for (CallBase* CB : getAliasEpochs(group)) {
-            invalidateFunctionAnalyses(CB->getFunction());
-            CB->eraseFromParent();
-        }
+        for (CallBase* CB : getAliasEpochs(group)) removeAnnot(CB);
         aliasInfo.erase(group);
     }
 }
@@ -797,7 +832,7 @@ export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     // Replace the current annotation. The new one is placed directly before the call, where the called value is available
     CallBase* old = getFPAnnotCall(indirect);
     invalidateFunctionAnalyses(indirect->getFunction());
-    if (old) old->eraseFromParent();
+    if (old) removeAnnot(old);
     if (targets.empty()) return;
 
     std::vector<Value*> args = {indirect->getCalledOperand(), getInt(targets.size())};

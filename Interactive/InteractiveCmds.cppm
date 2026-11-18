@@ -301,7 +301,7 @@ CmdResult CmdPatch(std::vector<std::string> const& args, TraceSession& session, 
 CmdResult CmdDump(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
     std::error_code EC;
     raw_fd_ostream out(args[0], EC);
-    session.GetModule()->print(out, nullptr);
+    ContractPassUtility::printWithoutRemovedAnnots(*session.GetModule(), out);
     out << "\n";
     return {CmdResultCode::SUCCESS_CONTINUE, "Wrote module IR to " + args[0]};
 }

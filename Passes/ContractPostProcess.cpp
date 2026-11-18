@@ -162,6 +162,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
         bool reanalyse = InteractiveUI::ResultsScreen(ViolatedContracts, DB->reports, DB->debugHandlers, runtime);
         if (!reanalyse) InteractiveUtils::removeInteractiveFiles();
         else exit(0);
+        ContractPassUtility::eraseRemovedAnnots(M);
     }
 
     // Write json to file and database

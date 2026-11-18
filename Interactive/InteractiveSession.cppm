@@ -187,10 +187,10 @@ export class TraceSession {
 };
 
 // Current module, used as input for reanalysis and diffing
-void WriteReanalyseModule(Module const* M) {
+void WriteReanalyseModule(Module* M) {
     std::error_code rc;
     raw_fd_stream reanalyse_file(InteractiveUtils::REANALYSE_FILE, rc);
-    M->print(reanalyse_file, nullptr);
+    ContractPassUtility::printWithoutRemovedAnnots(*M, reanalyse_file);
 }
 
 // Follows single predecessors up to the end of a linear part of the trace, stopping at any entry reached non-linearly
@@ -217,6 +217,7 @@ class TraceSessionImpl : public TraceSession {
             std::map<JumpTraceEntry<T>*, int> block_starts;
             JumpTraceEntry<T>* first = trace;
             while (first) {
+                first = FirstVisible(first);
                 JumpTraceEntry<T>* last = getLinearTraceEnd(first);
                 TraceBlockView view = {
                     .index = static_cast<int>(blocks.size()),
@@ -234,7 +235,7 @@ class TraceSessionImpl : public TraceSession {
                     block_starts[first] = view.index;
                     view.description = std::format("From {} to {}", view.start_loc, view.end_loc);
                     view.selected_child = sibling_select.contains(last) ? sibling_select[last] : 0;
-                    for (JumpTraceEntry<T>* child : last->predecessors) view.children.push_back(EntryView(child));
+                    for (JumpTraceEntry<T>* child : last->predecessors) view.children.push_back(EntryView(FirstVisible(child)));
                     if (!view.children.empty()) {
                         view.description += std::format(" then {}", InteractiveUtils::traceKindToStr(last->kind));
                         if (view.children.size() > 1) view.description += std::format(" [Viewing Child {}/{}]", view.selected_child, view.children.size() - 1);
@@ -250,12 +251,8 @@ class TraceSessionImpl : public TraceSession {
         std::vector<TraceBlockView> const& Blocks() const override { return blocks; }
 
         std::vector<TraceEntryView> BlockEntries(int block) const override {
-            std::vector<TraceEntryView> entries = {EntryView(ranges[block].first)};
-            for (JumpTraceEntry<T>* entry = ranges[block].first; entry != ranges[block].last;) {
-                entry = entry->predecessors[0];
-                entries.push_back(EntryView(entry));
-            }
-            return entries;
+            return VisibleEntries(ranges[block].first, ranges[block].last)
+                 | std::views::transform([this](JumpTraceEntry<T> const* entry) { return EntryView(entry); }) | std::ranges::to<std::vector>();
         }
 
         int NumChildren(int block) const override { return ranges[block].last->predecessors.size(); }
@@ -282,6 +279,21 @@ class TraceSessionImpl : public TraceSession {
         std::vector<TraceBlockView> blocks;
 
         TraceEntryView EntryView(JumpTraceEntry<T> const* entry) const { return {entry->loc, infoToStr(entry->analysisInfo)}; }
+
+        // Filter traces to relevant (i.e. without removed annots)
+        static std::vector<JumpTraceEntry<T>*> VisibleEntries(JumpTraceEntry<T>* first, JumpTraceEntry<T>* last) {
+            std::vector<JumpTraceEntry<T>*> entries = {first};
+            for (JumpTraceEntry<T>* entry = first; entry != last;) {
+                entry = entry->predecessors[0];
+                entries.push_back(entry);
+            }
+            std::vector<JumpTraceEntry<T>*> visible = entries
+                | std::views::filter([](JumpTraceEntry<T> const* entry) { return !ContractPassUtility::isRemovedAnnot(entry->loc); }) | std::ranges::to<std::vector>();
+            return visible.empty() ? entries : visible;
+        }
+
+        // First visible entry of the linear part starting at entry. Its linear end is the same as that of entry
+        static JumpTraceEntry<T>* FirstVisible(JumpTraceEntry<T>* entry) { return VisibleEntries(entry, getLinearTraceEnd(entry)).front(); }
 
         static std::string StartLoc(JumpTraceEntry<T> const* first) {
             std::string loc = ContractPassUtility::getInstrLocStr(first->loc, false);
