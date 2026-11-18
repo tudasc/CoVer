@@ -71,6 +71,25 @@ std::expected<Instruction*, std::string> ParseTraceInstr(std::string_view s, int
     return I;
 }
 
+std::expected<Function*, std::string> ParseValueFunction(std::string_view s, TraceSession const& session) {
+    if (ContractPassUtility::parseInt(s)) {
+        std::expected<int, std::string> block = ParseBlock(s, session);
+        if (!block) return std::unexpected(block.error());
+        return session.BlockFunction(*block);
+    }
+    if (s.starts_with("@")) s.remove_prefix(1);
+    Function* F = session.GetModule()->getFunction(s);
+    if (!F) return std::unexpected(std::format("No function named {} in the module!", s));
+    if (F->isDeclaration()) return std::unexpected(std::format("Function {} is only declared, it has no values to annotate!", s));
+    return F;
+}
+
+std::expected<Value*, std::string> ParseValue(std::string const& name, Function* F) {
+    Value* V = ContractPassUtility::getValueByName(name, F);
+    if (!V) return std::unexpected(std::format("Could not identify value {} in function {}", name, F->getName().str()));
+    return V;
+}
+
 std::expected<int, std::string> ParseAliasGroup(std::string_view s) {
     std::expected<int, std::string> group = ParseIntArg(s, "Group");
     if (group && !ContractPassUtility::getAliasAnnots().contains(*group))
@@ -155,26 +174,27 @@ CmdResult CmdAliasCreate(std::vector<std::string> const& args, TraceSession& ses
         return {CmdResultCode::INVALID_INPUT, "Unknown alias type " + args[0]};
     }
     bool isAlias = args[0].starts_with("y");
-    std::expected<int, std::string> block1 = ParseBlock(args[1], session);
-    if (!block1) return {CmdResultCode::INVALID_INPUT, block1.error()};
-    std::expected<int, std::string> block2 = ParseBlock(args[3], session);
-    if (!block2) return {CmdResultCode::INVALID_INPUT, block2.error()};
-    Value* V1 = ContractPassUtility::getValueByName(args[2], session.BlockFunction(*block1));
-    Value* V2 = ContractPassUtility::getValueByName(args[4], session.BlockFunction(*block2));
-    if (!V1 || !V2) { return {CmdResultCode::INVALID_INPUT, "Could not identify value " + (!V1 ? args[2] : args[4])}; }
-    ContractPassUtility::createAliasGroup(isAlias, V1, V2);
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Values {} and {} {} alias", V1->getNameOrAsOperand(), V2->getNameOrAsOperand(), isAlias ? "should" : "should not")};
+    std::expected<Function*, std::string> F1 = ParseValueFunction(args[1], session);
+    if (!F1) return {CmdResultCode::INVALID_INPUT, F1.error()};
+    std::expected<Function*, std::string> F2 = ParseValueFunction(args[3], session);
+    if (!F2) return {CmdResultCode::INVALID_INPUT, F2.error()};
+    std::expected<Value*, std::string> V1 = ParseValue(args[2], *F1);
+    if (!V1) return {CmdResultCode::INVALID_INPUT, V1.error()};
+    std::expected<Value*, std::string> V2 = ParseValue(args[4], *F2);
+    if (!V2) return {CmdResultCode::INVALID_INPUT, V2.error()};
+    ContractPassUtility::createAliasGroup(isAlias, *V1, *V2);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Values {} and {} {} alias", (*V1)->getNameOrAsOperand(), (*V2)->getNameOrAsOperand(), isAlias ? "should" : "should not")};
 }
 
 CmdResult CmdAliasAdd(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
     std::expected<int, std::string> group = ParseAliasGroup(args[0]);
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
-    std::expected<int, std::string> block = ParseBlock(args[1], session);
-    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
-    Value* V = ContractPassUtility::getValueByName(args[2], session.BlockFunction(*block));
-    if (!V) { return {CmdResultCode::INVALID_INPUT, "Could not identify value " + args[2]}; }
-    ContractPassUtility::addToAliasGroup(*group, V);
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Values {} added to alias group {}", V->getNameOrAsOperand(), *group)};
+    std::expected<Function*, std::string> F = ParseValueFunction(args[1], session);
+    if (!F) return {CmdResultCode::INVALID_INPUT, F.error()};
+    std::expected<Value*, std::string> V = ParseValue(args[2], *F);
+    if (!V) return {CmdResultCode::INVALID_INPUT, V.error()};
+    ContractPassUtility::addToAliasGroup(*group, *V);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Values {} added to alias group {}", (*V)->getNameOrAsOperand(), *group)};
 }
 
 CmdResult CmdAliasType(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
@@ -356,13 +376,13 @@ std::vector<CmdInfo> const TraceCommands = {
     {"show",          "[source|ir] [block num]",                                  "Present a preview of IR or a source code approximation of a block", 2, CmdAccess::USER, CmdShow},
     {"toggle-view",   "",                                                         "Toggle whether expanded blocks are shown as IR or a source code approximation", 0, CmdAccess::USER, CmdToggleView},
     {"fp-target",     "[block num] [instr num]",                                  "Annotate possible function pointer target(s)", 2, CmdAccess::USER, CmdFpTarget},
-    {"alias-create",  "[yes|no] [block num 1] [value 1] [block num 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group.", 5, CmdAccess::ANY, CmdAliasCreate},
-    {"alias-add",     "[group num] [block num] [value]",                          "Add a value to an existing alias group", 3, CmdAccess::ANY, CmdAliasAdd},
+    {"alias-create",  "[yes|no] [block num|function 1] [value 1] [block num|function 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group. Values are looked up in the given function, or in the function of the given block.", 5, CmdAccess::ANY, CmdAliasCreate},
+    {"alias-add",     "[group num] [block num|function] [value]",                 "Add a value to an existing alias group. The value is looked up in the given function, or in the function of the given block.", 3, CmdAccess::ANY, CmdAliasAdd},
     {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAccess::ANY, CmdAliasType},
     {"alias-rm",      "[group num] [value num|e<epoch num>]",                     "Remove a value or an epoch (prefixed with e) from an existing alias group (by index in group, see alias-get)", 2, CmdAccess::ANY, CmdAliasRm},
     {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAccess::ANY, CmdAliasEpoch},
     {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAccess::ANY, CmdAliasGet},
-    {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size)", 3, CmdAccess::ANY, CmdAllocCreate},
+    {"alloc-create",  "[block num|function] [instr num|value] [size]",            "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size). The instruction is given by block and instruction number, or by function and value name.", 3, CmdAccess::ANY, CmdAllocCreate},
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdAccess::USER, CmdReanalyse},
     {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdAccess::USER, CmdDiff},
     {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdAccess::USER, CmdPatch},
