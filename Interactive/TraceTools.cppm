@@ -62,6 +62,7 @@ std::vector<ToolSpec> SpecsOf(std::vector<Tool<Target>> const& tools) {
 
 constexpr std::size_t MAX_TOOL_OUTPUT = 60000; // Characters
 constexpr int MAX_SOURCE_LINES = 400;
+constexpr int MAX_IR_LINES = 500;
 
 // Whether the model may run the command line. Others are run by the user only (see CmdAccess); show_block and get_trace
 // provide what the view commands show in a form suited for the model, and set_fp_targets replaces the interactive fp-target.
@@ -179,6 +180,21 @@ export ToolResult AnnotationDocs(Json::Value const& input) {
     return {out, false, std::format("{} {}", DOCS_TOOL, topic.value_or("(all)"))};
 }
 
+// Marks the instruction lines of a printed function, so they can be filtered and given their source location
+class InstructionMarker : public AssemblyAnnotationWriter {
+    public:
+        static constexpr char MARK = '\x1f'; // Printed IR escapes control characters in strings, so it only occurs as the marker
+
+        std::vector<Instruction const*> instructions; // In the order of the marked lines
+
+        void printInfoComment(Value const& V, formatted_raw_ostream& os) override {
+            if (Instruction const* I = dyn_cast<Instruction>(&V)) {
+                os << MARK;
+                instructions.push_back(I);
+            }
+        }
+};
+
 // Runs the tools on a trace session. Not thread safe, use from the UI thread only.
 export class TraceTools {
     public:
@@ -255,8 +271,12 @@ export class TraceTools {
                 {{"read_source", "Read lines of one of the program's source files. Files are matched by full path or file name.",
                   Schema({{"file", "string", "Path or file name"}, {"first_line", "integer", "First line, 1-based (default 1)"}, {"last_line", "integer", "Last line, inclusive"}}, {"file"})},
                  [](TraceTools& t, Json::Value const& input) { return t.ReadSource(input); }},
-                {{"get_function_ir", "LLVM IR of a whole function, e.g. to find value names for alias annotations or to inspect code outside of the trace.",
-                  Schema({{"function", "string", "Function name as in the IR (mangled for C++)"}}, {"function"})},
+                {{"get_function_ir", "LLVM IR of a function with the source location of each instruction, e.g. to find value names for alias annotations or to inspect code outside of the trace. "
+                                     "Long functions are returned in parts (see offset); restrict the output to a range of source lines to find values quickly.",
+                  Schema({{"function", "string", "Function name as in the IR (mangled for C++)"},
+                          {"first_line", "integer", "Only instructions of this source line and later"},
+                          {"last_line", "integer", "Only instructions up to this source line, inclusive"},
+                          {"offset", "integer", "First line of the output to return, to continue a long output (default 0)"}}, {"function"})},
                  [](TraceTools& t, Json::Value const& input) { return t.FunctionIR(input); }},
                 {{"list_functions", "Functions of the module, e.g. candidates for function pointer targets.",
                   Schema({{"filter", "string", "Only list functions whose name contains this text"}}, {})},
@@ -394,10 +414,50 @@ export class TraceTools {
             if (!name) return {"Missing string argument function", true, "get_function_ir"};
             Function const* F = session.GetModule()->getFunction(*name);
             if (!F) return {std::format("No function named {} in the module, see list_functions", *name), true, "get_function_ir " + *name};
-            std::string ir;
-            raw_string_ostream os(ir);
-            F->print(os);
-            return {ir, false, "get_function_ir " + *name};
+            std::optional<int> first_line = GetInt(input, "first_line");
+            std::optional<int> last_line = GetInt(input, "last_line");
+            bool filtered = first_line || last_line;
+
+            // Printed by LLVM, so the value names are those the commands take
+            InstructionMarker marker;
+            std::string printed;
+            raw_string_ostream os(printed);
+            F->print(os, &marker);
+            std::vector<std::string> lines;
+            std::string label; // Of the current basic block, shown before its first instruction in the line range
+            int instr = 0;
+            for (std::size_t pos = 0, next; pos < printed.size(); pos = next + 1) {
+                next = std::min(printed.find('\n', pos), printed.size());
+                std::string_view line = std::string_view(printed).substr(pos, next - pos);
+                std::size_t mark = line.find(InstructionMarker::MARK);
+                if (mark == std::string_view::npos) {
+                    if (!filtered) lines.emplace_back(line);
+                    else if (line.find(':') < line.find(' ')) label = line; // A label like "12:", followed by spaces and the predecessors
+                    continue;
+                }
+                Instruction const* I = marker.instructions[instr++];
+                int src_line = I->getDebugLoc() ? I->getDebugLoc().getLine() : 0;
+                if (filtered && (src_line < first_line.value_or(0) || src_line > last_line.value_or(std::numeric_limits<int>::max()))) continue;
+                if (!label.empty()) lines.push_back(std::exchange(label, ""));
+                // Without the metadata attachments (", !dbg !12, !tbaa !34"), which only matter to LLVM
+                std::string_view ir = line.substr(0, mark);
+                for (std::size_t attach = ir.find(", !"); attach != std::string_view::npos; attach = ir.find(", !", attach + 1)) {
+                    if (attach + 3 < ir.size() && std::isalpha(static_cast<unsigned char>(ir[attach + 3]))) {
+                        ir = ir.substr(0, attach);
+                        break;
+                    }
+                }
+                lines.push_back(std::format("{}    ; {}", ir, ContractPassUtility::getInstrLocStr(I, false)));
+            }
+
+            int num_lines = lines.size();
+            int first = std::max(0, GetInt(input, "offset").value_or(0));
+            if (first >= num_lines) return {std::format("No lines from offset {}, the output has {} lines", first, num_lines), true, "get_function_ir " + *name};
+            int last = std::min(num_lines, first + MAX_IR_LINES);
+            std::string out = std::format("IR of {} with the source location of each instruction, lines {}-{} of {}:\n", F->getName().str(), first, last - 1, num_lines);
+            for (int i = first; i < last; i++) out += lines[i] + "\n";
+            if (last < num_lines) out += std::format("[Stopped after {} lines, call again with offset {} for the rest]\n", MAX_IR_LINES, last);
+            return {out, false, std::format("get_function_ir {} from {}", *name, first)};
         }
 
         ToolResult ListFunctions(Json::Value const& input) {

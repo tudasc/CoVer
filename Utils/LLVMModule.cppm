@@ -18,6 +18,8 @@ module;
 #include <llvm/ADT/STLExtras.h>
 #include <llvm/ADT/PostOrderIterator.h>
 #include <llvm/IR/ModuleSlotTracker.h>
+#include <llvm/IR/AssemblyAnnotationWriter.h>
+#include <llvm/Support/FormattedStream.h>
 #include <llvm/Support/WithColor.h>
 #include <llvm/IR/PassManager.h>
 #include <llvm/Analysis/MemorySSA.h>
@@ -111,6 +113,8 @@ export namespace llvm {
     using llvm::getLoadStorePointerOperand;
     using llvm::ReversePostOrderTraversal;
     using llvm::ModuleSlotTracker;
+    using llvm::AssemblyAnnotationWriter;
+    using llvm::formatted_raw_ostream;
     using llvm::WithColor;
     using llvm::HighlightColor;
     using llvm::DenseMap;
