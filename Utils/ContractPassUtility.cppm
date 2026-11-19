@@ -121,6 +121,18 @@ export std::string getValueName(Value const* V) {
     return slot >= 0 ? std::format("%{}", slot) : V->getNameOrAsOperand();
 }
 
+// The value as printed in the IR, numbered with the shared tracker so that printing many values of a function stays linear
+export std::string printValue(Value const* V) {
+    std::string out;
+    raw_string_ostream os(out);
+    Function const* F = nullptr;
+    if (Instruction const* I = dyn_cast<Instruction>(V)) F = I->getFunction();
+    else if (Argument const* A = dyn_cast<Argument>(V)) F = A->getParent();
+    if (F) V->print(os, slotTracker.getSlotTracker(*F));
+    else V->print(os);
+    return out;
+}
+
 // Whether both values are computed the same way from the same values, e.g. two loads of a variable
 // without a store to it in between, or two GEPs into the same array with equivalent indices
 export bool equivalentValues(Value const* A, Value const* B) {

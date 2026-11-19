@@ -168,7 +168,7 @@ Every contract requirement is checked by a forward dataflow analysis over the in
 # Annotations
 Annotations are assumptions the static analysis trusts without checking. They do not change the program's behaviour, but they can make the analysis accept wrong code, so only add one when the program's semantics clearly justify it. They can be checked at runtime with CoVer's annotation verifier.
 - Function pointer targets (set_fp_targets tool): the analysis cannot follow indirect calls. Annotating the possible targets of an indirect call lets it analyse them. Annotate all functions the pointer can actually point to, as determined from the source.
-- Alias annotations (alias-create, alias-add, alias-type, alias-rm, alias-epoch): when alias analysis is imprecise, parameters of calls cannot be matched (e.g. the request passed to MPI_Wait is not recognised as the one from MPI_Isend). Values in a group are asserted to alias (yes) or not to alias (no). Each value is given by a function and its name in that function's IR (%name, %42, or @global for globals), e.g. `alias-add 0 _Z4sendPi %42`. alias-add takes any number of values of the same function, e.g. `alias-add 0 _Z4sendPi %42 %57 %63`. Instead of the function name, a block number of the trace can be given, which stands for the function containing the block. Prefer function names: block numbers change when another trace is opened or another child is selected, and a value need not be on the trace to be annotated. An epoch (alias-epoch) placed before an instruction forgets the values of the group seen so far, for memory that is reused over time, such as request arrays reused in every communication round.
+- Alias annotations (alias-create, alias-add, alias-type, alias-rm, alias-epoch): when alias analysis is imprecise, parameters of calls cannot be matched (e.g. the request passed to MPI_Wait is not recognised as the one from MPI_Isend). Values in a group are asserted to alias (yes) or not to alias (no). Each value is given by a function and its name in that function's IR (%name, %42, or @global for globals), e.g. `alias-add 0 _Z4sendPi %42`. alias-add takes any number of values of the same function, e.g. `alias-add 0 _Z4sendPi %42 %57 %63`. Instead of the function name, a block number of the trace can be given, which stands for the function containing the block. Prefer function names: block numbers change when another trace is opened or another child is selected, and a value need not be on the trace to be annotated. An epoch (alias-epoch) placed before an instruction forgets the values of the group seen so far, for memory that is reused over time, such as request arrays reused in every communication round. alias-rm removes several members or epochs at once, given as indices and ranges that all refer to the numbering before the removal (`alias-rm 3 0 4-9 e1`). alias-get takes group numbers to show only those groups.
 - Allocation annotations (alloc-create): the analysis tracks allocated pointers through stores, loads and GEPs, but not through integer arithmetic or opaque calls. Annotating the instruction producing a pointer asserts the pointer refers to memory allocated with at least the given number of bytes (0 if unknown, never more than actually allocated).
 New annotations do not affect the current trace, they take effect with the next reanalysis.
 The get_annotation_docs tool returns CoVer's documentation of each annotation kind, with examples and constraints, e.g. how far a source level alias annotation reaches. It shows annotations as calls in the IR or the source code (CoVer_AnnotAlias, ...), which is how they end up in the program. In the trace debugger, add them with the commands above instead. Read the documentation of an annotation kind before using it for the first time.
@@ -203,76 +203,6 @@ export ToolResult AnnotationDocs(Json::Value const& input) {
     }
     if (out.empty()) return {std::format("Unknown topic {}, see the tool description", *topic), true, std::format("{} {}  ->  unknown topic", DOCS_TOOL, *topic)};
     return {out, false, std::format("{} {}", DOCS_TOOL, topic.value_or("(all)"))};
-}
-
-// Attributes that only inform LLVM's optimisations, left out of the IR shown to the model. Attributes changing how a
-// value is passed (byval, sret, ...) and noalias, which concerns aliasing, are kept.
-constexpr std::array HINT_ATTRIBUTES = std::to_array<std::string_view>({
-    "align", "captures", "dead_on_return", "dead_on_unwind", "dereferenceable", "dereferenceable_or_null", "immarg", "initializes", "inreg",
-    "nocapture", "nofpclass", "nofree", "noext", "nonnull", "noundef", "range", "readnone", "readonly", "returned", "signext", "writable",
-    "writeonly", "zeroext"});
-
-// A line of printed IR without metadata attachments (", !dbg !12"), attribute group references (#0), alignment
-// (", align 4") and the HINT_ATTRIBUTES of parameters and return values, which only matter to LLVM
-export std::string CompactIR(std::string_view ir) {
-    // Metadata attachments of instructions come last
-    for (std::size_t attach = ir.find(", !"); attach != std::string_view::npos; attach = ir.find(", !", attach + 1)) {
-        if (attach + 3 < ir.size() && std::isalpha(static_cast<unsigned char>(ir[attach + 3]))) {
-            ir = ir.substr(0, attach);
-            break;
-        }
-    }
-    auto is_word_char = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_' || c == '.'; };
-    std::string out;
-    std::size_t pos = 0;
-    while (pos < ir.size()) {
-        char c = ir[pos];
-        if (c == '"') { // String constants and quoted names are kept as they are
-            std::size_t end = ir.find('"', pos + 1);
-            end = end == std::string_view::npos ? ir.size() : end + 1;
-            out += ir.substr(pos, end - pos);
-            pos = end;
-            continue;
-        }
-        bool token_start = pos == 0 || ir[pos - 1] == ' ' || ir[pos - 1] == '(';
-        // A word, or a name with its prefix (%x, @f, #0, !dbg) so that names are never mistaken for attributes
-        std::size_t end = pos + 1;
-        if (is_word_char(c) || c == '%' || c == '@' || c == '#' || c == '!') {
-            while (end < ir.size() && is_word_char(ir[end])) end++;
-        }
-        std::string_view token = ir.substr(pos, end - pos);
-        bool drop = false;
-        if (token_start && c == '#' && token.size() > 1) { // Attribute group, e.g. "#3"
-            drop = std::ranges::all_of(token.substr(1), [](char d) { return std::isdigit(static_cast<unsigned char>(d)); });
-        } else if (token_start && c == '!' && token.size() > 1 && ir.substr(end).starts_with(" !")) { // Metadata attachment of a function, e.g. "!dbg !12"
-            drop = true;
-            end += 2;
-            while (end < ir.size() && is_word_char(ir[end])) end++;
-        } else if (token_start && std::ranges::contains(HINT_ATTRIBUTES, token)) {
-            drop = true;
-            if (end < ir.size() && ir[end] == '(') { // Argument in parentheses, e.g. "dereferenceable(8)"
-                for (int depth = 0; end < ir.size(); end++) {
-                    if (ir[end] == '(') depth++;
-                    else if (ir[end] == ')' && --depth == 0) break;
-                }
-                end = std::min(end + 1, ir.size());
-            } else if (token == "align" && ir.substr(end).starts_with(" ")) { // Alignment, e.g. "align 8"
-                end++;
-                while (end < ir.size() && std::isdigit(static_cast<unsigned char>(ir[end]))) end++;
-            }
-        }
-        if (!drop) {
-            out += token;
-            pos = end;
-            continue;
-        }
-        // Remove one space next to the dropped token, and a comma left without an operand (", align 4" at the end)
-        if (end < ir.size() && ir[end] == ' ') end++;
-        else if (out.ends_with(' ')) out.pop_back();
-        if (out.ends_with(',') && (end == ir.size() || ir[end] == ',')) out.pop_back();
-        pos = end;
-    }
-    return out;
 }
 
 // Marks the instruction lines of a printed function, so they can be filtered and given their source location
@@ -415,7 +345,7 @@ std::string ShowBlock(TraceSession const& trace, int block, bool source) {
         raw_string_ostream os(ir);
         entry.loc->print(os, MST);
         ir.erase(0, ir.find_first_not_of(' '));
-        out += std::format("{:0>3} [{}] {}    ; {}\n", index, entry.info, CompactIR(ir), ContractPassUtility::getInstrLocStr(entry.loc, false));
+        out += std::format("{:0>3} [{}] {}    ; {}\n", index, entry.info, InteractiveUtils::CompactIR(ir), ContractPassUtility::getInstrLocStr(entry.loc, false));
     }
     return out;
 }
@@ -491,7 +421,7 @@ ToolResult FunctionIR(Module const& module, Json::Value const& input) {
         std::string_view line = std::string_view(printed).substr(pos, next - pos);
         std::size_t mark = line.find(InstructionMarker::MARK);
         if (mark == std::string_view::npos) {
-            if (!filtered && !line.starts_with("; Function Attrs:")) lines.push_back(CompactIR(line));
+            if (!filtered && !line.starts_with("; Function Attrs:")) lines.push_back(InteractiveUtils::CompactIR(line));
             else if (line.find(':') < line.find(' ')) label = line; // A label like "12:", followed by spaces and the predecessors
             continue;
         }
@@ -499,7 +429,7 @@ ToolResult FunctionIR(Module const& module, Json::Value const& input) {
         int src_line = I->getDebugLoc() ? I->getDebugLoc().getLine() : 0;
         if (filtered && (src_line < first_line.value_or(0) || src_line > last_line.value_or(std::numeric_limits<int>::max()))) continue;
         if (!label.empty()) lines.push_back(std::exchange(label, ""));
-        lines.push_back(std::format("{}    ; {}", CompactIR(line.substr(0, mark)), ContractPassUtility::getInstrLocStr(I, false)));
+        lines.push_back(std::format("{}    ; {}", InteractiveUtils::CompactIR(line.substr(0, mark)), ContractPassUtility::getInstrLocStr(I, false)));
     }
 
     int num_lines = lines.size();

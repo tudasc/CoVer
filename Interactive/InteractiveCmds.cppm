@@ -97,6 +97,10 @@ std::expected<Value*, std::string> ParseValue(std::string const& name, Function*
     return V;
 }
 
+std::string JoinNames(std::vector<std::string> const& names) {
+    return names | std::views::join_with(std::string_view(", ")) | std::ranges::to<std::string>();
+}
+
 std::expected<int, std::string> ParseAliasGroup(std::string_view s) {
     std::expected<int, std::string> group = ParseIntArg(s, "Group");
     if (group && !ContractPassUtility::getAliasAnnots().contains(*group))
@@ -215,9 +219,8 @@ CmdResult CmdAliasAdd(std::vector<std::string> const& args, TraceSession& sessio
         (ContractPassUtility::getAliasAnnots().at(*group).members.contains(V) ? present : added).push_back(name);
         ContractPassUtility::addToAliasGroup(*group, V);
     }
-    auto join = [](std::vector<std::string> const& names) { return names | std::views::join_with(std::string_view(", ")) | std::ranges::to<std::string>(); };
-    std::string res = added.empty() ? std::format("No values added to alias group {}", *group) : std::format("Values {} added to alias group {}", join(added), *group);
-    if (!present.empty()) res += std::format(", already in the group: {}", join(present));
+    std::string res = added.empty() ? std::format("No values added to alias group {}", *group) : std::format("Values {} added to alias group {}", JoinNames(added), *group);
+    if (!present.empty()) res += std::format(", already in the group: {}", JoinNames(present));
     return {CmdResultCode::SUCCESS_CONTINUE, res};
 }
 
@@ -232,24 +235,40 @@ CmdResult CmdAliasType(std::vector<std::string> const& args, TraceSession& sessi
 CmdResult CmdAliasRm(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
     std::expected<int, std::string> group = ParseAliasGroup(args[0]);
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
-    if (args[1].starts_with("e")) {
-        std::expected<int, std::string> idx = ParseIntArg(std::string_view(args[1]).substr(1), "Epoch index");
-        if (!idx) return {CmdResultCode::INVALID_INPUT, idx.error()};
-        int num_epochs = ContractPassUtility::getAliasEpochs(*group).size();
-        if (*idx < 0 || *idx >= num_epochs) {
-            return {CmdResultCode::INVALID_INPUT, std::format("Epoch index must be between e0 and e{}", num_epochs - 1)};
-        }
-        ContractPassUtility::removeAliasEpoch(*group, *idx);
-        return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias epoch {:>3}.e{:0>2}", *group, *idx)};
+    std::set<Value*, std::less<>> const& members = ContractPassUtility::getAliasAnnots().at(*group).members;
+    int num_epochs = ContractPassUtility::getAliasEpochs(*group).size();
+    // All indices are checked before removing any, so that a wrong one leaves the group as it is
+    std::set<int> member_indices;
+    std::set<int> epoch_indices;
+    for (std::string const& arg : args | std::views::drop(1)) {
+        // An index or a range like 2-5, prefixed with e for epochs
+        bool epoch = arg.starts_with("e");
+        std::string_view prefix = epoch ? "e" : "";
+        std::string_view what = epoch ? "Epoch index" : "Group member index";
+        int num_entries = epoch ? num_epochs : members.size();
+        std::string_view range = std::string_view(arg).substr(prefix.size());
+        std::size_t dash = range.find('-', 1); // Not a leading minus
+        std::expected<int, std::string> first = ParseIntArg(range.substr(0, dash), what);
+        if (!first) return {CmdResultCode::INVALID_INPUT, first.error()};
+        std::expected<int, std::string> last = dash == std::string_view::npos ? first : ParseIntArg(range.substr(dash + 1), what);
+        if (!last) return {CmdResultCode::INVALID_INPUT, last.error()};
+        if (*first > *last) return {CmdResultCode::INVALID_INPUT, std::format("Invalid range {}, the first index is larger than the last", arg)};
+        if (num_entries == 0) return {CmdResultCode::INVALID_INPUT, std::format("The alias group has no {}", epoch ? "epochs" : "members")};
+        if (*first < 0 || *last >= num_entries) return {CmdResultCode::INVALID_INPUT, std::format("{} must be between {}0 and {}{}", what, prefix, prefix, num_entries - 1)};
+        std::set<int>& indices = epoch ? epoch_indices : member_indices;
+        for (int idx = *first; idx <= *last; idx++) indices.insert(idx);
     }
-    std::expected<int, std::string> idx = ParseIntArg(args[1], "Group member index");
-    if (!idx) return {CmdResultCode::INVALID_INPUT, idx.error()};
-    int num_members = ContractPassUtility::getAliasAnnots().at(*group).members.size();
-    if (*idx < 0 || *idx >= num_members) {
-        return {CmdResultCode::INVALID_INPUT, std::format("Group member index must be between 0 and {}", num_members - 1)};
-    }
-    ContractPassUtility::removeFromAliasGroup(*group, *idx);
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed alias annotation {:>3}.{:0>3}", *group, *idx)};
+    // Named before the edits, which shift the indices of the following entries and discard the value numbering
+    std::vector<std::string> removed;
+    for (int idx : member_indices) removed.push_back(std::format("{}.{:0>3} ({})", *group, idx, ContractPassUtility::getValueName(*std::next(members.begin(), idx))));
+    for (int idx : epoch_indices) removed.push_back(std::format("{}.e{:0>2} (epoch)", *group, idx));
+    bool deletes_group = member_indices.size() == members.size();
+    // Backwards, so that the indices still to be removed stay valid. Epochs first, removing the last member deletes the group with its epochs.
+    for (int idx : epoch_indices | std::views::reverse) ContractPassUtility::removeAliasEpoch(*group, idx);
+    for (int idx : member_indices | std::views::reverse) ContractPassUtility::removeFromAliasGroup(*group, idx);
+    std::string res = std::format("Removed from alias group {}: {}", *group, JoinNames(removed));
+    if (deletes_group) res += ". The group has no members left and was deleted with its epochs";
+    return {CmdResultCode::SUCCESS_CONTINUE, res};
 }
 
 CmdResult CmdAliasEpoch(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
@@ -267,17 +286,29 @@ export struct AliasGroupEntry {
     std::string arg; // Index as accepted by alias-rm
     std::string label; // Padded index
     std::string text;
+    std::string function; // Of a member that is an instruction or argument, empty otherwise
 };
+
+// A member of an alias group as compact IR with its source location. Globals only by name, their initialiser may be long.
+std::string AliasMemberText(Value const* V) {
+    if (GlobalValue const* GV = dyn_cast<GlobalValue>(V)) return std::format("@{}    ; global", GV->getName().str());
+    std::string ir = InteractiveUtils::CompactIR(ContractPassUtility::printValue(V));
+    ir.erase(0, ir.find_first_not_of(' '));
+    if (Argument const* A = dyn_cast<Argument>(V)) return std::format("{}    ; argument {}", ir, A->getArgNo());
+    Instruction const* I = dyn_cast<Instruction>(V);
+    if (I && I->getDebugLoc()) return std::format("{}    ; {}", ir, ContractPassUtility::getInstrLocStr(I, false));
+    return ir;
+}
 
 // Members followed by epochs of an alias group
 export std::vector<AliasGroupEntry> getAliasGroupEntries(int group) {
     std::vector<AliasGroupEntry> entries;
     int num = 0;
     for (Value const* V : ContractPassUtility::getAliasAnnots().at(group).members) {
-        std::string out;
-        raw_string_ostream strstream(out);
-        V->print(strstream);
-        entries.push_back({std::to_string(num), std::format("{:0>3}", num), out});
+        Function const* F = nullptr;
+        if (Instruction const* I = dyn_cast<Instruction>(V)) F = I->getFunction();
+        else if (Argument const* A = dyn_cast<Argument>(V)) F = A->getParent();
+        entries.push_back({std::to_string(num), std::format("{:0>3}", num), AliasMemberText(V), F ? F->getName().str() : ""});
         num++;
     }
     num = 0;
@@ -288,13 +319,25 @@ export std::vector<AliasGroupEntry> getAliasGroupEntries(int group) {
     return entries;
 }
 
-CmdResult CmdAliasGet(std::vector<std::string> const&, TraceSession& session, CmdFrontend const& frontend) {
-    std::vector<std::string> group_lines;
-    for (auto const& [group, info] : ContractPassUtility::getAliasAnnots()) {
-        group_lines.push_back(std::format("Group {}, {}", group, info.areAliasing ? "should alias" : "should not alias"));
-        for (AliasGroupEntry const& entry : getAliasGroupEntries(group)) group_lines.push_back(std::format("{}.{} | {}", group, entry.label, entry.text));
+CmdResult CmdAliasGet(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
+    std::set<int> groups;
+    for (std::string const& arg : args) {
+        std::expected<int, std::string> group = ParseAliasGroup(arg);
+        if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
+        groups.insert(*group);
     }
-    frontend.showLines(group_lines, "Current Alias Groups");
+    if (args.empty()) groups = ContractPassUtility::getAliasAnnots() | std::views::keys | std::ranges::to<std::set>();
+    std::vector<std::string> group_lines;
+    for (int group : groups) {
+        group_lines.push_back(std::format("Group {}, {}", group, ContractPassUtility::getAliasAnnots().at(group).areAliasing ? "should alias" : "should not alias"));
+        std::string function; // The value names of the following members refer to it
+        for (AliasGroupEntry const& entry : getAliasGroupEntries(group)) {
+            if (!entry.function.empty() && entry.function != function) group_lines.push_back(std::format("  in {}:", function = entry.function));
+            group_lines.push_back(std::format("{}.{} | {}", group, entry.label, entry.text));
+        }
+    }
+    if (group_lines.empty()) group_lines.push_back("No alias groups");
+    frontend.showLines(group_lines, groups.size() == ContractPassUtility::getAliasAnnots().size() ? "Current Alias Groups" : "Selected Alias Groups");
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
@@ -409,9 +452,9 @@ std::vector<CmdInfo> const TraceCommands = {
     {"alias-create",  "[yes|no] [block num|function 1] [value 1] [block num|function 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group. Values are looked up in the given function, or in the function of the given block.", 5, CmdAccess::ANY, CmdAliasCreate},
     {"alias-add",     "[group num] [block num|function] [value...]",              "Add one or more values to an existing alias group. The values are looked up in the given function, or in the function of the given block.", 3, CmdAccess::ANY, CmdAliasAdd, true},
     {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAccess::ANY, CmdAliasType},
-    {"alias-rm",      "[group num] [value num|e<epoch num>]",                     "Remove a value or an epoch (prefixed with e) from an existing alias group (by index in group, see alias-get)", 2, CmdAccess::ANY, CmdAliasRm},
+    {"alias-rm",      "[group num] [value num|e<epoch num>...]",                  "Remove values or epochs (prefixed with e) from an existing alias group, by their index in the group (see alias-get)", 2, CmdAccess::ANY, CmdAliasRm, true},
     {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAccess::ANY, CmdAliasEpoch},
-    {"alias-get",     "",                                                         "Get info on current alias annotations", 0, CmdAccess::ANY, CmdAliasGet},
+    {"alias-get",     "[group num...]",                                           "Get info on current alias annotations, of all groups or only of the given ones", 0, CmdAccess::ANY, CmdAliasGet, true},
     {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size).", 3, CmdAccess::ANY, CmdAllocCreate},
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdAccess::USER, CmdReanalyse},
     {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdAccess::USER, CmdDiff},
