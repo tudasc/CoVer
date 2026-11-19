@@ -125,8 +125,16 @@ constexpr std::array HINT_ATTRIBUTES = std::to_array<std::string_view>({
     "nocapture", "nofpclass", "nofree", "noext", "nonnull", "noundef", "range", "readnone", "readonly", "returned", "signext", "writable",
     "writeonly", "zeroext"});
 
+// Keywords that only inform LLVM's optimisations and code generation, left out as well: poison generating flags of instructions
+// (nsw, inbounds, ...), fast-math flags, tail call markers, and linkage hints of globals and functions
+constexpr std::array HINT_KEYWORDS = std::to_array<std::string_view>({
+    "nsw", "nuw", "nusw", "inbounds", "exact", "disjoint", "nneg", "samesign",
+    "nnan", "ninf", "nsz", "arcp", "contract", "afn", "reassoc", "fast",
+    "tail", "notail", "dso_local", "dso_preemptable", "unnamed_addr", "local_unnamed_addr"});
+
 // A line of printed IR without metadata attachments (", !dbg !12"), attribute group references (#0), alignment
-// (", align 4") and the HINT_ATTRIBUTES of parameters and return values, which only matter to LLVM
+// (", align 4"), the HINT_ATTRIBUTES of parameters and return values and the HINT_KEYWORDS, which only matter to LLVM.
+// Runs of spaces after the indentation (e.g. before the predecessors of a block) are shortened to one.
 export std::string CompactIR(std::string_view ir) {
     // Metadata attachments of instructions come last
     for (std::size_t attach = ir.find(", !"); attach != std::string_view::npos; attach = ir.find(", !", attach + 1)) {
@@ -155,7 +163,13 @@ export std::string CompactIR(std::string_view ir) {
         }
         std::string_view token = ir.substr(pos, end - pos);
         bool drop = false;
-        if (token_start && c == '#' && token.size() > 1) { // Attribute group, e.g. "#3"
+        if (c == ' ' && out.ends_with(' ') && out.find_first_not_of(' ') != std::string::npos) { // Repeated space after the indentation
+            pos = end;
+            continue;
+        }
+        if (token_start && std::ranges::contains(HINT_KEYWORDS, token)) {
+            drop = true;
+        } else if (token_start && c == '#' && token.size() > 1) { // Attribute group, e.g. "#3"
             drop = std::ranges::all_of(token.substr(1), [](char d) { return std::isdigit(static_cast<unsigned char>(d)); });
         } else if (token_start && c == '!' && token.size() > 1 && ir.substr(end).starts_with(" !")) { // Metadata attachment of a function, e.g. "!dbg !12"
             drop = true;

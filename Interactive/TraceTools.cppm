@@ -205,6 +205,49 @@ export ToolResult AnnotationDocs(Json::Value const& input) {
     return {out, false, std::format("{} {}", DOCS_TOOL, topic.value_or("(all)"))};
 }
 
+// A line of the IR shown by get_function_ir, with its instruction if it is one
+struct IRLine {
+    std::string text;
+    Instruction const* instr;
+};
+
+template<typename Range>
+std::string Join(Range const& parts, std::string_view separator) {
+    return parts | std::views::join_with(separator) | std::ranges::to<std::string>();
+}
+
+// Names of the source variables the debug records of F describe, by the value holding them: allocas in unoptimised code, SSA values and arguments in optimised code
+std::map<Value const*, std::set<std::string>> VariableNames(Function const& F) {
+    std::map<Value const*, std::set<std::string>> names;
+    for (Instruction const& I : instructions(F)) {
+        for (DbgRecord const& DR : I.getDbgRecordRange()) {
+            DbgVariableRecord const* DVR = dyn_cast<DbgVariableRecord>(&DR);
+            if (!DVR || DVR->getVariable()->getName().empty()) continue;
+            for (Value const* V : DVR->location_ops()) {
+                if (V) names[V].insert(DVR->getVariable()->getName().str());
+            }
+        }
+    }
+    return names;
+}
+
+// Comment for the definition of F naming the source variables its arguments hold, empty if none
+std::string ArgumentVariables(Function const& F, std::map<Value const*, std::set<std::string>> const& variables) {
+    std::vector<std::string> args;
+    for (Argument const& A : F.args()) {
+        std::map<Value const*, std::set<std::string>>::const_iterator var = variables.find(&A);
+        if (var != variables.end()) args.push_back(std::format("{} {}", ContractPassUtility::getValueName(&A), Join(var->second, "/")));
+    }
+    return args.empty() ? "" : "    ; variables " + Join(args, ", ");
+}
+
+// Source location of an instruction for get_function_ir: the line, and the file if it is not the function's
+std::string LocationNote(Instruction const* I, std::string const& function_file) {
+    if (!I->getDebugLoc()) return "no location";
+    std::string file = ContractPassUtility::getFile(I, false);
+    return file == function_file ? std::format("line {}", I->getDebugLoc().getLine()) : std::format("{}:{}", file, I->getDebugLoc().getLine());
+}
+
 // Marks the instruction lines of a printed function, so they can be filtered and given their source location
 class InstructionMarker : public AssemblyAnnotationWriter {
     public:
@@ -345,7 +388,8 @@ std::string ShowBlock(TraceSession const& trace, int block, bool source) {
         raw_string_ostream os(ir);
         entry.loc->print(os, MST);
         ir.erase(0, ir.find_first_not_of(' '));
-        out += std::format("{:0>3} [{}] {}    ; {}\n", index, entry.info, InteractiveUtils::CompactIR(ir), ContractPassUtility::getInstrLocStr(entry.loc, false));
+        std::string location = entry.loc->getDebugLoc() ? "    ; " + ContractPassUtility::getInstrLocStr(entry.loc, false) : "";
+        out += std::format("{:0>3} [{}] {}{}\n", index, entry.info, InteractiveUtils::CompactIR(ir), location);
     }
     return out;
 }
@@ -408,12 +452,15 @@ ToolResult FunctionIR(Module const& module, Json::Value const& input) {
     std::optional<int> last_line = GetInt(input, "last_line");
     bool filtered = first_line || last_line;
 
+    std::string function_file = F->getSubprogram() ? F->getSubprogram()->getFilename().str() : "";
+    std::map<Value const*, std::set<std::string>> variables = VariableNames(*F);
+
     // Printed by LLVM, so the value names are those the commands take
     InstructionMarker marker;
     std::string printed;
     raw_string_ostream os(printed);
     F->print(os, &marker);
-    std::vector<std::string> lines;
+    std::vector<IRLine> lines;
     std::string label; // Of the current basic block, shown before its first instruction in the line range
     int instr = 0;
     for (std::size_t pos = 0, next; pos < printed.size(); pos = next + 1) {
@@ -421,23 +468,38 @@ ToolResult FunctionIR(Module const& module, Json::Value const& input) {
         std::string_view line = std::string_view(printed).substr(pos, next - pos);
         std::size_t mark = line.find(InstructionMarker::MARK);
         if (mark == std::string_view::npos) {
-            if (!filtered && !line.starts_with("; Function Attrs:")) lines.push_back(InteractiveUtils::CompactIR(line));
-            else if (line.find(':') < line.find(' ')) label = line; // A label like "12:", followed by spaces and the predecessors
+            // Debug records are left out, the comments name the variables they describe
+            if (line.starts_with("; Function Attrs:") || line.substr(std::min(line.find_first_not_of(' '), line.size())).starts_with("#dbg_")) continue;
+            if (!filtered) lines.push_back({InteractiveUtils::CompactIR(line) + (line.starts_with("define ") ? ArgumentVariables(*F, variables) : ""), nullptr});
+            else if (line.find(':') < line.find(' ')) label = InteractiveUtils::CompactIR(line); // A label like "12:", followed by the predecessors
             continue;
         }
         Instruction const* I = marker.instructions[instr++];
+        if (ContractPassUtility::isRemovedAnnot(I)) continue; // Hidden like in the trace, erased once CoVer finishes
         int src_line = I->getDebugLoc() ? I->getDebugLoc().getLine() : 0;
         if (filtered && (src_line < first_line.value_or(0) || src_line > last_line.value_or(std::numeric_limits<int>::max()))) continue;
-        if (!label.empty()) lines.push_back(std::exchange(label, ""));
-        lines.push_back(std::format("{}    ; {}", InteractiveUtils::CompactIR(line.substr(0, mark)), ContractPassUtility::getInstrLocStr(I, false)));
+        if (!label.empty()) lines.push_back({std::exchange(label, ""), nullptr});
+        lines.push_back({InteractiveUtils::CompactIR(line.substr(0, mark)), I});
     }
 
     int num_lines = lines.size();
     int first = std::max(0, GetInt(input, "offset").value_or(0));
     if (first >= num_lines) return {std::format("No lines from offset {}, the output has {} lines", first, num_lines), true, "get_function_ir " + *name};
     int last = std::min(num_lines, first + MAX_IR_LINES);
-    std::string out = std::format("IR of {} with the source location of each instruction, lines {}-{} of {}:\n", F->getName().str(), first, last - 1, num_lines);
-    for (int i = first; i < last; i++) out += lines[i] + "\n";
+    std::string out = std::format("IR of {}, lines {}-{} of {}. Source locations{} are given where they change, the following instructions have the same location. "
+                                  "Values holding source variables are named after them.\n",
+                                  F->getName().str(), first, last - 1, num_lines, function_file.empty() ? "" : std::format(" (in {} unless another file is given)", function_file));
+    std::string shown_location; // Given last on this page, so that the first instruction of each page has its location
+    for (IRLine const& line : lines | std::views::drop(first) | std::views::take(last - first)) {
+        std::vector<std::string> notes;
+        if (line.instr) {
+            std::string location = LocationNote(line.instr, function_file);
+            if (location != shown_location) notes.push_back(shown_location = location);
+            std::map<Value const*, std::set<std::string>>::const_iterator var = variables.find(line.instr);
+            if (var != variables.end()) notes.push_back("variable " + Join(var->second, "/"));
+        }
+        out += notes.empty() ? line.text + "\n" : std::format("{}    ; {}\n", line.text, Join(notes, ", "));
+    }
     if (last < num_lines) out += std::format("[Stopped after {} lines, call again with offset {} for the rest]\n", MAX_IR_LINES, last);
     return {out, false, std::format("get_function_ir {} from {}", *name, first)};
 }
@@ -480,7 +542,7 @@ std::vector<ToolInfo> BuildTools() {
         {{"read_source", "Read lines of one of the program's source files. Files are matched by full path or file name.",
           Schema({{"file", "string", "Path or file name"}, {"first_line", "integer", "First line, 1-based (default 1)"}, {"last_line", "integer", "Last line, inclusive"}}, {"file"})},
          ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return ReadSource(*t.module, input); }},
-        {{"get_function_ir", "LLVM IR of a function with the source location of each instruction, e.g. to find value names for alias annotations or to inspect code outside of the trace. "
+        {{"get_function_ir", "LLVM IR of a function with source locations and the source variables values hold, e.g. to find value names for alias annotations or to inspect code outside of the trace. "
                              "Long functions are returned in parts (see offset); restrict the output to a range of source lines to find values quickly.",
           Schema({{"function", "string", "Function name as in the IR (mangled for C++)"},
                   {"first_line", "integer", "Only instructions of this source line and later"},
