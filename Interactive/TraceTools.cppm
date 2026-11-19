@@ -168,7 +168,7 @@ Every contract requirement is checked by a forward dataflow analysis over the in
 # Annotations
 Annotations are assumptions the static analysis trusts without checking. They do not change the program's behaviour, but they can make the analysis accept wrong code, so only add one when the program's semantics clearly justify it. They can be checked at runtime with CoVer's annotation verifier.
 - Function pointer targets (set_fp_targets tool): the analysis cannot follow indirect calls. Annotating the possible targets of an indirect call lets it analyse them. Annotate all functions the pointer can actually point to, as determined from the source.
-- Alias annotations (alias-create, alias-add, alias-type, alias-rm, alias-epoch): when alias analysis is imprecise, parameters of calls cannot be matched (e.g. the request passed to MPI_Wait is not recognised as the one from MPI_Isend). Values in a group are asserted to alias (yes) or not to alias (no). Each value is given by a function and its name in that function's IR (%name, %42, or @global for globals), e.g. `alias-add 0 _Z4sendPi %42`. alias-add takes any number of values of the same function, e.g. `alias-add 0 _Z4sendPi %42 %57 %63`. Instead of the function name, a block number of the trace can be given, which stands for the function containing the block. Prefer function names: block numbers change when another trace is opened or another child is selected, and a value need not be on the trace to be annotated. An epoch (alias-epoch) placed before an instruction forgets the values of the group seen so far, for memory that is reused over time, such as request arrays reused in every communication round. alias-rm removes several members or epochs at once, given as indices and ranges that all refer to the numbering before the removal (`alias-rm 3 0 4-9 e1`). alias-get takes group numbers to show only those groups.
+- Alias annotations (alias-create, alias-add, alias-type, alias-rm, alias-epoch): when alias analysis is imprecise, parameters of calls cannot be matched (e.g. the request passed to MPI_Wait is not recognised as the one from MPI_Isend). Values in a group are asserted to alias (yes) or not to alias (no). Each value is given by a function and its name in that function's IR (%name, %42, or @global for globals), e.g. `alias-add 0 _Z4sendPi %42`. alias-add takes any number of values of the same function, e.g. `alias-add 0 _Z4sendPi %42 %57 %63`. Instead of the function name, a block number of the trace can be given, which stands for the function containing the block. Prefer function names: block numbers change when another trace is opened or another child is selected, and a value need not be on the trace to be annotated. find_calls lists the calls of a function with the values of their arguments, e.g. the buffer and request arguments of every MPI_Isend in a function, which saves searching them in the IR. An epoch (alias-epoch) placed before an instruction forgets the values of the group seen so far, for memory that is reused over time, such as request arrays reused in every communication round. alias-rm removes several members or epochs at once, given as indices and ranges that all refer to the numbering before the removal (`alias-rm 3 0 4-9 e1`). alias-get takes group numbers to show only those groups.
 - Allocation annotations (alloc-create): the analysis tracks allocated pointers through stores, loads and GEPs, but not through integer arithmetic or opaque calls. Annotating the instruction producing a pointer asserts the pointer refers to memory allocated with at least the given number of bytes (0 if unknown, never more than actually allocated).
 New annotations do not affect the current trace, they take effect with the next reanalysis.
 The get_annotation_docs tool returns CoVer's documentation of each annotation kind, with examples and constraints, e.g. how far a source level alias annotation reaches. It shows annotations as calls in the IR or the source code (CoVer_AnnotAlias, ...), which is how they end up in the program. In the trace debugger, add them with the commands above instead. Read the documentation of an annotation kind before using it for the first time.
@@ -519,10 +519,95 @@ ToolResult ListFunctions(Module const& module, Json::Value const& input) {
     return {count ? out : "No matching functions", false, std::format("list_functions {}", filter)};
 }
 
+// An argument of a call listed by find_calls: the definition of an instruction, so that e.g. a load of a pointer variable and a GEP can be told apart,
+// with the source variable it holds
+std::string ArgumentText(Value const* arg, std::map<Value const*, std::set<std::string>> const& variables) {
+    std::string text;
+    if (isa<Instruction>(arg)) {
+        text = InteractiveUtils::CompactIR(Trim(ContractPassUtility::printValue(arg)));
+    } else if (isa<Argument>(arg)) {
+        text = ContractPassUtility::getValueName(arg) + " (argument of the function)";
+    } else {
+        raw_string_ostream os(text);
+        arg->printAsOperand(os, false);
+    }
+    std::map<Value const*, std::set<std::string>>::const_iterator var = variables.find(arg);
+    return var == variables.end() ? text : std::format("{}    ; variable {}", text, Join(var->second, "/"));
+}
+
+constexpr int MAX_CALLS = 100;
+
+// The calls of a function with the values of their arguments, so that the values to annotate at many call sites need not be looked up in the IR one by one
+ToolResult FindCalls(Module const& module, Json::Value const& input) {
+    std::optional<std::string> callee_name = GetString(input, "callee");
+    if (!callee_name) return {"Missing string argument callee", true, "find_calls"};
+    std::string summary = "find_calls " + *callee_name;
+    Function const* callee = module.getFunction(*callee_name);
+    if (!callee) return {std::format("No function named {} in the module, see list_functions", *callee_name), true, summary};
+    std::optional<std::string> caller_name = GetString(input, "function");
+    Function const* caller = caller_name ? module.getFunction(*caller_name) : nullptr;
+    if (caller_name) {
+        summary += " in " + *caller_name;
+        if (!caller) return {std::format("No function named {} in the module, see list_functions", *caller_name), true, summary};
+    }
+    std::optional<std::set<unsigned>> shown_args;
+    if (input.isMember("arguments")) {
+        if (!input["arguments"].isArray()) return {"The arguments must be an array of argument numbers", true, summary};
+        shown_args.emplace();
+        for (Json::Value const& arg : input["arguments"]) {
+            if (!arg.isUInt()) return {"The arguments must be argument numbers, counted from 0", true, summary};
+            shown_args->insert(arg.asUInt());
+        }
+    }
+
+    std::vector<CallBase const*> calls;
+    for (Function const& F : module) {
+        if (caller && &F != caller) continue;
+        for (Instruction const& I : instructions(F)) {
+            CallBase const* CB = dyn_cast<CallBase>(&I);
+            if (!CB || ContractPassUtility::isRemovedAnnot(CB)) continue;
+            if (ContractPassUtility::getCalleeThroughAlias(CB) == callee || ContractPassUtility::getFPAnnots(CB).contains(const_cast<Function*>(callee))) calls.push_back(CB);
+        }
+    }
+    std::string where = caller ? " in " + caller->getName().str() : "";
+    if (calls.empty()) return {std::format("No calls of {}{}", *callee_name, where), false, summary};
+    int first = std::max(0, GetInt(input, "offset").value_or(0));
+    if (first >= calls.size()) return {std::format("No calls from offset {}, there are {} calls", first, calls.size()), true, summary};
+    int last = std::min<int>(calls.size(), first + MAX_CALLS);
+
+    std::string out = std::format("Calls of {}{}: {}, showing calls {}-{}. Values are named as the annotation commands take them, arguments are numbered from 0.\n",
+                                  *callee_name, where, calls.size(), first, last - 1);
+    Function const* cur_func = nullptr;
+    std::string function_file;
+    std::map<Value const*, std::set<std::string>> variables;
+    for (auto const [index, CB] : std::views::enumerate(calls) | std::views::drop(first) | std::views::take(last - first)) {
+        if (CB->getFunction() != cur_func) {
+            cur_func = CB->getFunction();
+            function_file = cur_func->getSubprogram() ? cur_func->getSubprogram()->getFilename().str() : "";
+            variables = VariableNames(*cur_func);
+            std::string demangled = demangle(cur_func->getName().str());
+            out += std::format("In {}{}{}:\n", cur_func->getName().str(), demangled != cur_func->getName() ? " (" + demangled + ")" : "",
+                               function_file.empty() ? "" : std::format(", locations in {} unless another file is given", function_file));
+        }
+        out += std::format("Call {} at {}{}: {}\n", index, LocationNote(CB, function_file), CB->isIndirectCall() ? " (indirect, annotated target)" : "",
+                           InteractiveUtils::CompactIR(Trim(ContractPassUtility::printValue(CB))));
+        for (auto const [arg_num, arg] : std::views::enumerate(CB->args())) {
+            if (!shown_args || shown_args->contains(arg_num)) out += std::format("    arg {}: {}\n", arg_num, ArgumentText(arg.get(), variables));
+        }
+    }
+    if (last < calls.size()) out += std::format("[Stopped after {} calls, call again with offset {} for the rest]\n", MAX_CALLS, last);
+    return {out, false, summary};
+}
+
 std::vector<ToolInfo> BuildTools() {
     Json::Value fp_schema = Schema({{"block", "integer", "Block number"}, {"instruction", "integer", "Instruction number of the indirect call within the block"}, {"functions", "array", "Names of all possible target functions as in the IR"}},
                                    {"block", "instruction", "functions"});
     fp_schema["properties"]["functions"]["items"]["type"] = "string";
+    Json::Value calls_schema = Schema({{"callee", "string", "Called function, name as in the IR (mangled for C++)"},
+                                       {"function", "string", "Only calls within this function, name as in the IR"},
+                                       {"arguments", "array", "Only show these arguments, numbered from 0 (default all)"},
+                                       {"offset", "integer", "First call to return, to continue a long output (default 0)"}}, {"callee"});
+    calls_schema["properties"]["arguments"]["items"]["type"] = "integer";
     return {
         {{CONTEXT_TOOL, "How to interpret CoVer's trace and annotations, the available debugger commands, the report being debugged and the current trace. Call this first.",
           Schema({}, {})},
@@ -552,6 +637,11 @@ std::vector<ToolInfo> BuildTools() {
         {{"list_functions", "Functions of the module, e.g. candidates for function pointer targets.",
           Schema({{"filter", "string", "Only list functions whose name contains this text"}}, {})},
          ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return ListFunctions(*t.module, input); }},
+        {{"find_calls", "All calls of a function, optionally only those within one function, with their source locations and the values of their arguments "
+                        "(the instruction defining each value and the source variable it holds). Use it to collect the values to annotate at many call sites, "
+                        "instead of searching them in get_function_ir.",
+          calls_schema},
+         ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return FindCalls(*t.module, input); }},
         {DocsSpec(),
          ToolNeeds::NOTHING, [](ToolTarget const&, Json::Value const& input) { return AnnotationDocs(input); }},
     };
