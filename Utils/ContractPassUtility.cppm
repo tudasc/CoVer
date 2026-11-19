@@ -869,6 +869,9 @@ export void addAliasEpoch(int group, Instruction* before) {
     invalidateFunctionAnalyses(before->getFunction());
     CI->insertBefore(before->getIterator());
     CI->setDebugLoc(before->getDebugLoc());
+    // E.g. before the allocas at the start of a function: Located at the function, so that it can be told where the epoch is
+    DISubprogram* SP = before->getFunction()->getSubprogram();
+    if (!CI->getDebugLoc() && SP) CI->setDebugLoc(DILocation::get(curM->getContext(), SP->getScopeLine() ? SP->getScopeLine() : SP->getLine(), 0, SP));
 }
 
 export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {

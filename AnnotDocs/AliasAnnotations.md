@@ -119,8 +119,9 @@ MPI_Isend(buf, N, MPI_DOUBLE, peer, 1, MPI_COMM_WORLD, &r1);
 
 `CoVer_AnnotAliasEpoch(int group)` starts a new epoch for an alias group.
 The runtime annotation verifier forgets all values of the group seen so far, so values from before the epoch are not compared against values after it.
-This is useful if the same memory is reused for different purposes over time, e.g. a request array that is reused for each round of communication after all requests have been completed,
-or if an annotated variable refers to a different object in each round:
+The static analysis does not use epochs.
+Annotated code that runs more than once, e.g. a function called in every time step, needs an epoch at its start:
+each run usually reuses the memory of the previous one, e.g. the same request array, so its values alias those of the previous run.
 
 ```llvm
 define void @comm_round() {

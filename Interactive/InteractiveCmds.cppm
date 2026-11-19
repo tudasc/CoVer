@@ -274,12 +274,33 @@ CmdResult CmdAliasRm(std::vector<std::string> const& args, TraceSession& session
 CmdResult CmdAliasEpoch(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
     std::expected<int, std::string> group = ParseAliasGroup(args[0]);
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
-    std::expected<int, std::string> block = ParseBlock(args[1], session);
-    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
-    std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[2], *block, session);
-    if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
-    ContractPassUtility::addAliasEpoch(*group, *selected);
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Added epoch for alias group {} at {}.{}", *group, *block, args[2])};
+    // An instruction number refers to the trace block, anything else is a value of the function
+    if (ContractPassUtility::parseInt(args[2])) {
+        std::expected<int, std::string> block = ParseBlock(args[1], session);
+        if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
+        std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[2], *block, session);
+        if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
+        ContractPassUtility::addAliasEpoch(*group, *selected);
+        return {CmdResultCode::SUCCESS_CONTINUE, std::format("Added epoch for alias group {} at {}.{}", *group, *block, args[2])};
+    }
+    std::expected<Function*, std::string> F = ParseValueFunction(args[1], session);
+    if (!F) return {CmdResultCode::INVALID_INPUT, F.error()};
+    Value* V = ContractPassUtility::getValueByName(args[2], *F);
+    if (!V) return {CmdResultCode::INVALID_INPUT, std::format("Could not identify value {} in function {}", args[2], (*F)->getName().str())};
+    // Named before the edit, which discards the value numbering
+    std::string where;
+    Instruction* before = nullptr;
+    if (Instruction* I = dyn_cast<Instruction>(V)) {
+        before = I;
+        where = std::format("before {} in {}", ContractPassUtility::getValueName(I), (*F)->getName().str());
+    } else if (isa<Argument>(V)) {
+        before = &*(*F)->getEntryBlock().getFirstInsertionPt();
+        where = std::format("at the start of {}", (*F)->getName().str());
+    } else {
+        return {CmdResultCode::INVALID_INPUT, std::format("Value {} is neither an instruction nor an argument of function {}", args[2], (*F)->getName().str())};
+    }
+    ContractPassUtility::addAliasEpoch(*group, before);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Added epoch for alias group {} {}", *group, where)};
 }
 
 export struct AliasGroupEntry {
@@ -453,7 +474,7 @@ std::vector<CmdInfo> const TraceCommands = {
     {"alias-add",     "[group num] [block num|function] [value...]",              "Add one or more values to an existing alias group. The values are looked up in the given function, or in the function of the given block.", 3, CmdAccess::ANY, CmdAliasAdd, true},
     {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAccess::ANY, CmdAliasType},
     {"alias-rm",      "[group num] [value num|e<epoch num>...]",                  "Remove values or epochs (prefixed with e) from an existing alias group, by their index in the group (see alias-get)", 2, CmdAccess::ANY, CmdAliasRm, true},
-    {"alias-epoch",   "[group num] [block num] [instr num]",                      "Start a new epoch for an alias group before an instruction.", 3, CmdAccess::ANY, CmdAliasEpoch},
+    {"alias-epoch",   "[group num] [block num|function] [instr num|value]",       "Start a new epoch for an alias group before an instruction, given by its number in the block or by its value in the function (an argument: at the start of the function).", 3, CmdAccess::ANY, CmdAliasEpoch},
     {"alias-get",     "[group num...]",                                           "Get info on current alias annotations, of all groups or only of the given ones", 0, CmdAccess::ANY, CmdAliasGet, true},
     {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size).", 3, CmdAccess::ANY, CmdAllocCreate},
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdAccess::USER, CmdReanalyse},
