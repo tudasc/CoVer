@@ -88,7 +88,24 @@ CoVer_AnnotAlias(&reqs[idx], false, 0);
 MPI_Isend(&b, 1, MPI_INT, 1, 1, MPI_COMM_WORLD, &reqs[idx]); // Matches the second annotation
 ```
 
-For no-alias groups, two values referring to the same annotated variable are not separated.
+In a no-alias group, two values are only separated if they match different annotations, e.g. two annotated loads of `buf` with `buf += N` in between.
+
+A group must cover both values the analysis compares, so annotate them where they are used, not where the variable is assigned.
+For a data race on a buffer, these are the buffer passed to the call and the address of each store into the buffer.
+The runtime annotation verifier checks a value that is only used to load or store against the values annotated before the access,
+so a store may alias a buffer that is sent later:
+
+```c
+CoVer_AnnotAlias(buf, false, 0);
+MPI_Isend(buf, N, MPI_DOUBLE, peer, 0, MPI_COMM_WORLD, &r0);
+buf += N;
+for (int i = 0; i < N; i++) {
+    CoVer_AnnotAlias(&buf[i], false, 0); // Not the buffer in flight
+    buf[i] = i;
+}
+CoVer_AnnotAlias(buf, false, 0);
+MPI_Isend(buf, N, MPI_DOUBLE, peer, 1, MPI_COMM_WORLD, &r1);
+```
 
 ## `CoVer_AnnotAlias` Arguments
 
