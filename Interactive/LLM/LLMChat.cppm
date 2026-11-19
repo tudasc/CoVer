@@ -204,10 +204,10 @@ export std::string const EXPORT_FILE = "CoVer_ChatLog.json";
 
 export class ChatSession {
     public:
-        ChatSession(TraceSession& session, InteractiveUtils::PostFn post) : session{session}, tools{session}, post{std::move(post)}, conv{Current()} {
+        ChatSession(TraceSession& session, InteractiveUtils::PostFn post) : session{session}, post{std::move(post)}, conv{Current()} {
             LLMClient::Init();
             // Fixed while the trace is open, so servers can cache it
-            system_prompt = CHAT_PROMPT + "\n\n" + TraceTools::GUIDANCE + "\n\n" + tools.Context();
+            system_prompt = CHAT_PROMPT + "\n\n" + TraceTools::GUIDANCE + "\n\n" + TraceTools::Context(TraceTools::TargetOf(session));
             for (ToolSpec const& spec : TraceTools::Specs()) {
                 if (spec.name != TraceTools::CONTEXT_TOOL) tool_specs.push_back(spec); // Already part of the system prompt
             }
@@ -291,7 +291,6 @@ export class ChatSession {
 
     private:
         TraceSession& session;
-        TraceTools::TraceTools tools;
         InteractiveUtils::PostFn post;
         std::optional<LLMClient::Config> config;
         std::string system_prompt;
@@ -375,7 +374,7 @@ export class ChatSession {
             Message results = {Message::Role::USER};
             for (LLMClient::ToolCall const& call : reply.message.tool_calls) {
                 ToolResult result = call.input.isNull() ? ToolResult{"Malformed tool arguments, they must be a JSON object", true, call.name + "  ->  malformed arguments"}
-                                                        : tools.Run(call.name, call.input);
+                                                        : TraceTools::Run(call.name, call.input, TraceTools::TargetOf(session));
                 conv.transcript.push_back({result.error ? ChatEntry::Kind::ERROR : ChatEntry::Kind::TOOL, result.summary, result.text});
                 results.tool_outputs.push_back({call.id, call.name, result.text, result.error});
             }

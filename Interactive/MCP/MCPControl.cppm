@@ -64,7 +64,7 @@ struct State {
     std::vector<ReportedFormula> const* results = nullptr; // Of the current analysis, while the results are shown
     AnalysisReports::FormulaReports const* result_texts = nullptr;
     AnalysisReports::FormulaDebugHandlers* result_debug_handlers = nullptr;
-    TraceTools::TraceTools* trace = nullptr; // While a trace is open
+    TraceTools::ToolTarget target; // What the trace tools work on: the module while the results are shown, and the open trace
     std::vector<Screen> screens; // Innermost last
     std::string start_error; // Why the server could not be started
 };
@@ -72,7 +72,7 @@ struct State {
 State state;
 
 std::string OpenTraceKey(State const& s) {
-    return s.trace ? TraceKey(s.trace->Session().Context()) : "";
+    return s.target.trace ? TraceKey(s.target.trace->Context()) : "";
 }
 
 std::string ReportsText(State const& s, bool details) {
@@ -121,31 +121,23 @@ ToolResult OpenReport(State& s, Json::Value const& args) {
 }
 
 ToolResult Reanalyse(State& s, Json::Value const&) {
-    if (!s.trace) return {"Reanalysis is started from the trace debugger, open a report first", true, "reanalyse  ->  no trace open"};
+    if (!s.target.trace) return {"Reanalysis is started from the trace debugger, open a report first", true, "reanalyse  ->  no trace open"};
     s.pending = {Action::Kind::REANALYSE};
     s.server->SetAccepting(false, MCPServer::RESTARTING); // Calls until this process exits would get lost
     return {"Reanalysis started. CoVer restarts: wait a few seconds, then call list_reports, retrying while the server is unreachable or reports that CoVer is restarting.", false, "reanalyse"};
 }
 
-// The trace tools, working on the open trace, followed by the navigation tools
+// The trace tools, available depending on what is shown (see TraceTools::ToolNeeds), followed by the navigation tools
 std::vector<TraceTools::Tool<State>> BuildTools() {
     std::vector<TraceTools::Tool<State>> tools;
     for (ToolSpec const& spec : TraceTools::Specs()) {
-        if (spec.name == TraceTools::CONTEXT_TOOL) {
+        if (spec.name == TraceTools::CONTEXT_TOOL) { // Extended by the workflow and the reports
             tools.push_back({spec, [](State& s, Json::Value const&) -> ToolResult {
-                std::string trace = s.trace ? s.trace->Context() : TraceTools::CommandsSection() + "\n# The current trace\nNo trace is open, use open_report.\n";
-                return {TraceTools::GUIDANCE + "\n\n" + WORKFLOW + "\n\n" + trace + "\n" + ReportsText(s, false), false, TraceTools::CONTEXT_TOOL};
+                return {TraceTools::GUIDANCE + "\n\n" + WORKFLOW + "\n\n" + TraceTools::Context(s.target) + "\n" + ReportsText(s, false), false, TraceTools::CONTEXT_TOOL};
             }});
             continue;
         }
-        if (spec.name == TraceTools::DOCS_TOOL) { // Needs no open trace
-            tools.push_back({spec, [](State&, Json::Value const& args) { return TraceTools::AnnotationDocs(args); }});
-            continue;
-        }
-        tools.push_back({spec, [name = spec.name](State& s, Json::Value const& args) -> ToolResult {
-            if (!s.trace) return {"No trace is open, use list_reports and open_report first", true, name + "  ->  no trace open"};
-            return s.trace->Run(name, args);
-        }});
+        tools.push_back({spec, [name = spec.name](State& s, Json::Value const& args) { return TraceTools::Run(name, args, s.target); }});
     }
     Json::Value open_schema = TraceTools::Schema({{"report", "integer", "Report number, see list_reports"}, {"leaf", "integer", "Index of the violated leaf whose trace to open, see list_reports"}}, {"report", "leaf"});
     tools.push_back({{"list_reports", "Reports of the current analysis with their number, contract, message, error report and locations, and the violated leaves of their formula that have a trace, with their index and whose trace is open.", TraceTools::Schema({}, {})},
@@ -237,33 +229,36 @@ export TraceNavigation NavigateTrace(std::function<void(std::string const&)> con
     return TraceNavigation::STAY;
 }
 
-// The results of the current analysis are shown
+// The results of the current analysis of M are shown. The trace tools work on M until a trace is opened.
 export class ResultsScope {
     public:
-        ResultsScope(std::vector<ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers)
-            : prev{state.results}, prev_texts{state.result_texts}, prev_debug_handlers{state.result_debug_handlers} {
+        ResultsScope(Module& M, std::vector<ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers)
+            : prev{state.results}, prev_texts{state.result_texts}, prev_debug_handlers{state.result_debug_handlers}, prev_target{state.target} {
             state.results = &formulas;
             state.result_texts = &reports;
             state.result_debug_handlers = &debugHandlers;
+            state.target = {&M};
         }
         ~ResultsScope() {
             state.results = prev;
             state.result_texts = prev_texts;
             state.result_debug_handlers = prev_debug_handlers;
+            state.target = prev_target;
         }
     private:
         std::vector<ReportedFormula> const* prev;
         AnalysisReports::FormulaReports const* prev_texts;
         AnalysisReports::FormulaDebugHandlers* prev_debug_handlers;
+        TraceTools::ToolTarget prev_target;
 };
 
 // A trace is open in the debugger
 export class TraceScope {
     public:
-        TraceScope(TraceTools::TraceTools& tools) : prev{state.trace} { state.trace = &tools; }
-        ~TraceScope() { state.trace = prev; }
+        TraceScope(InteractiveSession::TraceSession& trace) : prev{state.target} { state.target = TraceTools::TargetOf(trace); }
+        ~TraceScope() { state.target = prev; }
     private:
-        TraceTools::TraceTools* prev;
+        TraceTools::ToolTarget prev;
 };
 
 // A screen of the frontend that runs tool calls while it is shown, so it must not outlive the screen. Tool calls run for the

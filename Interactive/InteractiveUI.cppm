@@ -12,7 +12,6 @@ import Worklist;
 import InteractiveSession;
 import InteractiveUtils;
 import InteractiveFrontend;
-import TraceTools;
 import MCPControl;
 import LLMChat;
 
@@ -81,18 +80,17 @@ bool ResumeTrace(std::vector<InteractiveUtils::ReportedFormula> const& formulas,
     return false;
 }
 
-// The results of the analysis, returns whether to reanalyse. When reanalysing from a trace, it is opened again first.
-export bool ResultsScreen(std::vector<AnalysisReports::Contract> const& ViolatedContracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
+// The results of the analysis of M, returns whether to reanalyse. When reanalysing from a trace, it is opened again first.
+export bool ResultsScreen(Module& M, std::vector<AnalysisReports::Contract> const& ViolatedContracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
-    MCPControl::ResultsScope mcp_scope(formulas, reports, debugHandlers); // Tool calls of MCP clients work on these reports
+    MCPControl::ResultsScope mcp_scope(M, formulas, reports, debugHandlers); // Tool calls of MCP clients work on these reports and M
     if (ResumeTrace(formulas, reports, debugHandlers)) return true;
     return frontend->resultsScreen(formulas, reports, debugHandlers, runtime);
 }
 
 // Shows the trace, returns whether to reanalyse
 bool ShowTrace(InteractiveSession::TraceSession& session) {
-    TraceTools::TraceTools mcp_tools(session);
-    MCPControl::TraceScope mcp_trace(mcp_tools); // Tool calls of MCP clients work on this trace while it is open
+    MCPControl::TraceScope mcp_trace(session); // Tool calls of MCP clients work on this trace while it is open
     bool reanalyse = frontend->showTrace(session);
     if (reanalyse) {
         session.SaveForReanalysis(MCPControl::Active());
