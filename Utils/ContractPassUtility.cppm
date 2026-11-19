@@ -808,11 +808,14 @@ export void addToAliasGroup(int idx, Value* V) {
         CI->insertBefore(curM->getFunction("main")->getEntryBlock().getFirstInsertionPt());
     }
 }
-export void createAliasGroup(bool shouldAlias, Value* V1, Value* V2) {
-    aliasInfo[aliasInfo.empty() ? 0 : aliasInfo.rbegin()->first + 1] = {{}, shouldAlias};
+export int createAliasGroup(bool shouldAlias, Value* V1, Value* V2) {
+    int group = 0;
+    while (aliasInfo.contains(group)) group++;
+    aliasInfo[group] = {{}, shouldAlias};
     for (Value* V : {V1, V2}) {
-        addToAliasGroup(aliasInfo.rbegin()->first, V);
+        addToAliasGroup(group, V);
     }
+    return group;
 }
 export void setAliasGroupType(int idx, bool isAlias) {
     aliasInfo[idx].areAliasing = isAlias;
