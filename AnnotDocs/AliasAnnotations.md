@@ -40,7 +40,7 @@ To fix it, alias annotations using `CoVer_AnnotAlias` can be used.
 ## Annotated IR
 
 `CoVer_AnnotAlias` allows annotating aliasing as either alias or no-alias.
-This is done in groups, with all values in a group being aliases or not aliases.
+This is done in groups: the values of an alias group all alias each other, the values of a no-alias group do not alias each other.
 Below is the corresponding IR, with annotations prefixed by `+`:
 
 ```llvm
@@ -92,8 +92,8 @@ In a no-alias group, two values are only separated if they match different annot
 
 A group must cover both values the analysis compares, so annotate them where they are used, not where the variable is assigned.
 For a data race on a buffer, these are the buffer passed to the call and the address of each store into the buffer.
-The runtime annotation verifier checks a value that is only used to load or store against the values annotated before the access,
-so a store may alias a buffer that is sent later:
+A value that is only used to load or store, such as a store address, is only asserted not to alias the values of the group annotated before it,
+so the stores filling a buffer can be in the same group as that buffer:
 
 ```c
 CoVer_AnnotAlias(buf, false, 0);
