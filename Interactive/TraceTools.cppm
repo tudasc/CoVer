@@ -99,7 +99,7 @@ bool ModelMayRun(std::string const& command) {
 export std::string CommandsSection() {
     std::string out = "# Trace debugger commands\nAvailable through run_command:\n";
     for (InteractiveCmds::CmdInfo const& cmd : InteractiveCmds::GetTraceCommands()) {
-        if (cmd.access == InteractiveCmds::CmdAccess::ANY) out += std::format("- {} {}: {}\n", cmd.name, cmd.usage, cmd.helptext);
+        if (cmd.access == InteractiveCmds::CmdAccess::ANY) out += std::format("- {} {}: {}{}\n", cmd.name, cmd.usage, cmd.helptext, cmd.NeedsTrace() ? " Needs an open trace." : "");
     }
     return out;
 }
@@ -314,8 +314,8 @@ export std::string Context(ToolTarget const& target) {
     return out;
 }
 
-// Runs a trace command like the user would, capturing what it would show
-ToolResult RunCommand(TraceSession& trace, std::string const& command, std::vector<std::string> const& selection = {}) {
+// Runs a trace command like the user would, capturing what it would show. Without a trace, only the commands working on the module run.
+ToolResult RunCommand(ToolTarget const& target, std::string const& command, std::vector<std::string> const& selection = {}) {
     std::string shown;
     CmdFrontend capture = {
         .showLines = [&](std::vector<std::string> const& lines, std::string const& title) {
@@ -327,20 +327,21 @@ ToolResult RunCommand(TraceSession& trace, std::string const& command, std::vect
             for (auto const& [cmd, res] : history) shown += std::format("{} -> {}\n", cmd, InteractiveSession::resultCodeStr(res.code));
         },
     };
-    CmdResult res = InteractiveCmds::ExecuteCommand(trace, command, capture);
+    CmdResult res = target.trace ? InteractiveCmds::ExecuteCommand(*target.trace, command, capture)
+                                 : InteractiveCmds::ExecuteModuleCommand(*target.module, command, capture);
     bool ok = res.code == CmdResultCode::SUCCESS_CONTINUE;
     std::string text = std::format("{}{}{}", ok ? "" : InteractiveSession::resultCodeStr(res.code) + ": ", res.res, shown.empty() ? "" : "\n" + shown);
     return {text, !ok, std::format("{}  ->  {}", command, res.res.empty() ? (ok ? "done" : InteractiveSession::resultCodeStr(res.code)) : FirstLine(res.res))};
 }
 
-ToolResult RunModelCommand(TraceSession& trace, Json::Value const& input) {
+ToolResult RunModelCommand(ToolTarget const& target, Json::Value const& input) {
     std::optional<std::string> command = GetString(input, "command");
     if (!command) return {"Missing string argument command", true, "run_command"};
     if (!ModelMayRun(*command)) {
         std::string cmd_name = command->substr(0, command->find(' '));
         return {std::format("The command {} is not available to you, help lists the commands that are", cmd_name), true, *command + "  ->  not allowed"};
     }
-    return RunCommand(trace, *command);
+    return RunCommand(target, *command);
 }
 
 std::expected<int, ToolResult> ParseBlock(TraceSession const& trace, Json::Value const& input) {
@@ -363,7 +364,7 @@ ToolResult SetFPTargets(TraceSession& trace, Json::Value const& input) {
         functions.push_back(F.asString());
         names += (names.empty() ? "" : ", ") + F.asString();
     }
-    ToolResult result = RunCommand(trace, std::format("fp-target {} {}", *block, *instr), functions);
+    ToolResult result = RunCommand(TargetOf(trace), std::format("fp-target {} {}", *block, *instr), functions);
     if (!result.error) result.summary = std::format("fp-target {} {} [{}]  ->  {}", *block, *instr, names, FirstLine(result.text));
     return result;
 }
@@ -619,9 +620,10 @@ std::vector<ToolInfo> BuildTools() {
           Schema({{"block", "integer", "Block number"}, {"view", "string", "\"ir\" (default) or \"source\""}}, {"block"})},
          ToolNeeds::TRACE, [](ToolTarget const& t, Json::Value const& input) { return ShowBlock(*t.trace, input); }},
         {{"run_command", "Run one of CoVer's trace debugger commands (listed in the debug context), e.g. \"alias-create yes main %5 _Z4sendPi %buf\", \"alias-add 0 main %7 %9 %12\", \"alloc-create 3 7 1024\", \"child 4 1\" or \"alias-get\". "
-                         "Commands run locally and are cheap, run as many as needed. Annotation commands are recorded in the user's command history. Use set_fp_targets instead of fp-target.",
+                         "Commands run locally and are cheap, run as many as needed. Annotation commands are recorded in the user's command history. Use set_fp_targets instead of fp-target. "
+                         "Without an open trace, the commands not marked as needing one run, given function names instead of block numbers.",
           Schema({{"command", "string", "The command line"}}, {"command"})},
-         ToolNeeds::TRACE, [](ToolTarget const& t, Json::Value const& input) { return RunModelCommand(*t.trace, input); }},
+         ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return RunModelCommand(t, input); }},
         {{"set_fp_targets", "Annotate the possible targets of an indirect call. Replaces previous targets of the call, an empty list removes the annotation.", fp_schema},
          ToolNeeds::TRACE, [](ToolTarget const& t, Json::Value const& input) { return SetFPTargets(*t.trace, input); }},
         {{"read_source", "Read lines of one of the program's source files. Files are matched by full path or file name.",

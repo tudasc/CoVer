@@ -87,6 +87,9 @@ HistoryCache previous_run = LoadHistoryCache();
 // annotations remain in the module and are part of the patch files of the diff command.
 History history = std::move(previous_run.history);
 
+export History const& CommandHistory() { return history; }
+export void AddToHistory(std::string const& cmd, CmdResult const& res) { history.push_back({cmd, res}); }
+
 // Whether this is a reanalysis started from a trace, which is opened again instead of showing the start menu
 export bool Resuming() { return previous_run.resume_trace.has_value(); }
 
@@ -171,8 +174,8 @@ export class TraceSession {
         // The report being debugged
         AnalysisReports::DebugContext const& Context() const { return context; }
 
-        History const& GetHistory() const { return history; }
-        void AddHistory(std::string const& cmd, CmdResult const& res) { history.push_back({cmd, res}); }
+        History const& GetHistory() const { return CommandHistory(); }
+        void AddHistory(std::string const& cmd, CmdResult const& res) { AddToHistory(cmd, res); }
         // Before reanalysing: carries the history over to the next run, which opens this trace again and continues MCP mode if active
         void SaveForReanalysis(bool mcp_mode) const {
             std::ofstream cache(InteractiveUtils::HISTORY_CACHE_FILE);
@@ -187,7 +190,7 @@ export class TraceSession {
 };
 
 // Current module, used as input for reanalysis and diffing
-void WriteReanalyseModule(Module* M) {
+export void WriteReanalyseModule(Module* M) {
     std::error_code rc;
     raw_fd_stream reanalyse_file(InteractiveUtils::REANALYSE_FILE, rc);
     ContractPassUtility::printWithoutRemovedAnnots(*M, reanalyse_file);

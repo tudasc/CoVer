@@ -38,14 +38,26 @@ export enum struct CmdAccess {
     FRONTEND, // Only the user: opens a feature of the frontend instead of working on the trace
 };
 
+// What a command works on: the analysed module, and the open trace if there is one
+export struct CmdTarget {
+    Module& module;
+    TraceSession* trace = nullptr;
+};
+
+using TraceHandler = std::function<CmdResult(std::vector<std::string> const&, TraceSession&, CmdFrontend const&)>;
+// Commands that only work on the module, which also run without an open trace. Block numbers need one, function names do not.
+using ModuleHandler = std::function<CmdResult(std::vector<std::string> const&, CmdTarget const&, CmdFrontend const&)>;
+
 export struct CmdInfo {
     std::string_view name;
     std::string_view usage;
     std::string_view helptext;
     int num_params;
     CmdAccess access;
-    std::function<CmdResult(std::vector<std::string> const&, TraceSession&, CmdFrontend const&)> handler;
+    std::variant<TraceHandler, ModuleHandler> handler;
     bool variadic = false;
+
+    bool NeedsTrace() const { return std::holds_alternative<TraceHandler>(handler); }
 };
 
 export std::vector<CmdInfo> const& GetTraceCommands();
@@ -72,14 +84,20 @@ std::expected<Instruction*, std::string> ParseTraceInstr(std::string_view s, int
     return I;
 }
 
-std::expected<Function*, std::string> ParseValueFunction(std::string_view s, TraceSession const& session) {
+// A block number of the open trace, for commands that also run without one
+std::expected<int, std::string> ParseBlock(std::string_view s, CmdTarget const& target) {
+    if (!target.trace) return std::unexpected("No trace is open, give a function name instead of a block number");
+    return ParseBlock(s, *target.trace);
+}
+
+std::expected<Function*, std::string> ParseValueFunction(std::string_view s, CmdTarget const& target) {
     if (ContractPassUtility::parseInt(s)) {
-        std::expected<int, std::string> block = ParseBlock(s, session);
+        std::expected<int, std::string> block = ParseBlock(s, target);
         if (!block) return std::unexpected(block.error());
-        return session.BlockFunction(*block);
+        return target.trace->BlockFunction(*block);
     }
     if (s.starts_with("@")) s.remove_prefix(1);
-    Function* F = session.GetModule()->getFunction(s);
+    Function* F = target.module.getFunction(s);
     if (!F) return std::unexpected(std::format("No function named {} in the module!", s));
     if (F->isDeclaration()) return std::unexpected(std::format("Function {} is only declared, it has no values to annotate!", s));
     return F;
@@ -180,14 +198,14 @@ CmdResult CmdFpTarget(std::vector<std::string> const& args, TraceSession& sessio
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("{}.{} now has {} possible target(s)", *block, args[1], selected_func.size())};
 }
 
-CmdResult CmdAliasCreate(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
+CmdResult CmdAliasCreate(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
     if (args[0] != "yes" && args[0] != "y" && args[0] != "no" && args[0] != "n") {
         return {CmdResultCode::INVALID_INPUT, "Unknown alias type " + args[0]};
     }
     bool isAlias = args[0].starts_with("y");
-    std::expected<Function*, std::string> F1 = ParseValueFunction(args[1], session);
+    std::expected<Function*, std::string> F1 = ParseValueFunction(args[1], target);
     if (!F1) return {CmdResultCode::INVALID_INPUT, F1.error()};
-    std::expected<Function*, std::string> F2 = ParseValueFunction(args[3], session);
+    std::expected<Function*, std::string> F2 = ParseValueFunction(args[3], target);
     if (!F2) return {CmdResultCode::INVALID_INPUT, F2.error()};
     std::expected<Value*, std::string> V1 = ParseValue(args[2], *F1);
     if (!V1) return {CmdResultCode::INVALID_INPUT, V1.error()};
@@ -199,10 +217,10 @@ CmdResult CmdAliasCreate(std::vector<std::string> const& args, TraceSession& ses
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("Created alias group {}: {}", group, values)};
 }
 
-CmdResult CmdAliasAdd(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
+CmdResult CmdAliasAdd(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
     std::expected<int, std::string> group = ParseAliasGroup(args[0]);
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
-    std::expected<Function*, std::string> F = ParseValueFunction(args[1], session);
+    std::expected<Function*, std::string> F = ParseValueFunction(args[1], target);
     if (!F) return {CmdResultCode::INVALID_INPUT, F.error()};
     // All values are looked up before adding any, so that a wrong one does not leave the group partially extended
     std::vector<Value*> values;
@@ -224,7 +242,7 @@ CmdResult CmdAliasAdd(std::vector<std::string> const& args, TraceSession& sessio
     return {CmdResultCode::SUCCESS_CONTINUE, res};
 }
 
-CmdResult CmdAliasType(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
+CmdResult CmdAliasType(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
     std::expected<int, std::string> group = ParseAliasGroup(args[0]);
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
     bool isAlias = args[1].starts_with("y");
@@ -232,7 +250,7 @@ CmdResult CmdAliasType(std::vector<std::string> const& args, TraceSession& sessi
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("Alias group {} {}", *group, isAlias ? "should alias" : "should not alias")};
 }
 
-CmdResult CmdAliasRm(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
+CmdResult CmdAliasRm(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
     std::expected<int, std::string> group = ParseAliasGroup(args[0]);
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
     std::set<Value*, std::less<>> const& members = ContractPassUtility::getAliasAnnots().at(*group).members;
@@ -271,19 +289,19 @@ CmdResult CmdAliasRm(std::vector<std::string> const& args, TraceSession& session
     return {CmdResultCode::SUCCESS_CONTINUE, res};
 }
 
-CmdResult CmdAliasEpoch(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
+CmdResult CmdAliasEpoch(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
     std::expected<int, std::string> group = ParseAliasGroup(args[0]);
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
     // An instruction number refers to the trace block, anything else is a value of the function
     if (ContractPassUtility::parseInt(args[2])) {
-        std::expected<int, std::string> block = ParseBlock(args[1], session);
+        std::expected<int, std::string> block = ParseBlock(args[1], target);
         if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
-        std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[2], *block, session);
+        std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[2], *block, *target.trace);
         if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
         ContractPassUtility::addAliasEpoch(*group, *selected);
         return {CmdResultCode::SUCCESS_CONTINUE, std::format("Added epoch for alias group {} at {}.{}", *group, *block, args[2])};
     }
-    std::expected<Function*, std::string> F = ParseValueFunction(args[1], session);
+    std::expected<Function*, std::string> F = ParseValueFunction(args[1], target);
     if (!F) return {CmdResultCode::INVALID_INPUT, F.error()};
     Value* V = ContractPassUtility::getValueByName(args[2], *F);
     if (!V) return {CmdResultCode::INVALID_INPUT, std::format("Could not identify value {} in function {}", args[2], (*F)->getName().str())};
@@ -340,7 +358,7 @@ export std::vector<AliasGroupEntry> getAliasGroupEntries(int group) {
     return entries;
 }
 
-CmdResult CmdAliasGet(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
+CmdResult CmdAliasGet(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
     std::set<int> groups;
     for (std::string const& arg : args) {
         std::expected<int, std::string> group = ParseAliasGroup(arg);
@@ -415,8 +433,8 @@ CmdResult CmdDump(std::vector<std::string> const& args, TraceSession& session, C
     return {CmdResultCode::SUCCESS_CONTINUE, "Wrote module IR to " + args[0]};
 }
 
-CmdResult CmdHistory(std::vector<std::string> const&, TraceSession& session, CmdFrontend const& frontend) {
-    frontend.showHistory(session.GetHistory());
+CmdResult CmdHistory(std::vector<std::string> const&, CmdTarget const&, CmdFrontend const& frontend) {
+    frontend.showHistory(InteractiveSession::CommandHistory());
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
@@ -444,7 +462,7 @@ CmdResult CmdExit(std::vector<std::string> const&, TraceSession&, CmdFrontend co
     return {CmdResultCode::SUCCESS_EXIT, "Exiting debugger..."};
 }
 
-CmdResult CmdHelp(std::vector<std::string> const&, TraceSession& session, CmdFrontend const& frontend) {
+CmdResult CmdHelp(std::vector<std::string> const&, CmdTarget const&, CmdFrontend const& frontend) {
     std::vector<std::string> lines = {
         "Trace debug menu",
         "",
@@ -516,21 +534,33 @@ int running_commands = 0; // Nesting depth of ExecuteCommand
 // Whether a command is running. Commands may run event loops (e.g. dialogs), tool calls of MCP clients wait for them.
 export bool CommandRunning() { return running_commands > 0; }
 
+CmdResult RunCommandLine(CmdTarget const& target, std::string const& input_command, CmdFrontend const& frontend) {
+    CmdInfo const* used_cmd = FindCommand(input_command);
+    if (!used_cmd) return {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
+    if (used_cmd->NeedsTrace() && !target.trace) return {CmdResultCode::INVALID_INPUT, std::format("No trace is open, {} needs one", used_cmd->name)};
+    std::optional<std::vector<std::string>> args = SplitArgs(input_command, *used_cmd);
+    if (!args) return {CmdResultCode::INVALID_SYNTAX, std::format("Invalid syntax. Usage: {} {}", used_cmd->name, used_cmd->usage)};
+    running_commands++;
+    CmdResult result = used_cmd->NeedsTrace() ? std::get<TraceHandler>(used_cmd->handler)(*args, *target.trace, frontend)
+                                              : std::get<ModuleHandler>(used_cmd->handler)(*args, target, frontend);
+    running_commands--;
+    return result;
+}
+
 // Runs a command line, records it in the history, and refreshes the session unless the command ends it
 export CmdResult ExecuteCommand(TraceSession& session, std::string const& input_command, CmdFrontend const& frontend) {
-    CmdInfo const* used_cmd = FindCommand(input_command);
-    CmdResult result;
-    if (!used_cmd) {
-        result = {CmdResultCode::UNKNOWN_COMMAND, "Unknown command: " + input_command};
-    } else if (std::optional<std::vector<std::string>> args = SplitArgs(input_command, *used_cmd)) {
-        running_commands++;
-        result = used_cmd->handler(*args, session, frontend);
-        running_commands--;
-    } else {
-        result = {CmdResultCode::INVALID_SYNTAX, std::format("Invalid syntax. Usage: {} {}", used_cmd->name, used_cmd->usage)};
-    }
+    CmdResult result = RunCommandLine({*session.GetModule(), &session}, input_command, frontend);
     session.AddHistory(input_command, result);
     if (result.code != CmdResultCode::SUCCESS_EXIT && result.code != CmdResultCode::SUCCESS_REANALYSE) session.Refresh();
+    return result;
+}
+
+// Runs a command line while no trace is open, which only commands working on the module do (see CmdInfo::NeedsTrace).
+// Recorded in the history like the commands of a trace, the module is written for reanalysing and the patch files
+export CmdResult ExecuteModuleCommand(Module& module, std::string const& input_command, CmdFrontend const& frontend) {
+    CmdResult result = RunCommandLine({module}, input_command, frontend);
+    InteractiveSession::AddToHistory(input_command, result);
+    InteractiveSession::WriteReanalyseModule(&module);
     return result;
 }
 
