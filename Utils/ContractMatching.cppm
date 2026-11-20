@@ -160,7 +160,7 @@ CandidateMap getFunctionParentInstrCandidatesUncached(const Value* Ip) {
 
 static DenseMap<const Value*, std::shared_ptr<const CandidateMap>> parentInstrCandidatesCache;
 
-// Drop what was computed for the previous module. To be called in ContractPassUtility::Initialize
+// Drop the cached call chains. To be called after ContractPassUtility::Initialize and after ContractPassUtility::setFPTarget
 export void Initialize() {
     parentInstrCandidatesCache.clear();
 }

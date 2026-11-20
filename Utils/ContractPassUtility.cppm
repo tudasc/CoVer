@@ -167,6 +167,13 @@ export std::set<CallBase*> const& getAnnotatedIndirectCalls(Function const* F) {
     return it != AnnotFuncReverse.end() ? it->second : none;
 }
 
+// Registers the indirect call CB with the targets its function pointer annotation names
+void registerAnnotatedIndirectCall(CallBase* CB) {
+    for (Function* Target : getFPAnnots(CB)) {
+        if (Target && !Target->isDeclaration()) AnnotFuncReverse[Target].insert(CB);
+    }
+}
+
 // Called function, also if called through an alias (e.g. C++ complete object constructor aliasing the base object one)
 export Function* getCalleeThroughAlias(CallBase const* CB) {
     return dyn_cast<Function>(CB->getCalledOperand()->stripPointerCastsAndAliases());
@@ -216,10 +223,7 @@ export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
     for (Function& F : M) {
         for (Instruction& I : instructions(F)) {
             CallBase* CB = dyn_cast<CallBase>(&I);
-            if (!CB || !CB->isIndirectCall()) continue;
-            for (Function* Target : getFPAnnots(CB)) {
-                if (Target && !Target->isDeclaration()) AnnotFuncReverse[Target].insert(CB);
-            }
+            if (CB && CB->isIndirectCall()) registerAnnotatedIndirectCall(CB);
         }
     }
 }
@@ -489,6 +493,7 @@ export void addAliasEpoch(int group, Instruction* before) {
     if (!CI->getDebugLoc() && SP) CI->setDebugLoc(DILocation::get(curM->getContext(), SP->getScopeLine() ? SP->getScopeLine() : SP->getLine(), 0, SP));
 }
 
+// The caller must also invalidate ContractMatching, which caches the call chains through the indirect call
 export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     assert(indirect->isIndirectCall());
 
@@ -496,13 +501,18 @@ export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     CallBase* old = getFPAnnotCall(indirect);
     invalidateFunctionAnalyses(indirect->getFunction());
     if (old) removeAnnot(old);
-    if (targets.empty()) return;
+    if (!targets.empty()) {
+        std::vector<Value*> args = {indirect->getCalledOperand(), getInt(targets.size())};
+        args.insert(args.end(), targets.begin(), targets.end());
+        CallInst* CI = CallInst::Create(indirect->getModule()->getFunction("CoVer_AnnotFP"), args);
+        CI->insertBefore(indirect->getIterator());
+        CI->setDebugLoc(indirect->getDebugLoc());
+    }
 
-    std::vector<Value*> args = {indirect->getCalledOperand(), getInt(targets.size())};
-    args.insert(args.end(), targets.begin(), targets.end());
-    CallInst* CI = CallInst::Create(indirect->getModule()->getFunction("CoVer_AnnotFP"), args);
-    CI->insertBefore(indirect->getIterator());
-    CI->setDebugLoc(indirect->getDebugLoc());
+    // Keep the call chains through the indirect call current. Registered with the annotation that applies now:
+    // Without new targets, an earlier annotation dominating the call may apply again
+    for (std::pair<const Function* const, std::set<CallBase*>>& entry : AnnotFuncReverse) entry.second.erase(indirect);
+    registerAnnotatedIndirectCall(indirect);
 }
 
 // Annotate the pointer produced by I as allocated with at least size bytes (0: size unknown). Returns error message, empty on success

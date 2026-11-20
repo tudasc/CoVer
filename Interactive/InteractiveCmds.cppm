@@ -196,6 +196,7 @@ CmdResult CmdFpTarget(std::vector<std::string> const& args, TraceSession& sessio
         selected_func.insert(F);
     }
     ContractPassUtility::setFPTarget(CB, selected_func);
+    ContractMatching::Initialize(); // The call chains through CB changed
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("{}.{} now has {} possible target(s)", *block, args[1], selected_func.size())};
 }
 
