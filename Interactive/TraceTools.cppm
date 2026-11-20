@@ -86,7 +86,7 @@ std::vector<ToolSpec> SpecsOf(std::vector<ToolT> const& tools) {
 
 constexpr std::size_t MAX_TOOL_OUTPUT = 60000; // Characters
 constexpr int MAX_SOURCE_LINES = 400;
-constexpr int MAX_IR_LINES = 500;
+constexpr int MAX_IR_INSTRUCTIONS = 500; // Per page of get_function_ir
 
 // Whether the model may run the command line. Others are run by the user only (see CmdAccess); show_block and get_trace
 // provide what the view commands show in a form suited for the model, and set_fp_targets replaces the interactive fp-target.
@@ -205,10 +205,12 @@ export ToolResult AnnotationDocs(Json::Value const& input) {
     return {out, false, std::format("{} {}", DOCS_TOOL, topic.value_or("(all)"))};
 }
 
-// A line of the IR shown by get_function_ir, with its instruction if it is one
-struct IRLine {
+// An instruction shown by get_function_ir
+struct IRInstruction {
     std::string text;
     Instruction const* instr;
+    std::string label; // Of its basic block, shown before the first instruction of the block on a page
+    int line; // Source line it is filtered and paged by: its own, for one without a location that of the instruction before it
 };
 
 template<typename Range>
@@ -449,9 +451,7 @@ ToolResult FunctionIR(Module const& module, Json::Value const& input) {
     if (!name) return {"Missing string argument function", true, "get_function_ir"};
     Function const* F = module.getFunction(*name);
     if (!F) return {std::format("No function named {} in the module, see list_functions", *name), true, "get_function_ir " + *name};
-    std::optional<int> first_line = GetInt(input, "first_line");
-    std::optional<int> last_line = GetInt(input, "last_line");
-    bool filtered = first_line || last_line;
+    if (F->isDeclaration()) return {std::format("{} is only declared in the module, it has no IR", *name), true, "get_function_ir " + *name};
 
     std::string function_file = F->getSubprogram() ? F->getSubprogram()->getFilename().str() : "";
     std::map<Value const*, std::set<std::string>> variables = VariableNames(*F);
@@ -461,48 +461,69 @@ ToolResult FunctionIR(Module const& module, Json::Value const& input) {
     std::string printed;
     raw_string_ostream os(printed);
     F->print(os, &marker);
-    std::vector<IRLine> lines;
-    std::string label; // Of the current basic block, shown before its first instruction in the line range
+    std::string definition; // Shown on the page with the start of the function
+    std::vector<IRInstruction> instrs;
+    std::string label;
+    int src_line = F->getSubprogram() ? F->getSubprogram()->getLine() : 0; // Instructions before the first location, like the allocas, belong to the function's line
     int instr = 0;
     for (std::size_t pos = 0, next; pos < printed.size(); pos = next + 1) {
         next = std::min(printed.find('\n', pos), printed.size());
         std::string_view line = std::string_view(printed).substr(pos, next - pos);
         std::size_t mark = line.find(InstructionMarker::MARK);
         if (mark == std::string_view::npos) {
-            // Debug records are left out, the comments name the variables they describe
-            if (line.starts_with("; Function Attrs:") || line.substr(std::min(line.find_first_not_of(' '), line.size())).starts_with("#dbg_")) continue;
-            if (!filtered) lines.push_back({InteractiveUtils::CompactIR(line) + (line.starts_with("define ") ? ArgumentVariables(*F, variables) : ""), nullptr});
+            if (line.starts_with("define ")) definition = InteractiveUtils::CompactIR(line) + ArgumentVariables(*F, variables);
             else if (line.find(':') < line.find(' ')) label = InteractiveUtils::CompactIR(line); // A label like "12:", followed by the predecessors
-            continue;
+            continue; // Debug records are left out, the comments name the variables they describe
         }
         Instruction const* I = marker.instructions[instr++];
         if (ContractPassUtility::isRemovedAnnot(I)) continue; // Hidden like in the trace, erased once CoVer finishes
-        int src_line = I->getDebugLoc() ? I->getDebugLoc().getLine() : 0;
-        if (filtered && (src_line < first_line.value_or(0) || src_line > last_line.value_or(std::numeric_limits<int>::max()))) continue;
-        if (!label.empty()) lines.push_back({std::exchange(label, ""), nullptr});
-        lines.push_back({InteractiveUtils::CompactIR(line.substr(0, mark)), I});
+        if (I->getDebugLoc()) src_line = I->getDebugLoc().getLine();
+        instrs.push_back({InteractiveUtils::CompactIR(line.substr(0, mark)), I, label, src_line});
     }
 
-    int num_lines = lines.size();
-    int first = std::max(0, GetInt(input, "offset").value_or(0));
-    if (first >= num_lines) return {std::format("No lines from offset {}, the output has {} lines", first, num_lines), true, "get_function_ir " + *name};
-    int last = std::min(num_lines, first + MAX_IR_LINES);
-    std::string out = std::format("IR of {}, lines {}-{} of {}. Source locations{} are given where they change, the following instructions have the same location. "
-                                  "Values holding source variables are named after them.\n",
-                                  F->getName().str(), first, last - 1, num_lines, function_file.empty() ? "" : std::format(" (in {} unless another file is given)", function_file));
-    std::string shown_location; // Given last on this page, so that the first instruction of each page has its location
-    for (IRLine const& line : lines | std::views::drop(first) | std::views::take(last - first)) {
-        std::vector<std::string> notes;
-        if (line.instr) {
-            std::string location = LocationNote(line.instr, function_file);
-            if (location != shown_location) notes.push_back(shown_location = location);
-            std::map<Value const*, std::set<std::string>>::const_iterator var = variables.find(line.instr);
-            if (var != variables.end()) notes.push_back("variable " + Join(var->second, "/"));
-        }
-        out += notes.empty() ? line.text + "\n" : std::format("{}    ; {}\n", line.text, Join(notes, ", "));
+    // Pages end at a source line, so that the model only deals with source lines and continuing needs no other argument
+    std::map<int, int> line_sizes; // Number of instructions by source line
+    for (IRInstruction const& i : instrs) line_sizes[i.line]++;
+    int function_first = line_sizes.begin()->first;
+    int function_last = line_sizes.rbegin()->first;
+    int first_line = GetInt(input, "first_line").value_or(function_first);
+    int last_line = GetInt(input, "last_line").value_or(function_last);
+    std::map<int, int>::const_iterator page_begin = line_sizes.lower_bound(first_line);
+    std::map<int, int>::const_iterator range_end = line_sizes.upper_bound(last_line);
+    if (first_line > last_line || page_begin == range_end) {
+        return {std::format("No instructions in the requested source lines, those of the function are at lines {}-{}", function_first, function_last), true, "get_function_ir " + *name};
     }
-    if (last < num_lines) out += std::format("[Stopped after {} lines, call again with offset {} for the rest]\n", MAX_IR_LINES, last);
-    return {out, false, std::format("get_function_ir {} from {}", *name, first)};
+    std::map<int, int>::const_iterator page_end = page_begin;
+    int page_size = 0;
+    do { // At least one line, even if it alone exceeds the limit
+        page_size += page_end->second;
+        page_end++;
+    } while (page_end != range_end && page_size + page_end->second <= MAX_IR_INSTRUCTIONS);
+    int page_first = page_begin->first;
+    int page_last = std::prev(page_end)->first;
+
+    std::string out = std::format("IR of {}, source lines {}-{}{} (the function's instructions are at lines {}-{}). "
+                                  "Source locations{} are given where they change, the following instructions have the same location. Values holding source variables are named after them.\n",
+                                  F->getName().str(), page_first, page_last, page_end == range_end ? "" : std::format(", part of the requested {}-{}", first_line, last_line),
+                                  function_first, function_last, function_file.empty() ? "" : std::format(" (in {} unless another file is given)", function_file));
+    if (page_first == function_first) out += definition + "\n";
+    std::string shown_location; // Given last on this page, so that the first instruction of each page has its location
+    BasicBlock const* shown_block = nullptr;
+    for (IRInstruction const& i : instrs) {
+        if (i.line < page_first || i.line > page_last) continue;
+        if (i.instr->getParent() != shown_block && !i.label.empty()) out += (shown_block ? "\n" : "") + i.label + "\n";
+        shown_block = i.instr->getParent();
+        std::vector<std::string> notes;
+        std::string location = LocationNote(i.instr, function_file);
+        if (location != shown_location) notes.push_back(shown_location = location);
+        std::map<Value const*, std::set<std::string>>::const_iterator var = variables.find(i.instr);
+        if (var != variables.end()) notes.push_back("variable " + Join(var->second, "/"));
+        out += notes.empty() ? i.text + "\n" : std::format("{}    ; {}\n", i.text, Join(notes, ", "));
+    }
+    if (page_end != range_end) {
+        out += std::format("[Stopped after {} instructions, call again with first_line {} and last_line {} for the rest]\n", page_size, page_end->first, last_line);
+    }
+    return {out, false, std::format("get_function_ir {} lines {}-{}", *name, page_first, page_last)};
 }
 
 ToolResult ListFunctions(Module const& module, Json::Value const& input) {
@@ -630,11 +651,11 @@ std::vector<ToolInfo> BuildTools() {
           Schema({{"file", "string", "Path or file name"}, {"first_line", "integer", "First line, 1-based (default 1)"}, {"last_line", "integer", "Last line, inclusive"}}, {"file"})},
          ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return ReadSource(*t.module, input); }},
         {{"get_function_ir", "LLVM IR of a function with source locations and the source variables values hold, e.g. to find value names for alias annotations or to inspect code outside of the trace. "
-                             "Long functions are returned in parts (see offset); restrict the output to a range of source lines to find values quickly.",
+                             "Restrict the output to a range of source lines to find values quickly. Long outputs are split after a source line and say which lines to request for the rest.",
           Schema({{"function", "string", "Function name as in the IR (mangled for C++)"},
-                  {"first_line", "integer", "Only instructions of this source line and later"},
-                  {"last_line", "integer", "Only instructions up to this source line, inclusive"},
-                  {"offset", "integer", "First line of the output to return, to continue a long output (default 0)"}}, {"function"})},
+                  {"first_line", "integer", "Only instructions of this source line and later (default: the function's first line). "
+                                            "An instruction without a source location belongs to the line of the instruction before it"},
+                  {"last_line", "integer", "Only instructions up to this source line, inclusive (default: the function's last line)"}}, {"function"})},
          ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return FunctionIR(*t.module, input); }},
         {{"list_functions", "Functions of the module, e.g. candidates for function pointer targets.",
           Schema({{"filter", "string", "Only list functions whose name contains this text"}}, {})},
