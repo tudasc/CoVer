@@ -142,6 +142,7 @@ export namespace llvm {
     using llvm::InvokeInst;
     using llvm::DIType;
     using llvm::DIGlobalVariableExpression;
+    using llvm::DIGlobalVariable;
     using llvm::PassBuilder;
     using llvm::ModulePassManager;
     using llvm::ArrayRef;

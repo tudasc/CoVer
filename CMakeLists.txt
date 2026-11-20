@@ -37,7 +37,7 @@ target_sources(CoVerCore PUBLIC FILE_SET CXX_MODULES FILES
   Utils/AnalysisReports.cppm
   Utils/ContractPassUtility.cppm
   Utils/ContractMatching.cppm
-  Utils/ValueOrder.cppm
+  Utils/DeterminizeHelper.cppm
   Utils/Worklist.cppm
   Utils/LLVMModule.cppm
   Utils/ErrorMessage.cppm

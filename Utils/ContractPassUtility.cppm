@@ -1,14 +1,13 @@
 module;
 
 #include <cassert>
-#include <climits>
 #include <cstdlib>
 
 export module ContractPassUtility;
 import std;
 import LLVMModule;
 import ErrorMessage;
-import ValueOrder;
+import DeterminizeHelper;
 
 using namespace llvm;
 
@@ -173,69 +172,6 @@ export Function* getCalleeThroughAlias(CallBase const* CB) {
     return dyn_cast<Function>(CB->getCalledOperand()->stripPointerCastsAndAliases());
 }
 
-void sortBlocks(llvm::Function &F) {
-  if (F.isDeclaration() || F.size() <= 1)
-    return;
-
-  llvm::ReversePostOrderTraversal<llvm::Function *> RPOT(&F);
-  llvm::BasicBlock *Prev = nullptr;
-  for (llvm::BasicBlock *BB : RPOT) {
-    if (Prev)
-      BB->moveAfter(Prev);
-    Prev = BB;
-  }
-}
-
-void determinizeModule() {
-    curM->getFunctionList().sort([](const llvm::Function &A, const llvm::Function &B) {
-        return A.getName() < B.getName();
-    });
-    for (Function& F : *curM) {
-        sortBlocks(F);
-        // Position in the function is index for use list
-        DenseMap<BasicBlock const*, int> Order;
-        int Idx = 0;
-        for (BasicBlock const& BB : F) Order[&BB] = Idx++;
-
-        auto predKey = [&](const Use &U) -> unsigned {
-            // A block value's users are terminators; map each back to its parent (the pred).
-            if (Instruction* I = dyn_cast<Instruction>(U.getUser())) return Order.lookup(I->getParent());
-            return UINT_MAX; // blockaddress / non-terminator users sink to the end
-        };
-
-        for (BasicBlock &BB : F) {
-            BB.sortUseList([&](const Use &L, const Use &R) {
-                return predKey(L) < predKey(R);
-            });
-        }
-    }
-    ValueOrder::determinize(*curM);
-
-    NamedMDNode *CUs = curM->getNamedMetadata("llvm.dbg.cu");
-    SmallVector<MDNode *, 8> Nodes(CUs->operands());
-
-    llvm::sort(Nodes, [](MDNode *A, MDNode *B) {
-        DICompileUnit* CA = cast<DICompileUnit>(A);
-        DICompileUnit* CB = cast<DICompileUnit>(B);
-        return CA->getFile()->getFilename() < CB->getFile()->getFilename();
-    });
-
-    CUs->clearOperands();
-    for (MDNode *N : Nodes)
-        CUs->addOperand(N);
-
-    for (DICompileUnit *CU : curM->debug_compile_units()) {
-        if (!CU->getGlobalVariables()) continue;
-        SmallVector<Metadata *, 16> GVs(CU->getGlobalVariables()->operands());
-        llvm::sort(GVs, [](Metadata *A, Metadata *B) {
-            auto *GA = cast<DIGlobalVariableExpression>(A)->getVariable();
-            auto *GB = cast<DIGlobalVariableExpression>(B)->getVariable();
-            return GA->getName() < GB->getName();
-        });
-        CU->replaceGlobalVariables(MDTuple::get(curM->getContext(), GVs));
-    }
-}
-
 export StoreInst* getLastStore(CallBase* CB, int idx) {
     Instruction* cur = CB->getPrevNode();
     while (cur) {
@@ -259,7 +195,7 @@ export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
     outputIR = _outputIR;
 
     // Function list and basic blocks must be sorted for clean diff on interactive analysis
-    determinizeModule();
+    DeterminizeHelper::determinize(M);
     slotTracker.reset(); // Numbering follows the new order
 
     Function* AnnotAlias = M.getFunction("CoVer_AnnotAlias");

@@ -15,7 +15,7 @@ export module ContractMatching;
 import std;
 import LLVMModule;
 import ContractPassUtility;
-import ValueOrder;
+import DeterminizeHelper;
 
 using namespace llvm;
 
@@ -68,8 +68,8 @@ Function const* getParentFunction(Value const* V) {
 }
 
 // Ordered deterministically: The candidate search stops at the first match
-using CandidateMap = std::map<const Value*, int, ValueOrder::Less>;
-using CandidateSet = std::set<std::pair<const Value*, int>, ValueOrder::Less>;
+using CandidateMap = std::map<const Value*, int, DeterminizeHelper::Less>;
+using CandidateSet = std::set<std::pair<const Value*, int>, DeterminizeHelper::Less>;
 
 CandidateSet resolveArgForFuncDiff(Value const* I, int curSteps, CandidateMap const& candidatesConsidered) {
     // First step: Collect the arguments represented by the value
