@@ -87,11 +87,16 @@ export void invalidateFunctionAnalyses(Function* F) {
     if (curFAM && F) curFAM->invalidate(*F, PreservedAnalyses::none());
 }
 
+// The function a value is local to: That of an instruction or argument, null for globals and constants
+export Function const* getParentFunction(Value const* V) {
+    if (Instruction const* I = dyn_cast<Instruction>(V)) return I->getFunction();
+    if (Argument const* A = dyn_cast<Argument>(V)) return A->getParent();
+    return nullptr;
+}
+
 // Name of a value as written in the IR and accepted by getValueByName, e.g. %42 or %buf. Globals and constants without %
 export std::string getValueName(Value const* V) {
-    Function const* F = nullptr;
-    if (Instruction const* I = dyn_cast<Instruction>(V)) F = I->getFunction();
-    else if (Argument const* A = dyn_cast<Argument>(V)) F = A->getParent();
+    Function const* F = getParentFunction(V);
     if (!F) return V->getNameOrAsOperand();
     if (V->hasName()) return "%" + V->getName().str();
     int slot = slotTracker.getSlotTracker(*F).getLocalSlot(V);
@@ -102,10 +107,7 @@ export std::string getValueName(Value const* V) {
 export std::string printValue(Value const* V) {
     std::string out;
     raw_string_ostream os(out);
-    Function const* F = nullptr;
-    if (Instruction const* I = dyn_cast<Instruction>(V)) F = I->getFunction();
-    else if (Argument const* A = dyn_cast<Argument>(V)) F = A->getParent();
-    if (F) V->print(os, slotTracker.getSlotTracker(*F));
+    if (Function const* F = getParentFunction(V)) V->print(os, slotTracker.getSlotTracker(*F));
     else V->print(os);
     return out;
 }

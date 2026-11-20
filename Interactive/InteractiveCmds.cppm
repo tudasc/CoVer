@@ -346,9 +346,7 @@ export std::vector<AliasGroupEntry> getAliasGroupEntries(int group) {
     std::vector<AliasGroupEntry> entries;
     int num = 0;
     for (Value const* V : ContractPassUtility::getAliasAnnots().at(group).members) {
-        Function const* F = nullptr;
-        if (Instruction const* I = dyn_cast<Instruction>(V)) F = I->getFunction();
-        else if (Argument const* A = dyn_cast<Argument>(V)) F = A->getParent();
+        Function const* F = ContractPassUtility::getParentFunction(V);
         entries.push_back({std::to_string(num), std::format("{:0>3}", num), AliasMemberText(V), F ? F->getName().str() : ""});
         num++;
     }

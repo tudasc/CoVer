@@ -59,14 +59,6 @@ std::set<Value const*> getMatchingAliasMembers(ContractPassUtility::AliasGroup c
     return res;
 }
 
-Function const* getParentFunction(Value const* V) {
-    if (Instruction const* I = dyn_cast<Instruction>(V))
-        return I->getFunction();
-    if (Argument const* Arg = dyn_cast<Argument>(V))
-        return Arg->getParent();
-    return nullptr;
-}
-
 // Ordered deterministically: The candidate search stops at the first match
 using CandidateMap = std::map<const Value*, int, DeterminizeHelper::Less>;
 using CandidateSet = std::set<std::pair<const Value*, int>, DeterminizeHelper::Less>;
@@ -243,7 +235,7 @@ Module* getModule(Value const* V) {
 
 // A value with its function, e.g. "%5 in main"
 std::string describeValue(Value const* V) {
-    Function const* F = getParentFunction(V);
+    Function const* F = ContractPassUtility::getParentFunction(V);
     return F ? std::format("{} in {}", ContractPassUtility::getValueName(V), F->getName().str()) : ContractPassUtility::getValueName(V);
 }
 
@@ -323,8 +315,8 @@ export ParamMatch checkParamMatch(const Value* contrP, const Value* callP, Contr
     if (!ContractPassUtility::isFortran()) {
         // Resolve function differences.
         // If one is a global, this does not matter, so check if they have a parent function first
-        const Function* Fs = getParentFunction(source);
-        const Function* Ft = getParentFunction(target);
+        const Function* Fs = ContractPassUtility::getParentFunction(source);
+        const Function* Ft = ContractPassUtility::getParentFunction(target);
         if (Fs && Ft && Fs != Ft) {
             // Definitely different functions
             diff = resolveFunctionDifference(&source, &target);
