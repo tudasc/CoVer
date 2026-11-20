@@ -5,6 +5,7 @@
 import std;
 import LLVMModule;
 import ContractPassUtility;
+import ContractMatching;
 import Worklist;
 
 using namespace llvm;
@@ -78,7 +79,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::transferP
 
     IterTypePostCall* Data = static_cast<IterTypePostCall*>(data);
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-        if (ContractPassUtility::checkCalledApplies(CB, Data->Target, Data->isTag, Data->Tags)) {
+        if (ContractMatching::checkCalledApplies(CB, Data->Target, Data->isTag, Data->Tags)) {
             if (Data->reqParams.empty()) {
                 cur = CallStatus::CALLED;
                 return cur;
@@ -86,7 +87,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::transferP
             // Target function was called, need to check the parameters
             // Paramcheck is resolved once target found
             for (CallParam const& P : Data->reqParams) {
-                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->Target, P, Data->Tags)) {
+                if (ContractMatching::checkCallParamApplies(Data->callsite, CB, Data->Target, P, Data->Tags)) {
                     // Success!
                     return CallStatus::CALLED;
                 }

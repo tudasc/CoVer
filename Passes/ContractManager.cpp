@@ -6,6 +6,7 @@ import std;
 import LLVMModule;
 import ContractDataExtractor;
 import ContractPassUtility;
+import ContractMatching;
 import InteractiveUI;
 import InteractiveUtils;
 
@@ -50,6 +51,7 @@ ContractManagerAnalysis::ContractDatabase ContractManagerAnalysis::run(Module &M
 
     errs() << "CoVer: Running Contract Manager on Module: " << M.getName() << "\n";
     ContractPassUtility::Initialize(M, AM, ClIROutput);
+    ContractMatching::Initialize();
 
     extractFromAnnotations(M);
     extractFromFunction(M);

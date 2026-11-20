@@ -6,6 +6,7 @@ export module InteractiveCmds;
 import std;
 import LLVMModule;
 import ContractPassUtility;
+import ContractMatching;
 import IRPatch;
 import InteractiveUtils;
 import InteractiveSession;
@@ -390,7 +391,7 @@ CmdResult CmdAliasCheck(std::vector<std::string> const& args, CmdTarget const& t
     std::expected<Value*, std::string> V2 = ParseValue(args[3], *F2);
     if (!V2) return {CmdResultCode::INVALID_INPUT, V2.error()};
     // Compared directly, like a contract parameter with the parameter of a call or the address of a store
-    ContractPassUtility::ParamMatch result = ContractPassUtility::checkParamMatch(*V1, *V2);
+    ContractMatching::ParamMatch result = ContractMatching::checkParamMatch(*V1, *V2);
     return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} and {} {}: {}", ContractPassUtility::getValueName(*V1), ContractPassUtility::getValueName(*V2),
                                                          result.match ? "match" : "do not match", result.Explain())};
 }

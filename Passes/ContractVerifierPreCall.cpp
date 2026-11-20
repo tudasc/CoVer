@@ -5,6 +5,7 @@
 import std;
 import LLVMModule;
 import ContractPassUtility;
+import ContractMatching;
 import Worklist;
 
 using namespace llvm;
@@ -79,7 +80,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
 
     IterTypePreCall* Data = static_cast<IterTypePreCall*>(data);
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-        if (ContractPassUtility::checkCalledApplies(CB, Data->Target, Data->isTag, Data->Tags)) {
+        if (ContractMatching::checkCalledApplies(CB, Data->Target, Data->isTag, Data->Tags)) {
             if (Data->reqParams.empty()) {
                 cur.CurVal = CallStatusVal::CALLED;
                 return cur;
@@ -99,7 +100,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
             }
             for (CallParam const& param : Data->reqParams) {
                 for (const CallBase* Candidate : cur.candidate) {
-                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags)) {
+                    if (ContractMatching::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags)) {
                         // Success!
                         cur.CurVal = CallStatusVal::CALLED;
                         return cur;

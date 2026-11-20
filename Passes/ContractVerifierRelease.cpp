@@ -5,6 +5,7 @@
 import std;
 import LLVMModule;
 import ContractPassUtility;
+import ContractMatching;
 import Worklist;
 import ErrorMessage;
 
@@ -89,7 +90,7 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err,
     const int forbidParam = std::any_cast<const int>(Data->param[0]); \
     const ParamAccess accType = std::any_cast<const ParamAccess>(Data->param[1]); \
     const Value* contrP = Data->callsite->getArgOperand(forbidParam); \
-    if (ContractPassUtility::checkParamMatch(contrP, instr, accType)) { \
+    if (ContractMatching::checkParamMatch(contrP, instr, accType)) { \
         reportForbidden(Data, instr); \
         return ReleaseStatus::ERROR_UNFULFILLED; \
     } \
@@ -102,10 +103,10 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
     IterTypeRelease* Data = static_cast<IterTypeRelease*>(data);
 
     if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-        if (ContractPassUtility::checkCalledApplies(CB, Data->releaseFunc, Data->isTagRel, Data->Tags)) {
+        if (ContractMatching::checkCalledApplies(CB, Data->releaseFunc, Data->isTagRel, Data->Tags)) {
             if (Data->releaseParam.empty()) return ReleaseStatus::FULFILLED;
             for (CallParam const& P : Data->releaseParam) {
-                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags))
+                if (ContractMatching::checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags))
                     return cur == ReleaseStatus::ERROR_UNFULFILLED ? ReleaseStatus::ERROR : ReleaseStatus::FULFILLED;
             }
             // Wrong parameters, continue
@@ -117,7 +118,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
         case ContractTree::FormulaType::CALL:
         case ContractTree::FormulaType::CALLTAG:
             if (const CallBase* CB = dyn_cast<CallBase>(I)) {
-                if (ContractPassUtility::checkCalledApplies(CB, std::any_cast<std::string>(Data->param[0]), Data->forbiddenType == ContractTree::FormulaType::CALLTAG, Data->Tags)) {
+                if (ContractMatching::checkCalledApplies(CB, std::any_cast<std::string>(Data->param[0]), Data->forbiddenType == ContractTree::FormulaType::CALLTAG, Data->Tags)) {
                     // Found forbidden function. Current status is unknown, if we find forbidden parameter (and one is specified) this is an error
                     std::vector<CallParam> const& forbidParams = *std::any_cast<std::vector<CallParam>>(&Data->param[1]);
                     if (forbidParams.empty()) {
@@ -125,7 +126,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
                         return ReleaseStatus::ERROR_UNFULFILLED;
                     }
                     for (CallParam const& forbidParam : forbidParams) {
-                        if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags)) {
+                        if (ContractMatching::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags)) {
                             reportForbidden(Data, CB);
                             return ReleaseStatus::ERROR_UNFULFILLED;
                         }
