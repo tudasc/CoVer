@@ -10,6 +10,7 @@ import AnalysisReports;
 import LLVMModule;
 import ErrorMessage;
 import ContractPassUtility;
+import ContractMatching;
 import InteractiveUtils;
 import InteractiveSession;
 import InteractiveCmds;
@@ -87,6 +88,9 @@ std::vector<ToolSpec> SpecsOf(std::vector<ToolT> const& tools) {
 constexpr std::size_t MAX_TOOL_OUTPUT = 60000; // Characters
 constexpr int MAX_SOURCE_LINES = 400;
 constexpr int MAX_IR_INSTRUCTIONS = 500; // Per page of get_function_ir
+
+// How the tools take function names. Models tend to take C names for mangled ones in C++ programs, e.g. _MPI_Irecv for MPI_Irecv.
+constexpr char const* FUNCTION_NAME = "name as in the IR: C functions (such as MPI_Irecv) as in the source, also in C++ programs, C++ functions mangled (_Z...)";
 
 // Whether the model may run the command line. Others are run by the user only (see CmdAccess); show_block and get_trace
 // provide what the view commands show in a form suited for the model, and set_fp_targets replaces the interactive fp-target.
@@ -168,7 +172,7 @@ Every contract requirement is checked by a forward dataflow analysis over the in
 # Annotations
 Annotations are assumptions the static analysis trusts without checking. They do not change the program's behaviour, but they can make the analysis accept wrong code, so only add one when the program's semantics clearly justify it. They can be checked at runtime by CoVer's annotation verifier: the user saves them as a patch file (diff), builds the program with it (--ir-patches) and runs it. You cannot run the verifier yourself.
 - Function pointer targets (set_fp_targets tool): the analysis cannot follow indirect calls. Annotating the possible targets of an indirect call lets it analyse them. Annotate all functions the pointer can actually point to, as determined from the source.
-- Alias annotations (alias-create, alias-add, alias-type, alias-rm, alias-epoch): when alias analysis is imprecise, values that alias are not matched (e.g. the request passed to MPI_Wait is not recognised as the one from MPI_Isend), or values that do not alias are matched (e.g. a store into another part of an array is taken as a write to the buffer of MPI_Isend). The values of a yes group are asserted to alias each other, those of a no group not to alias each other. A value that is only used to load or store, such as a store address, is only asserted not to alias the values of the group annotated before it, so the stores filling a buffer can be in the same group as that buffer, which is sent after them. Annotate both values the analysis compares, for a load or store its address, which the trace shows. Each value is given by a function and its name in that function's IR (%name, %42, or @global for globals), e.g. `alias-add 0 _Z4sendPi %42`. alias-add takes any number of values of the same function, e.g. `alias-add 0 _Z4sendPi %42 %57 %63`. Instead of the function name, a block number of the trace can be given, which stands for the function containing the block. Prefer function names: block numbers change when another trace is opened or another child is selected, and a value need not be on the trace to be annotated. find_calls lists the calls of a function with the values of their arguments, e.g. the buffer and request arguments of every MPI_Isend in a function, which saves searching them in the IR. An epoch (alias-epoch) makes the runtime annotation verifier forget the values of the group seen so far. Annotated code that runs more than once, e.g. a function called in every time step, needs an epoch at its start, as each run usually reuses the memory of the previous one: `alias-epoch 0 _Z4sendPi %0`, where an argument of the function stands for its start. alias-rm removes several members or epochs at once, given as indices and ranges that all refer to the numbering before the removal (`alias-rm 3 0 4-9 e1`). alias-get takes group numbers to show only those groups. alias-check tells whether the analysis takes two values as the same and why, using the annotations added so far.
+- Alias annotations (alias-create, alias-add, alias-type, alias-rm, alias-epoch): when alias analysis is imprecise, values that alias are not matched (e.g. the request passed to MPI_Wait is not recognised as the one from MPI_Isend), or values that do not alias are matched (e.g. a store into another part of an array is taken as a write to the buffer of MPI_Isend). The values of a yes group are asserted to alias each other, those of a no group not to alias each other. A value that is only used to load or store, such as a store address, is only asserted not to alias the values of the group annotated before it, so the stores filling a buffer can be in the same group as that buffer, which is sent after them. Annotate both values the analysis compares, for a load or store its address, which the trace shows. Each value is given by a function and its name in that function's IR (%name, %42, or @global for globals), e.g. `alias-add 0 _Z4sendPi %42`. alias-add takes any number of values of the same function, e.g. `alias-add 0 _Z4sendPi %42 %57 %63`. Instead of the function name, a block number of the trace can be given, which stands for the function containing the block. Prefer function names: block numbers change when another trace is opened or another child is selected, and a value need not be on the trace to be annotated. find_calls lists the calls of a function with the values of their arguments, e.g. the buffer and request arguments of every MPI_Isend in a function, which saves searching them in the IR. find_accesses does the same for the addresses of stores and loads; given a value with matching, it lists only the accesses the analysis matches with it, e.g. every store it takes as a write to an MPI_Isend buffer, which a data race report only shows for the first conflicting call. An epoch (alias-epoch) makes the runtime annotation verifier forget the values of the group seen so far. Annotated code that runs more than once, e.g. a function called in every time step, needs an epoch at its start, as each run usually reuses the memory of the previous one: `alias-epoch 0 _Z4sendPi %0`, where an argument of the function stands for its start. alias-rm removes several members or epochs at once, given as indices and ranges that all refer to the numbering before the removal (`alias-rm 3 0 4-9 e1`). alias-get takes group numbers to show only those groups. alias-check tells whether the analysis takes two values as the same and why, using the annotations added so far.
 - Allocation annotations (alloc-create): the analysis tracks allocated pointers through stores, loads and GEPs, but not through integer arithmetic or opaque calls. Annotating the instruction producing a pointer asserts the pointer refers to memory allocated with at least the given number of bytes (0 if unknown, never more than actually allocated).
 New annotations do not affect the current trace, they take effect with the next reanalysis.
 The get_annotation_docs tool returns CoVer's documentation of each annotation kind, with examples and constraints, e.g. how far a source level alias annotation reaches. It shows annotations as calls in the IR or the source code (CoVer_AnnotAlias, ...), which is how they end up in the program. In the trace debugger, add them with the commands above instead. Read the documentation of an annotation kind before using it for the first time.
@@ -621,15 +625,124 @@ ToolResult FindCalls(Module const& module, Json::Value const& input) {
     return {out, false, summary};
 }
 
+constexpr int MAX_ACCESSES = 100;
+constexpr int MAX_ADDRESS_CHAIN = 4;
+
+// The definitions an address is computed from through GEPs, loads and casts, up to the first value holding a source variable,
+// e.g. the GEP of a store into an array, the load of the pointer variable and the variable's alloca
+std::vector<Value const*> AddressChain(Value const* address, std::map<Value const*, std::set<std::string>> const& variables) {
+    std::vector<Value const*> chain;
+    for (Value const* V = address; V && chain.size() < MAX_ADDRESS_CHAIN;) {
+        chain.push_back(V);
+        if (variables.contains(V)) break;
+        if (GEPOperator const* GEP = dyn_cast<GEPOperator>(V)) V = GEP->getPointerOperand();
+        else if (LoadInst const* LI = dyn_cast<LoadInst>(V)) V = LI->getPointerOperand();
+        else if (CastInst const* CI = dyn_cast<CastInst>(V)) V = CI->getOperand(0);
+        else break;
+    }
+    return chain;
+}
+
+// The loads or stores of a function with their addresses, optionally only those the analysis matches with a pointer, like the read!/write! checks of a contract.
+// The counterpart of find_calls, so that the addresses to annotate for data races need not be looked up in the IR one by one.
+ToolResult FindAccesses(Module const& module, Json::Value const& input) {
+    std::optional<std::string> name = GetString(input, "function");
+    if (!name) return {"Missing string argument function", true, "find_accesses"};
+    std::string kind = GetString(input, "kind").value_or("store");
+    std::string summary = std::format("find_accesses {} {}", *name, kind);
+    if (kind != "store" && kind != "load") return {"kind must be \"store\" or \"load\"", true, summary};
+    Function* F = module.getFunction(*name);
+    if (!F) return {std::format("No function named {} in the module, see list_functions", *name), true, summary};
+    if (F->isDeclaration()) return {std::format("{} is only declared in the module, it has no IR", *name), true, summary};
+    std::optional<int> first_line = GetInt(input, "first_line");
+    std::optional<int> last_line = GetInt(input, "last_line");
+
+    Value const* matching = nullptr;
+    if (std::optional<std::string> matching_name = GetString(input, "matching")) {
+        std::string matching_function_name = GetString(input, "matching_function").value_or(*name);
+        Function* matching_function = module.getFunction(matching_function_name);
+        if (!matching_function) return {std::format("No function named {} in the module, see list_functions", matching_function_name), true, summary};
+        matching = ContractPassUtility::getValueByName(*matching_name, matching_function);
+        if (!matching) return {std::format("Could not identify value {} in function {}", *matching_name, matching_function_name), true, summary};
+        if (!matching->getType()->isPointerTy()) return {std::format("Value {} in function {} is not a pointer", *matching_name, matching_function_name), true, summary};
+        summary += " matching " + *matching_name;
+    }
+    bool stack_slots = matching || (input.isMember("stack_slots") && input["stack_slots"].asBool()); // A match filters better than the stack slots
+
+    // Lines as in get_function_ir: an instruction without a location belongs to the line of the instruction before it
+    std::vector<Instruction const*> accesses;
+    int candidates = 0;
+    int skipped = 0; // Accesses to stack slots
+    int src_line = F->getSubprogram() ? F->getSubprogram()->getLine() : 0;
+    for (Instruction const& I : instructions(*F)) {
+        if (I.getDebugLoc()) src_line = I.getDebugLoc().getLine();
+        if (kind == "store" ? !isa<StoreInst>(I) : !isa<LoadInst>(I)) continue;
+        if ((first_line && src_line < *first_line) || (last_line && src_line > *last_line)) continue;
+        if (!stack_slots && isa<AllocaInst>(getLoadStorePointerOperand(&I))) {
+            skipped++;
+            continue;
+        }
+        candidates++;
+        // As the release check compares the pointer argument of a call with an access to its pointee (read!(*N), write!(*N)). Why is for alias-check.
+        if (!matching || ContractMatching::checkParamMatch(matching, &I, ContractTree::ParamAccess::DEREF)) accesses.push_back(&I);
+    }
+
+    std::string what = kind == "store" ? "Stores" : "Loads";
+    std::string range = first_line && last_line ? std::format(" at source lines {}-{}", *first_line, *last_line)
+                      : first_line              ? std::format(" from source line {}", *first_line)
+                      : last_line               ? std::format(" up to source line {}", *last_line)
+                                                : "";
+    std::string match_text = matching ? std::format(" whose address the analysis matches with {}", ContractPassUtility::getValueName(matching)) : "";
+    if (accesses.empty()) {
+        return {std::format("No {}{} in {}{}{}{}", kind == "store" ? "stores" : "loads", match_text, *name, range, matching ? std::format(", {} checked", candidates) : "",
+                            skipped ? std::format(". {} accesses to the stack slots of local variables themselves are left out (see stack_slots)", skipped) : ""), false, summary};
+    }
+    int first = std::max(0, GetInt(input, "offset").value_or(0));
+    if (first >= accesses.size()) return {std::format("No accesses from offset {}, there are {}", first, accesses.size()), true, summary};
+    int last = std::min<int>(accesses.size(), first + MAX_ACCESSES);
+
+    std::string function_file = F->getSubprogram() ? F->getSubprogram()->getFilename().str() : "";
+    std::map<Value const*, std::set<std::string>> variables = VariableNames(*F);
+    std::string demangled = demangle(F->getName().str());
+    std::string out = std::format("{} in {}{}{}{}: {}{}, showing {}-{}. Values are named as the annotation commands take them, annotate the address of an access.\n",
+                                  what, *name, demangled != *name ? " (" + demangled + ")" : "", range, match_text, accesses.size(), matching ? std::format(" of {}", candidates) : "", first, last - 1);
+    if (matching) {
+        Function const* matching_function = ContractPassUtility::getParentFunction(matching); // Null for globals
+        std::map<Value const*, std::set<std::string>> matching_variables = VariableNames(matching_function ? *matching_function : *F);
+        out += std::format("Matched with: {}\n", ArgumentText(matching, matching_variables));
+    } else if (!stack_slots) {
+        out += "Accesses to the stack slots of local variables themselves are left out (see stack_slots).\n";
+    }
+    if (!function_file.empty()) out += std::format("Locations in {} unless another file is given.\n", function_file);
+    for (auto const [index, I] : std::views::enumerate(accesses) | std::views::drop(first) | std::views::take(last - first)) {
+        out += std::format("{} {} at {}: {}\n", kind == "store" ? "Store" : "Load", index, LocationNote(I, function_file), InteractiveUtils::CompactIR(Trim(ContractPassUtility::printValue(I))));
+        std::vector<Value const*> chain = AddressChain(getLoadStorePointerOperand(I), variables);
+        for (auto const [step, V] : std::views::enumerate(chain)) out += std::format("    {} {}\n", step ? "  from" : "address:", ArgumentText(V, variables));
+    }
+    if (last < accesses.size()) out += std::format("[Stopped after {} accesses, call again with offset {} and the same other arguments for the rest]\n", MAX_ACCESSES, last);
+    return {out, false, summary};
+}
+
 std::vector<ToolInfo> BuildTools() {
     Json::Value fp_schema = Schema({{"block", "integer", "Block number"}, {"instruction", "integer", "Instruction number of the indirect call within the block"}, {"functions", "array", "Names of all possible target functions as in the IR"}},
                                    {"block", "instruction", "functions"});
     fp_schema["properties"]["functions"]["items"]["type"] = "string";
-    Json::Value calls_schema = Schema({{"callee", "string", "Called function, name as in the IR (mangled for C++)"},
+    Json::Value calls_schema = Schema({{"callee", "string", std::format("Called function, {}", FUNCTION_NAME)},
                                        {"function", "string", "Only calls within this function, name as in the IR"},
                                        {"arguments", "array", "Only show these arguments, numbered from 0 (default all)"},
                                        {"offset", "integer", "First call to return, to continue a long output (default 0)"}}, {"callee"});
     calls_schema["properties"]["arguments"]["items"]["type"] = "integer";
+    Json::Value accesses_schema = Schema({{"function", "string", std::format("Function containing the accesses, {}", FUNCTION_NAME)},
+                                          {"kind", "string", "\"store\" (default) or \"load\""},
+                                          {"first_line", "integer", "Only accesses of this source line and later"},
+                                          {"last_line", "integer", "Only accesses up to this source line, inclusive"},
+                                          {"matching", "string", "Only accesses whose address the analysis matches with this pointer value, as a contract checks the "
+                                                                 "accesses to the pointee of a call argument (write!(*N), read!(*N)), e.g. the buffer argument of MPI_Isend"},
+                                          {"matching_function", "string", "Function the matching value is looked up in (default: function)"},
+                                          {"stack_slots", "boolean", "Also list accesses to the stack slots of local variables themselves, which are left out by default unless matching is given"},
+                                          {"offset", "integer", "First access to return, to continue a long output (default 0)"}}, {"function"});
+    accesses_schema["properties"]["kind"]["enum"].append("store");
+    accesses_schema["properties"]["kind"]["enum"].append("load");
     return {
         {{CONTEXT_TOOL, "How to interpret CoVer's trace and annotations, the available debugger commands, the report being debugged and the current trace. Call this first.",
           Schema({}, {})},
@@ -652,7 +765,7 @@ std::vector<ToolInfo> BuildTools() {
          ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return ReadSource(*t.module, input); }},
         {{"get_function_ir", "LLVM IR of a function with source locations and the source variables values hold, e.g. to find value names for alias annotations or to inspect code outside of the trace. "
                              "Restrict the output to a range of source lines to find values quickly. Long outputs are split after a source line and say which lines to request for the rest.",
-          Schema({{"function", "string", "Function name as in the IR (mangled for C++)"},
+          Schema({{"function", "string", std::format("Function, {}", FUNCTION_NAME)},
                   {"first_line", "integer", "Only instructions of this source line and later (default: the function's first line). "
                                             "An instruction without a source location belongs to the line of the instruction before it"},
                   {"last_line", "integer", "Only instructions up to this source line, inclusive (default: the function's last line)"}}, {"function"})},
@@ -665,6 +778,11 @@ std::vector<ToolInfo> BuildTools() {
                         "instead of searching them in get_function_ir.",
           calls_schema},
          ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return FindCalls(*t.module, input); }},
+        {{"find_accesses", "The stores or loads of a function with their source locations and addresses (the definitions each address is computed from, up to the source variable). "
+                           "With matching, only those the analysis takes as accesses to the memory a pointer points to, e.g. all stores it takes as writes to the buffer of an MPI_Isend: "
+                           "the stores reported for a data race and those it would report next. alias-check tells why the analysis matches two values. Use it to collect the addresses to annotate, instead of searching them in get_function_ir.",
+          accesses_schema},
+         ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return FindAccesses(*t.module, input); }},
         {DocsSpec(),
          ToolNeeds::NOTHING, [](ToolTarget const&, Json::Value const& input) { return AnnotationDocs(input); }},
     };
