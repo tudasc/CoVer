@@ -27,7 +27,6 @@ class ContractVerifierPreCallPass : public PassInfoMixin<ContractVerifierPreCall
         CallStatus transferPreCallStat(CallStatus cur, const Instruction* I, void* data);
         CallStatusVal checkPreCall(const ContractTree::CallOperation* cOP, const ContractManagerAnalysis::LinearizedContract& C, ContractExpression& Expr, const bool isTag, const Module& M, std::string& error);
         ContractManagerAnalysis::ContractDatabase* DB;
-        ModuleAnalysisManager* MAM;
 
         static std::string preCallStatusToStr(ContractVerifierPreCallPass::CallStatus S) {
             switch (S.CurVal) {

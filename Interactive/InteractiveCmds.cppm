@@ -380,6 +380,21 @@ CmdResult CmdAliasGet(std::vector<std::string> const& args, CmdTarget const& tar
     return {CmdResultCode::SUCCESS_CONTINUE, ""};
 }
 
+CmdResult CmdAliasCheck(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
+    std::expected<Function*, std::string> F1 = ParseValueFunction(args[0], target);
+    if (!F1) return {CmdResultCode::INVALID_INPUT, F1.error()};
+    std::expected<Function*, std::string> F2 = ParseValueFunction(args[2], target);
+    if (!F2) return {CmdResultCode::INVALID_INPUT, F2.error()};
+    std::expected<Value*, std::string> V1 = ParseValue(args[1], *F1);
+    if (!V1) return {CmdResultCode::INVALID_INPUT, V1.error()};
+    std::expected<Value*, std::string> V2 = ParseValue(args[3], *F2);
+    if (!V2) return {CmdResultCode::INVALID_INPUT, V2.error()};
+    // Compared directly, like a contract parameter with the parameter of a call or the address of a store
+    ContractPassUtility::ParamMatch result = ContractPassUtility::checkParamMatch(*V1, *V2);
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} and {} {}: {}", ContractPassUtility::getValueName(*V1), ContractPassUtility::getValueName(*V2),
+                                                         result.match ? "match" : "do not match", result.Explain())};
+}
+
 CmdResult CmdAllocCreate(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
     std::expected<int, std::string> block = ParseBlock(args[0], session);
     if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
@@ -494,6 +509,7 @@ std::vector<CmdInfo> const TraceCommands = {
     {"alias-rm",      "[group num] [value num|e<epoch num>...]",                  "Remove values or epochs (prefixed with e) from an existing alias group, by their index in the group (see alias-get)", 2, CmdAccess::ANY, CmdAliasRm, true},
     {"alias-epoch",   "[group num] [block num|function] [instr num|value]",       "Start a new epoch for an alias group before an instruction, given by its number in the block or by its value in the function (an argument: at the start of the function).", 3, CmdAccess::ANY, CmdAliasEpoch},
     {"alias-get",     "[group num...]",                                           "Get info on current alias annotations, of all groups or only of the given ones", 0, CmdAccess::ANY, CmdAliasGet, true},
+    {"alias-check",   "[block num|function 1] [value 1] [block num|function 2] [value 2]", "Check whether the analysis takes two pointers as the same, e.g. a parameter of a contract and the address of a store, and why. Uses the current annotations, also those not reanalysed yet.", 4, CmdAccess::ANY, CmdAliasCheck},
     {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size).", 3, CmdAccess::ANY, CmdAllocCreate},
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdAccess::USER, CmdReanalyse},
     {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdAccess::USER, CmdDiff},

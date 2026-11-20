@@ -24,7 +24,6 @@ class ContractVerifierPostCallPass : public PassInfoMixin<ContractVerifierPostCa
         ContractManagerAnalysis::ContractDatabase* DB;
         std::pair<CallStatus,bool> mergePostCallStat(CallStatus prev, CallStatus cur, const Instruction* I, void* data);
         CallStatus transferPostCallStat(CallStatus cur, const Instruction* I, void* data);
-        ModuleAnalysisManager* MAM;
 
         static std::string postCallStatusToStr(ContractVerifierPostCallPass::CallStatus S) {
             switch (S) {

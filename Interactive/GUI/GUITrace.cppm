@@ -914,6 +914,13 @@ class TraceDebugger {
                  [](auto const& v) { return std::format("alias-create {} {} {} {} {}", v[0], v[1], v[2], v[3], v[4]); });
         }
 
+        void AliasCheckDialog(int block, std::string const& value) {
+            Form("Check Values", "Check whether the analysis takes two pointers as the same, e.g. a parameter of a contract and the address of a store, and why. "
+                 "Uses the current annotations, also those not reanalysed yet.",
+                 {BlockField(block), ValueField("First value", 0, value), BlockField(block), ValueField("Second value", 2, "")},
+                 [](auto const& v) { return std::format("alias-check {} {} {} {}", v[0], v[1], v[2], v[3]); });
+        }
+
         void AliasAddDialog(int block, std::string const& value) {
             if (!HasAliasGroups()) return;
             Form("Add to Alias Group", "Add a value to an existing alias group.", {GroupField(), BlockField(block), ValueField("Value", 1, value)},
@@ -993,12 +1000,15 @@ class TraceDebugger {
                 std::string value = values[0];
                 QObject::connect(menu->addAction(qstr("Create alias group with " + value + "...")), &QAction::triggered, [=, this] { AliasCreateDialog(block, value); });
                 QObject::connect(menu->addAction(qstr("Add " + value + " to alias group...")), &QAction::triggered, [=, this] { AliasAddDialog(block, value); });
+                QObject::connect(menu->addAction(qstr("Check whether " + value + " matches...")), &QAction::triggered, [=, this] { AliasCheckDialog(block, value); });
             } else if (values.size() > 1) {
                 QMenu* create = menu->addMenu("Create alias group with");
                 QMenu* add = menu->addMenu("Add to alias group");
+                QMenu* check = menu->addMenu("Check whether value matches");
                 for (std::string const& value : values) {
                     QObject::connect(create->addAction(qstr(value + "...")), &QAction::triggered, [=, this] { AliasCreateDialog(block, value); });
                     QObject::connect(add->addAction(qstr(value + "...")), &QAction::triggered, [=, this] { AliasAddDialog(block, value); });
+                    QObject::connect(check->addAction(qstr(value + "...")), &QAction::triggered, [=, this] { AliasCheckDialog(block, value); });
                 }
             }
             std::string ir = in.ir;
@@ -1062,6 +1072,7 @@ class TraceDebugger {
                 {"New alias epoch...", [this] { AliasEpochDialog(selected, SelectedInstr()); }},
                 {"", nullptr},
                 {"Show alias groups", [this] { Execute("alias-get"); }},
+                {"Check whether two values match...", [this] { AliasCheckDialog(selected, ""); }},
             });
             MenuButton(toolbar, "Patches", {
                 {"Write annotations as patch...", [this] { FileCommand("diff", true, "Write Patch File", InteractiveCmds::PATCH_FILE); }},

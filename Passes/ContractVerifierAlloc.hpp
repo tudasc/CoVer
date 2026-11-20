@@ -129,7 +129,6 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
 
     private:
         ContractManagerAnalysis::ContractDatabase* DB;
-        ModuleAnalysisManager* MAM;
 
         std::map<const Value*, std::set<const AllocOperation*>> AllocFuncs;
         std::map<const Value*, std::set<const FreeOperation*>> FreeFuncs;

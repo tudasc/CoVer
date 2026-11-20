@@ -15,7 +15,6 @@ using namespace ContractTree;
 PreservedAnalyses ContractVerifierAllocPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     DB = &AM.getResult<ContractManagerAnalysis>(M);
-    MAM = &AM;
 
     // First, build list of all allocating funcs
     for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
@@ -76,7 +75,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
             cur.addCopy(SI->getPointerOperand(), SI->getValueOperand(), ParamAccess::NORMAL);
         } else if (SI->getValueOperand()->getType()->isPointerTy()) {
             for (auto const& Candidate : cur.candidates()) {
-                if (ContractPassUtility::checkParamMatch(Candidate.first, SI->getValueOperand(), Candidate.second->acc, MAM)) {
+                if (ContractPassUtility::checkParamMatch(Candidate.first, SI->getValueOperand(), Candidate.second->acc)) {
                     cur.addCopy(SI->getPointerOperand(), Candidate.first, ParamAccess::NORMAL);
                     break;
                 }
@@ -100,7 +99,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
         } else if (LI->getType()->isPointerTy() && !isa<AllocaInst>(LI->getPointerOperand())) {
             // Location may have been stored to elsewhere, e.g. a struct field set in another function
             for (auto const& Candidate : cur.candidates()) {
-                if (ContractPassUtility::checkParamMatch(Candidate.first, LI->getPointerOperand(), Candidate.second->acc, MAM)) {
+                if (ContractPassUtility::checkParamMatch(Candidate.first, LI->getPointerOperand(), Candidate.second->acc)) {
                     cur.addCopy(LI, Candidate.first, Candidate.second->acc);
                     break;
                 }
@@ -156,7 +155,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
             if (ContractPassUtility::isTrivialAlloc(CB->getArgOperand(Data->param))) return cur;
             // Not trivial, check if explicitly allocated
             for (auto const& Candidate : cur.candidates()) {
-                if (ContractPassUtility::checkParamMatch(Candidate.first, CB->getArgOperand(Data->param), Candidate.second->acc, MAM)) {
+                if (ContractPassUtility::checkParamMatch(Candidate.first, CB->getArgOperand(Data->param), Candidate.second->acc)) {
                     // Success!
                     return cur;
                 }

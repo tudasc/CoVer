@@ -182,19 +182,19 @@ Fulfillment ContractVerifierParamPass::checkParamReq(std::set<Value*> vars, Call
         if (callVal->getType()->isPointerTy()) {
             switch (comp) {
                 case Comparator::NEQ:
-                    if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
+                    if (ContractPassUtility::checkParamMatch(callVal, var)) {
                         ErrInfo = "Parameter matches or is alias to forbidden pointer value!";
                         return Fulfillment::BROKEN;
                     }
                     return Fulfillment::FULFILLED;
                 case Comparator::EQ:
-                    if (!ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
+                    if (!ContractPassUtility::checkParamMatch(callVal, var)) {
                         ErrInfo = "Parameter does not match required pointer value!";
                         return Fulfillment::BROKEN;
                     }
                     return Fulfillment::FULFILLED;
                 case Comparator::EXEQ:
-                    if (ContractPassUtility::checkParamMatch(callVal, var, ParamAccess::NORMAL, MAM)) {
+                    if (ContractPassUtility::checkParamMatch(callVal, var)) {
                         ErrInfo = "Note: Parameter matches or is alias to exception value.";
                         return Fulfillment::FULFILLED;
                     }

@@ -14,7 +14,6 @@ using namespace ContractTree;
 PreservedAnalyses ContractVerifierReleasePass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     DB = &AM.getResult<ContractManagerAnalysis>(M);
-    MAM = &AM;
     printMultiReports = DB->allowMultiReports;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
@@ -90,7 +89,7 @@ void ContractVerifierReleasePass::appendDebugStr(std::vector<ErrorMessage>& err,
     const int forbidParam = std::any_cast<const int>(Data->param[0]); \
     const ParamAccess accType = std::any_cast<const ParamAccess>(Data->param[1]); \
     const Value* contrP = Data->callsite->getArgOperand(forbidParam); \
-    if (ContractPassUtility::checkParamMatch(contrP, instr, accType, MAM)) { \
+    if (ContractPassUtility::checkParamMatch(contrP, instr, accType)) { \
         reportForbidden(Data, instr); \
         return ReleaseStatus::ERROR_UNFULFILLED; \
     } \
@@ -106,7 +105,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
         if (ContractPassUtility::checkCalledApplies(CB, Data->releaseFunc, Data->isTagRel, Data->Tags)) {
             if (Data->releaseParam.empty()) return ReleaseStatus::FULFILLED;
             for (CallParam const& P : Data->releaseParam) {
-                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags, MAM))
+                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->releaseFunc, P, Data->Tags))
                     return cur == ReleaseStatus::ERROR_UNFULFILLED ? ReleaseStatus::ERROR : ReleaseStatus::FULFILLED;
             }
             // Wrong parameters, continue
@@ -126,7 +125,7 @@ ContractVerifierReleasePass::ReleaseStatus ContractVerifierReleasePass::transfer
                         return ReleaseStatus::ERROR_UNFULFILLED;
                     }
                     for (CallParam const& forbidParam : forbidParams) {
-                        if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags, MAM)) {
+                        if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, std::any_cast<std::string>(Data->param[0]), forbidParam, Data->Tags)) {
                             reportForbidden(Data, CB);
                             return ReleaseStatus::ERROR_UNFULFILLED;
                         }

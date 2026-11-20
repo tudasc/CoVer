@@ -13,7 +13,6 @@ using namespace ContractTree;
 PreservedAnalyses ContractVerifierPostCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     DB = &AM.getResult<ContractManagerAnalysis>(M);
-    MAM = &AM;
     for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
         for (std::shared_ptr<ContractExpression> const& Expr : C.Post) {
             if (*Expr->Status != Fulfillment::UNKNOWN) continue;
@@ -87,7 +86,7 @@ ContractVerifierPostCallPass::CallStatus ContractVerifierPostCallPass::transferP
             // Target function was called, need to check the parameters
             // Paramcheck is resolved once target found
             for (CallParam const& P : Data->reqParams) {
-                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->Target, P, Data->Tags, MAM)) {
+                if (ContractPassUtility::checkCallParamApplies(Data->callsite, CB, Data->Target, P, Data->Tags)) {
                     // Success!
                     return CallStatus::CALLED;
                 }

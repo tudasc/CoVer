@@ -24,7 +24,6 @@ class ContractVerifierReleasePass : public PassInfoMixin<ContractVerifierRelease
         std::pair<ReleaseStatus,bool> mergeRelease(ReleaseStatus prev, ReleaseStatus cur, const Instruction* I, void* data);
         ReleaseStatus checkRelease(ContractTree::ReleaseOperation const& relOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression& Expr, const Module& M, std::string& error);
         ContractManagerAnalysis::ContractDatabase* DB;
-        ModuleAnalysisManager* MAM;
 
         static std::string releaseStatusToStr(ReleaseStatus S) {
             switch (S) {

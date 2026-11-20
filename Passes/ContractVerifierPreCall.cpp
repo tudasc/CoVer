@@ -13,7 +13,6 @@ using namespace ContractTree;
 PreservedAnalyses ContractVerifierPreCallPass::run(Module &M,
                                             ModuleAnalysisManager &AM) {
     DB = &AM.getResult<ContractManagerAnalysis>(M);
-    MAM = &AM;
 
     for (ContractManagerAnalysis::LinearizedContract const& C : DB->LinearizedContracts) {
         for (std::shared_ptr<ContractExpression> const& Expr : C.Pre) {
@@ -100,7 +99,7 @@ ContractVerifierPreCallPass::CallStatus ContractVerifierPreCallPass::transferPre
             }
             for (CallParam const& param : Data->reqParams) {
                 for (const CallBase* Candidate : cur.candidate) {
-                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags, MAM)) {
+                    if (ContractPassUtility::checkCallParamApplies(CB, Candidate, Data->Target, param, Data->Tags)) {
                         // Success!
                         cur.CurVal = CallStatusVal::CALLED;
                         return cur;

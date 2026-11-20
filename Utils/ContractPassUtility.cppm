@@ -46,8 +46,9 @@ export struct AliasGroup {
 // Annotation infos
 std::map<int, ContractPassUtility::AliasGroup> aliasInfo;
 
-// Function analyses of the current module
+// Analyses of the current module
 FunctionAnalysisManager* curFAM = nullptr;
+ModuleAnalysisManager* curMAM = nullptr;
 
 #define DEBUG_ENV "COVER_LLVM_DEBUG"
 export bool isDebug() {
@@ -63,19 +64,20 @@ export const Value* betterGetPointerOperand(const Value* V) {
     return b;
 }
 
-bool sameOriginCheck(Value const* source, Value const* target) {
+// The value both are derived from by following GEPs and the pointer operands of loads, null if there is none
+Value const* sameOrigin(Value const* source, Value const* target) {
     while (true) {
         // If either is null, paramerror or if one does not have a pointer operand, then they can not match
-        if (!source || !target) return false;
+        if (!source || !target) return nullptr;
         // If equal, success
-        if (source == target) return true;
+        if (source == target) return source;
         // If one is a GEP, resolve "for free"
         if (isa<GEPOperator>(source))
             source = betterGetPointerOperand(source);
         if (isa<GEPOperator>(target))
             target = betterGetPointerOperand(target);
         // Check again, may be equal if synchronized already (i.e. stack array)
-        if (source == target) return true;
+        if (source == target) return source;
         // Get their ptr operands if they exist and check again
         source = betterGetPointerOperand(source);
         target = betterGetPointerOperand(target);
@@ -426,6 +428,7 @@ export void Initialize(Module& M, ModuleAnalysisManager& MAM, bool _outputIR) {
 
     parentInstrCandidatesCache.clear();
     curFAM = &MAM.getResult<FunctionAnalysisManagerModuleProxy>(M).getManager();
+    curMAM = &MAM;
 
     outputIR = _outputIR;
 
@@ -611,7 +614,73 @@ Module* getModule(Value const* V) {
     return nullptr;
 }
 
-export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc, ModuleAnalysisManager* MAM) {
+// A value with its function, e.g. "%5 in main"
+std::string describeValue(Value const* V) {
+    Function const* F = getParentFunction(V);
+    return F ? std::format("{} in {}", getValueName(V), F->getName().str()) : getValueName(V);
+}
+
+// A member of an alias group as listed by alias-get, e.g. "3.012 (%5 in main)"
+std::string describeMember(int group, AliasGroup const& AG, Value const* M) {
+    std::set<Value*, std::less<>>::const_iterator it = AG.members.find(M);
+    return std::format("{}.{:0>3} ({})", group, std::distance(AG.members.begin(), it), describeValue(M));
+}
+
+// The decision of checkParamMatch with what it is based on. The text is only built by Explain, so that the analysis does not pay for it
+export struct ParamMatch {
+    enum struct Reason {
+        SROA_STORE, // Stores created by SROA are never matched
+        UNCONNECTED, // In different functions, not passed from one to the other through call arguments
+        INDIRECTION, // A different number of loads on the way through the calls
+        SAME_VALUE,
+        ALIAS_GROUP, // group, source_member, target_member
+        NO_ALIAS_GROUP, // Separated by group, source_member, target_member
+        DSA, // Decided by the DSA alias analysis (Fortran)
+        SAME_ORIGIN, // origin
+        DIFFERENT_ORIGINS,
+    };
+
+    bool match = false;
+    Reason reason = Reason::DIFFERENT_ORIGINS;
+    Value const* source = nullptr; // The compared values, followed through the call arguments if through_calls
+    Value const* target = nullptr;
+    bool through_calls = false;
+    int group = -1;
+    Value const* source_member = nullptr;
+    Value const* target_member = nullptr;
+    Value const* origin = nullptr;
+    std::vector<std::pair<int, Value const*>> unseparated; // No-alias groups checked before, in which both match the same member
+
+    explicit operator bool() const { return match; }
+
+    std::string Explain() const {
+        std::string out;
+        if (through_calls) out += std::format("Compared through the call arguments as {} and {}. ", describeValue(source), describeValue(target));
+        for (auto const& [g, member] : unseparated)
+            out += std::format("No-alias group {} does not separate them, both match its member {}. ", g, describeMember(g, aliasInfo.at(g), member));
+        switch (reason) {
+            case Reason::SROA_STORE: return out + "Stores created by SROA are never matched";
+            case Reason::UNCONNECTED: return out + "The values are in different functions, and are not passed from one to the other through call arguments";
+            case Reason::INDIRECTION: return out + "They differ in the number of loads on the way through the calls";
+            case Reason::SAME_VALUE: return out + "Same value";
+            case Reason::ALIAS_GROUP:
+                return out + std::format("Alias group {} asserts that they alias, they match its members {} and {}", group,
+                                         describeMember(group, aliasInfo.at(group), source_member), describeMember(group, aliasInfo.at(group), target_member));
+            case Reason::NO_ALIAS_GROUP:
+                return out + std::format("No-alias group {} separates them, they match its members {} and {}", group,
+                                         describeMember(group, aliasInfo.at(group), source_member), describeMember(group, aliasInfo.at(group), target_member));
+            case Reason::DSA: return out + "Decided by the DSA alias analysis used for Fortran";
+            case Reason::SAME_ORIGIN: return out + std::format("Same origin: both are derived from {} by GEPs and loads", describeValue(origin));
+            case Reason::DIFFERENT_ORIGINS: return out + "Different origins: They derive from no common value";
+        }
+        return out;
+    }
+};
+
+// Whether the analysis takes the contract parameter contrP and callP, accessed as acc says, as the same value, considering the current annotations
+export ParamMatch checkParamMatch(const Value* contrP, const Value* callP, ContractTree::ParamAccess acc = ContractTree::ParamAccess::NORMAL) {
+    using Reason = ParamMatch::Reason;
+    ParamMatch res;
     const Value* source = contrP;
     const Value* target = callP;
     int diff = 0;
@@ -619,7 +688,8 @@ export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTre
     // Filter out new instr from sroa
     if (isa<StoreInst>(callP) && dyn_cast<StoreInst>(callP)->getPointerOperand()->getName().starts_with(".fca.") ||
         isa<StoreInst>(contrP) && dyn_cast<StoreInst>(contrP)->getPointerOperand()->getName().starts_with(".fca.")) {
-        return false;
+        res.reason = Reason::SROA_STORE;
+        return res;
     }
 
     // Only use DSA for Fortran
@@ -631,13 +701,22 @@ export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTre
         if (Fs && Ft && Fs != Ft) {
             // Definitely different functions
             diff = resolveFunctionDifference(&source, &target);
-            if (diff == INT_MAX) return false;
+            if (diff == INT_MAX) {
+                res.reason = Reason::UNCONNECTED;
+                return res;
+            }
+            res.through_calls = true;
+            res.source = source;
+            res.target = target;
         }
     }
 
     switch (acc) {
         case ContractTree::ParamAccess::NORMAL:
-            if (diff != 0) return false; // Interproc with load inside
+            if (diff != 0) { // Interproc with load inside
+                res.reason = Reason::INDIRECTION;
+                return res;
+            }
             break;
         case ContractTree::ParamAccess::DEREF:
             // Contr has a pointer, call has value.
@@ -647,18 +726,28 @@ export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTre
                 if (!V && isDebug()) WithColor(errs(), HighlightColor::String) << "Note: Static deref failed, falling back to orig.\n";
                 target = V ? V : target;
             }
-            else if (diff != -1) return false;
+            else if (diff != -1) {
+                res.reason = Reason::INDIRECTION;
+                return res;
+            }
             break;
         case ContractTree::ParamAccess::ADDROF:
             // Contr has value, call has pointer. Go down from target param
             // If interproc, diff should be 1 if already resolved
             if (diff == 0)
                 source = getLoadStorePointerOperand(source);
-            else if (diff != 1) return false;
+            else if (diff != 1) {
+                res.reason = Reason::INDIRECTION;
+                return res;
+            }
             break;
     }
 
-    if (source == target) return true;
+    if (source == target) {
+        res.match = true;
+        res.reason = Reason::SAME_VALUE;
+        return res;
+    }
 
     // Check for alias annotations: Both need to refer to members of the same alias group
     if (source && target) {
@@ -667,15 +756,27 @@ export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTre
             if (srcMembers.empty()) continue;
             std::set<Value const*> tgtMembers = getMatchingAliasMembers(AG.second, target);
             if (tgtMembers.empty()) continue;
-            if (AG.second.areAliasing) return true;
+            res.group = AG.first;
+            res.source_member = *srcMembers.begin();
+            res.target_member = *tgtMembers.begin();
+            if (AG.second.areAliasing) {
+                res.match = true;
+                res.reason = Reason::ALIAS_GROUP;
+                return res;
+            }
             // No-alias groups only separate different members, not two uses of the same annotated value
-            bool sameMember = std::ranges::any_of(srcMembers, [&tgtMembers](Value const* M) { return tgtMembers.contains(M); });
-            if (!sameMember) return false;
+            std::set<Value const*>::const_iterator shared = std::ranges::find_if(srcMembers, [&tgtMembers](Value const* M) { return tgtMembers.contains(M); });
+            if (shared == srcMembers.end()) {
+                res.reason = Reason::NO_ALIAS_GROUP;
+                return res;
+            }
+            res.unseparated.push_back({AG.first, *shared});
         }
     }
 
     if (isFort) {
-        std::shared_ptr<DSGraph> steens = MAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
+        res.reason = Reason::DSA;
+        std::shared_ptr<DSGraph> steens = curMAM->getResult<SteensgaardDataStructures>(*getModule(contrP));
         if (steens->hasNodeForValue(source) && steens->hasNodeForValue(target)) {
             DSNodeHandle sourceNode = steens->getNodeForValue(source);
             DSNodeHandle targetNode = steens->getNodeForValue(target);
@@ -683,16 +784,18 @@ export bool checkParamMatch(const Value* contrP, const Value* callP, ContractTre
                 sourceNode = sourceNode.getNode()->edge_begin()->second;
             while (targetNode.getNode()->isCollapsedNode())
                 targetNode = targetNode.getNode()->edge_begin()->second;
-            return sourceNode == targetNode;
+            res.match = sourceNode == targetNode;
         }
-    } else {
-        // Now, need to check if they are equal / aliases
-        return sameOriginCheck(source, target);
+        return res;
     }
-    return false;
+    // Now, need to check if they are equal / aliases
+    res.origin = sameOrigin(source, target);
+    res.match = res.origin != nullptr;
+    res.reason = res.match ? Reason::SAME_ORIGIN : Reason::DIFFERENT_ORIGINS;
+    return res;
 }
 
-export bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags, ModuleAnalysisManager* MAM) {
+export bool checkCallParamApplies(const CallBase* Source, const CallBase* Target, const std::string TargetStr, ContractTree::CallParam const& P, std::map<Function*, std::vector<ContractTree::TagUnit>> const& Tags) {
     std::vector<const Value*> candidateParams;
     const Value* sourceParam = Source->getArgOperand(P.contrP);
 
@@ -718,7 +821,7 @@ export bool checkCallParamApplies(const CallBase* Source, const CallBase* Target
     }
 
     for (const Value* candidateParam : candidateParams) {
-        return checkParamMatch(sourceParam, candidateParam, P.contrParamAccess, MAM);
+        return checkParamMatch(sourceParam, candidateParam, P.contrParamAccess).match;
     }
     return false;
 }
