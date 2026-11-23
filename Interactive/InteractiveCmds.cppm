@@ -1,7 +1,3 @@
-module;
-
-#include <sys/wait.h>
-
 export module InteractiveCmds;
 import std;
 import LLVMModule;
@@ -416,14 +412,11 @@ export constexpr char const* PATCH_FILE = "annotations.patch";
 export CmdResult WritePatch(std::string const& path) {
     // Written once a trace is opened or a reanalysis starts, before that the module has no annotations
     char const* current = std::filesystem::exists(InteractiveUtils::REANALYSE_FILE) ? InteractiveUtils::REANALYSE_FILE : InteractiveUtils::INTERACT_START_FILE;
-    int rc = std::system(std::format("diff -c -I '^; ModuleID' -I '^!.*' -I '^@.*' {} {} > {}", InteractiveUtils::INTERACT_START_FILE, current, InteractiveUtils::DIFF_TMP_FILE).c_str());
-    if (!WIFEXITED(rc) || (WEXITSTATUS(rc) && WEXITSTATUS(rc) != 1)) {
-        return {CmdResultCode::INVALID_INPUT, std::format("Error, diff returned exit code {}", WEXITSTATUS(rc))};
-    }
     std::ofstream difffile(path);
     if (!difffile) return {CmdResultCode::INVALID_INPUT, "Error, cannot write to " + path};
     InteractiveSession::WriteHistory(difffile, false);
-    difffile << std::ifstream(InteractiveUtils::DIFF_TMP_FILE).rdbuf();
+    std::string err = IRPatch::writePatch(InteractiveUtils::INTERACT_START_FILE, current, difffile);
+    if (!err.empty()) return {CmdResultCode::INVALID_INPUT, "Error, " + err};
     return {CmdResultCode::SUCCESS_CONTINUE, "Wrote patch file to " + path};
 }
 

@@ -31,10 +31,9 @@ export constexpr char const* INTERACT_START_FILE = "CoVerTmp/InteractStart.ll"; 
 export constexpr char const* REANALYSE_FILE = "CoVerTmp/Reanalyse.ll"; // Current module, input of the reanalysis
 export constexpr char const* HISTORY_CACHE_FILE = "CoVerTmp/HistoryCache"; // Command history and MCP mode, carried over to the reanalysis
 export constexpr char const* CHAT_CACHE_FILE = "CoVerTmp/ChatCache.json"; // Conversation of the LLM chat, carried over to the reanalysis
-export constexpr char const* DIFF_TMP_FILE = "CoVerTmp/Diff.tmp";
 
 export void removeInteractiveFiles() {
-    for (char const* file : {INTERACT_START_FILE, REANALYSE_FILE, HISTORY_CACHE_FILE, CHAT_CACHE_FILE, DIFF_TMP_FILE}) std::filesystem::remove(file);
+    for (char const* file : {INTERACT_START_FILE, REANALYSE_FILE, HISTORY_CACHE_FILE, CHAT_CACHE_FILE}) std::filesystem::remove(file);
     std::filesystem::remove(TMP_DIR);
 }
 

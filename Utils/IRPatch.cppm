@@ -221,4 +221,177 @@ export std::string applyPatch(std::string const& target_path, std::string const&
     return "";
 }
 
+// Writing patches: The IR files are compared with the IDs masked out as applyPatch does, so that renumbered metadata
+// is not a change (e.g. after an annotation created a location, which renumbers the metadata of all following lines).
+// The hunks are written with the lines of the files, whose IDs applyPatch translates.
+
+struct Edit {
+    char kind; // ' ' line of both files, '-' only of the old file, '+' only of the new file
+    long old_idx; // Index of the line in the old file, for ' ' and '-'
+    long new_idx; // Index of the line in the new file, for ' ' and '+'
+};
+
+// Most changed lines diffLines handles. Its state grows with the square of the number of changed lines
+constexpr long MAX_CHANGED_LINES = 5000;
+
+// The furthest position on the diagonal k (x - y) of the edit graph reached by an edit script with d changes, from the furthest
+// positions with d - 1 changes (prev, for the diagonals -(d - 1)..d - 1). Taken from diagonal k + 1 by adding a line (down)
+// or from diagonal k - 1 by removing one (right), whichever reaches further. -1 if neither is possible
+inline std::pair<long, bool> diagonalStep(std::vector<std::int32_t> const& prev, long d, long k, long n, long m) {
+    long from_down = k + 1 <= d - 1 ? prev[k + 1 + d - 1] : -1;
+    long from_right = k - 1 >= -(d - 1) ? prev[k - 1 + d - 1] : -1;
+    if (from_down < 0 && from_right < 0) return {-1, false};
+    bool down = from_right < 0 || (from_down >= 0 && from_right < from_down);
+    long x = down ? from_down : from_right + 1;
+    if (x > n || x - k > m || x - k < 0) return {-1, down};
+    return {x, down};
+}
+
+// The shortest edit script turning the lines a into the lines b (Myers' algorithm), lines given by IDs.
+// Empty if more than MAX_CHANGED_LINES lines are removed or added
+inline std::optional<std::vector<Edit>> diffLines(std::vector<std::uint32_t> const& a, std::vector<std::uint32_t> const& b) {
+    long const a_size = a.size(), b_size = b.size();
+    long prefix = 0;
+    while (prefix < a_size && prefix < b_size && a[prefix] == b[prefix]) prefix++;
+    long suffix = 0;
+    while (suffix < a_size - prefix && suffix < b_size - prefix && a[a_size - 1 - suffix] == b[b_size - 1 - suffix]) suffix++;
+    long const n = a_size - prefix - suffix, m = b_size - prefix - suffix;
+    auto same = [&](long x, long y) { return a[prefix + x] == b[prefix + y]; };
+
+    // trace[d][k + d]: Furthest x on diagonal k with d changes
+    std::vector<std::vector<std::int32_t>> trace;
+    for (long d = 0;; d++) {
+        if (d > MAX_CHANGED_LINES) return std::nullopt;
+        std::vector<std::int32_t> v(2 * d + 1, -1);
+        bool done = false;
+        for (long k = -d; k <= d && !done; k += 2) {
+            long x = d == 0 ? 0 : diagonalStep(trace.back(), d, k, n, m).first;
+            if (x < 0) continue;
+            while (x < n && x - k < m && same(x, x - k)) x++;
+            v[k + d] = x;
+            done = x == n && x - k == m;
+        }
+        trace.push_back(std::move(v));
+        if (done) break;
+    }
+
+    // Walk back from the end through the moves that reached it
+    std::vector<Edit> edits;
+    for (long i = a_size - 1; i >= a_size - suffix; i--) edits.push_back({' ', i, b_size - a_size + i});
+    long x = n, y = m;
+    for (long d = static_cast<long>(trace.size()) - 1; d > 0; d--) {
+        long k = x - y;
+        bool down = diagonalStep(trace[d - 1], d, k, n, m).second;
+        long prev_k = down ? k + 1 : k - 1;
+        long prev_x = trace[d - 1][prev_k + d - 1];
+        long prev_y = prev_x - prev_k;
+        long moved_x = down ? prev_x : prev_x + 1;
+        for (; x > moved_x; x--, y--) edits.push_back({' ', prefix + x - 1, prefix + y - 1});
+        if (down) edits.push_back({'+', -1, prefix + prev_y});
+        else edits.push_back({'-', prefix + prev_x, -1});
+        x = prev_x;
+        y = prev_y;
+    }
+    for (; x > 0; x--, y--) edits.push_back({' ', prefix + x - 1, prefix + y - 1});
+    for (long i = prefix - 1; i >= 0; i--) edits.push_back({' ', i, i});
+    std::reverse(edits.begin(), edits.end());
+    return edits;
+}
+
+// Lines a patch does not change: The module ID, metadata definitions (e.g. a new location of an annotation) and globals
+inline bool isIgnoredLine(std::string_view line) {
+    return line.starts_with("; ModuleID") || line.starts_with("!") || line.starts_with("@");
+}
+
+// Lines not kept as context at the start or end of a hunk: Empty lines and comments, e.g. "; Function Attrs: ...", which differs between machines
+inline bool isFillerLine(std::string_view line) {
+    return line.empty() || line.starts_with(";");
+}
+
+// Writes the patch turning the IR file old_path into new_path, as a context diff (diff -c), the form applyPatch reads.
+// Nothing if the files only differ in ignored lines. Returns an error message, or an empty string on success
+export std::string writePatch(std::string const& old_path, std::string const& new_path, std::ostream& out) {
+    // Lines with the same masked text get the same ID
+    std::unordered_map<std::string, std::uint32_t> ids;
+    auto readLines = [&ids](std::string const& path, std::vector<std::string>& lines, std::vector<std::uint32_t>& line_ids) {
+        std::ifstream in(path);
+        for (std::string line; std::getline(in, line);) {
+            line_ids.push_back(ids.try_emplace(normalize(line).norm, static_cast<std::uint32_t>(ids.size())).first->second);
+            lines.push_back(std::move(line));
+        }
+        return !in.bad() && in.eof();
+    };
+    std::vector<std::string> old_lines, new_lines;
+    std::vector<std::uint32_t> old_ids, new_ids;
+    if (!readLines(old_path, old_lines, old_ids)) return "Could not read " + old_path;
+    if (!readLines(new_path, new_lines, new_ids)) return "Could not read " + new_path;
+    std::optional<std::vector<Edit>> diff = diffLines(old_ids, new_ids);
+    if (!diff) return std::format("More than {} lines of {} and {} differ", MAX_CHANGED_LINES, old_path, new_path);
+    std::vector<Edit> const& edits = *diff;
+    long const edit_count = edits.size();
+    auto text = [&](Edit const& e) -> std::string const& { return e.kind == '+' ? new_lines[e.new_idx] : old_lines[e.old_idx]; };
+
+    // Groups of consecutive changed lines [first, end), skipping those only changing ignored lines
+    std::vector<std::pair<long, long>> groups;
+    for (long i = 0; i < edit_count;) {
+        if (edits[i].kind == ' ') { i++; continue; }
+        long first = i;
+        bool ignored = true;
+        for (; i < edit_count && edits[i].kind != ' '; i++) ignored = ignored && isIgnoredLine(text(edits[i]));
+        if (!ignored) groups.push_back({first, i});
+    }
+
+    constexpr long CONTEXT = 3;
+    bool header = false;
+    for (std::size_t g = 0; g < groups.size();) {
+        // Groups at most two contexts apart share a hunk
+        long change_first = groups[g].first, change_end = groups[g].second;
+        for (g++; g < groups.size() && groups[g].first - change_end <= 2 * CONTEXT; g++) change_end = groups[g].second;
+        long first = std::max(0L, change_first - CONTEXT), end = std::min(edit_count, change_end + CONTEXT);
+        long trimmed_first = first, trimmed_end = end;
+        while (trimmed_first < change_first && isFillerLine(text(edits[trimmed_first]))) trimmed_first++;
+        while (trimmed_end > change_end && isFillerLine(text(edits[trimmed_end - 1]))) trimmed_end--;
+        // applyPatch finds a hunk by its old lines: Keep the fillers if no other old line is left
+        if (std::ranges::any_of(edits.begin() + trimmed_first, edits.begin() + trimmed_end, [](Edit const& e) { return e.kind != '+'; })) {
+            first = trimmed_first;
+            end = trimmed_end;
+        }
+
+        // Within a hunk, a group of removed and added lines is a change (!), as diff -c writes it
+        std::vector<char> marks(end - first, ' ');
+        bool has_removed = false, has_added = false;
+        for (long i = first; i < end;) {
+            if (edits[i].kind == ' ') { i++; continue; }
+            long group_first = i;
+            bool removes = false, adds = false;
+            for (; i < end && edits[i].kind != ' '; i++) (edits[i].kind == '-' ? removes : adds) = true;
+            for (long j = group_first; j < i; j++) marks[j - first] = removes && adds ? '!' : edits[j].kind;
+            has_removed = has_removed || removes;
+            has_added = has_added || adds;
+        }
+        auto range = [&](bool old_side) {
+            std::vector<long> idx;
+            for (long i = first; i < end; i++) {
+                if (edits[i].kind == ' ' || edits[i].kind == (old_side ? '-' : '+')) idx.push_back(old_side ? edits[i].old_idx : edits[i].new_idx);
+            }
+            if (idx.empty()) return std::string("0");
+            if (idx.size() == 1) return std::format("{}", idx.front() + 1);
+            return std::format("{},{}", idx.front() + 1, idx.back() + 1);
+        };
+
+        if (!header) {
+            out << "*** " << old_path << "\n--- " << new_path << "\n";
+            header = true;
+        }
+        out << "***************\n*** " << range(true) << " ****\n";
+        // As diff -c, a side without changes is left out, and each side has the lines of its file: Inserted lines are numbered
+        // as the new file, as the context lines that translate them
+        for (long i = first; i < end && has_removed; i++) if (edits[i].kind != '+') out << marks[i - first] << ' ' << old_lines[edits[i].old_idx] << '\n';
+        out << "--- " << range(false) << " ----\n";
+        for (long i = first; i < end && has_added; i++) if (edits[i].kind != '-') out << marks[i - first] << ' ' << new_lines[edits[i].new_idx] << '\n';
+    }
+    if (!out) return "Could not write the patch";
+    return "";
+}
+
 }
