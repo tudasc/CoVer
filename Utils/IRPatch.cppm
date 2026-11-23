@@ -4,7 +4,7 @@ import std;
 // Applies context diffs (diff -c) of LLVM IR files, as written by the TUI "diff" command.
 // Unlike patch(1), context lines are compared with metadata IDs, attribute group IDs and numeric suffixes
 // of global / struct type names masked out, since those differ between machines for the same code.
-// IDs in inserted lines are translated using the matched context. An unknown !dbg is taken from a neighbouring line.
+// IDs in inserted lines are translated using the matched context. An unknown !dbg is taken from a neighbouring instruction of the same function.
 namespace IRPatch {
 
 struct NormLine {
@@ -81,6 +81,41 @@ inline std::string findDbg(std::string_view line) {
     std::size_t end = pos + 1;
     while (end < line.size() && std::isdigit((unsigned char)line[end])) end++;
     return std::string(line.substr(pos, end - pos));
+}
+
+// An instruction of a function body, as opposed to a define, a closing brace, a label, a comment or a debug record
+inline bool isInstructionLine(std::string_view line) {
+    return line.size() > 2 && line.starts_with("  ") && line[2] != ' ' && line[2] != '#';
+}
+
+inline bool isFunctionBoundary(std::string_view line) {
+    return line.starts_with("define ") || line.starts_with("}");
+}
+
+// The location for an inserted line at index k of the merged hunk whose own !dbg is unknown: That of the nearest instruction
+// of the same function in the hunk, otherwise in the target outside of the hunk (e.g. for an insertion before the allocas at the start of a function).
+// Never that of a define, which is the function's DISubprogram, and never one of another function. Empty if the function has none
+inline std::string fallbackDbg(std::vector<std::pair<std::string, bool>> const& merged, std::size_t k, std::vector<std::string> const& target, long pos, long n) {
+    bool hunk_has_start = false, hunk_has_end = false;
+    for (std::size_t b = k; b-- > 0;) {
+        if (isFunctionBoundary(merged[b].first)) { hunk_has_start = true; break; }
+        if (!merged[b].second || !isInstructionLine(merged[b].first)) continue;
+        if (std::string dbg = findDbg(merged[b].first); !dbg.empty()) return dbg;
+    }
+    for (std::size_t f = k + 1; f < merged.size(); f++) {
+        if (isFunctionBoundary(merged[f].first)) { hunk_has_end = true; break; }
+        if (!merged[f].second || !isInstructionLine(merged[f].first)) continue;
+        if (std::string dbg = findDbg(merged[f].first); !dbg.empty()) return dbg;
+    }
+    for (long b = pos; !hunk_has_start && b-- > 0 && !isFunctionBoundary(target[b]);) {
+        if (!isInstructionLine(target[b])) continue;
+        if (std::string dbg = findDbg(target[b]); !dbg.empty()) return dbg;
+    }
+    for (long f = pos + n; !hunk_has_end && f < static_cast<long>(target.size()) && !isFunctionBoundary(target[f]); f++) {
+        if (!isInstructionLine(target[f])) continue;
+        if (std::string dbg = findDbg(target[f]); !dbg.empty()) return dbg;
+    }
+    return "";
 }
 
 inline std::string translateLine(std::string const& line, std::map<std::string, std::string> const& tokmap, std::string const& fallback_dbg, std::string& err) {
@@ -201,10 +236,7 @@ export std::string applyPatch(std::string const& target_path, std::string const&
         }
         for (std::size_t k = 0; k < merged.size(); k++) {
             if (merged[k].second) continue;
-            std::string fallback_dbg;
-            for (std::size_t b = k; b-- > 0 && fallback_dbg.empty();) if (merged[b].second) fallback_dbg = findDbg(merged[b].first);
-            for (std::size_t f = k + 1; f < merged.size() && fallback_dbg.empty(); f++) if (merged[f].second) fallback_dbg = findDbg(merged[f].first);
-            merged[k].first = translateLine(merged[k].first, tokmap, fallback_dbg, err);
+            merged[k].first = translateLine(merged[k].first, tokmap, fallbackDbg(merged, k, target, pos, n), err);
             if (!err.empty()) return std::format("{}: Hunk {}: {}", patch_path, h_idx + 1, err);
         }
 
