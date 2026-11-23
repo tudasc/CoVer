@@ -101,7 +101,8 @@ std::string ReportsText(State const& s, bool details) {
             }
         }
     }
-    return out;
+    // Only once nothing is reported anymore, so that it does not distract from the reports
+    return s.results->empty() ? out + TraceTools::EpochReminder() : out;
 }
 
 ToolResult OpenReport(State& s, Json::Value const& args) {

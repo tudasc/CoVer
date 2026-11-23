@@ -253,10 +253,39 @@ CmdResult CmdAliasRm(std::vector<std::string> const& args, CmdTarget const& targ
     if (!group) return {CmdResultCode::INVALID_INPUT, group.error()};
     std::set<Value*, std::less<>> const& members = ContractPassUtility::getAliasAnnots().at(*group).members;
     int num_epochs = ContractPassUtility::getAliasEpochs(*group).size();
-    // All indices are checked before removing any, so that a wrong one leaves the group as it is
+    // All arguments are checked before removing anything, so that a wrong one leaves the group as it is
     std::set<int> member_indices;
     std::set<int> epoch_indices;
+    Function* function = nullptr; // Named by the last function argument, the following values are its values
+    bool function_used = true;
     for (std::string const& arg : args | std::views::drop(1)) {
+        // Members can also be given as values, like alias-add takes them: their indices change with every annotation and reanalysis, their names do not
+        std::string_view rest = std::string_view(arg).substr(arg.starts_with("e") ? 1 : 0);
+        bool index = !rest.empty() && (std::isdigit(static_cast<unsigned char>(rest[0])) || rest[0] == '-');
+        if (!index) {
+            Value* V = nullptr;
+            if (arg.starts_with("%")) {
+                if (!function) return {CmdResultCode::INVALID_INPUT, std::format("Value {} needs the function it belongs to before it, e.g. alias-rm {} main {}", arg, *group, arg)};
+                V = ContractPassUtility::getValueByName(arg, function);
+                if (!V) return {CmdResultCode::INVALID_INPUT, std::format("Could not identify value {} in function {}", arg, function->getName().str())};
+                function_used = true;
+            } else if (Function* F = target.module.getFunction(std::string_view(arg).substr(arg.starts_with("@") ? 1 : 0)); !arg.starts_with("@") || (F && !F->isDeclaration())) {
+                if (!function_used) return {CmdResultCode::INVALID_INPUT, std::format("Function {} is given without values", function->getName().str())};
+                // A block number would be taken for an index
+                std::expected<Function*, std::string> named = ParseValueFunction(arg, target);
+                if (!named) return {CmdResultCode::INVALID_INPUT, named.error()};
+                function = *named;
+                function_used = false;
+                continue;
+            } else {
+                V = target.module.getNamedValue(arg.substr(1));
+                if (!V) return {CmdResultCode::INVALID_INPUT, std::format("No global or defined function named {} in the module!", arg.substr(1))};
+            }
+            std::set<Value*, std::less<>>::const_iterator member = members.find(V);
+            if (member == members.end()) return {CmdResultCode::INVALID_INPUT, std::format("{} is not a member of alias group {}, see alias-get", arg, *group)};
+            member_indices.insert(std::distance(members.begin(), member));
+            continue;
+        }
         // An index or a range like 2-5, prefixed with e for epochs
         bool epoch = arg.starts_with("e");
         std::string_view prefix = epoch ? "e" : "";
@@ -274,6 +303,7 @@ CmdResult CmdAliasRm(std::vector<std::string> const& args, CmdTarget const& targ
         std::set<int>& indices = epoch ? epoch_indices : member_indices;
         for (int idx = *first; idx <= *last; idx++) indices.insert(idx);
     }
+    if (!function_used) return {CmdResultCode::INVALID_INPUT, std::format("Function {} is given without values", function->getName().str())};
     // Named before the edits, which shift the indices of the following entries and discard the value numbering
     std::vector<std::string> removed;
     for (int idx : member_indices) removed.push_back(std::format("{}.{:0>3} ({})", *group, idx, ContractPassUtility::getValueName(*std::next(members.begin(), idx))));
@@ -499,7 +529,7 @@ std::vector<CmdInfo> const TraceCommands = {
     {"alias-create",  "[yes|no] [block num|function 1] [value 1] [block num|function 2] [value 2]", "Annotate if two values should/should not alias. This automatically creates a new alias group. Values are looked up in the given function, or in the function of the given block.", 5, CmdAccess::ANY, CmdAliasCreate},
     {"alias-add",     "[group num] [block num|function] [value...]",              "Add one or more values to an existing alias group. The values are looked up in the given function, or in the function of the given block.", 3, CmdAccess::ANY, CmdAliasAdd, true},
     {"alias-type",    "[group num] [yes|no]",                                     "Set type of an existing alias group", 2, CmdAccess::ANY, CmdAliasType},
-    {"alias-rm",      "[group num] [value num|e<epoch num>...]",                  "Remove values or epochs (prefixed with e) from an existing alias group, by their index in the group (see alias-get)", 2, CmdAccess::ANY, CmdAliasRm, true},
+    {"alias-rm",      "[group num] [value num|e<epoch num>|function value...]",   "Remove values or epochs (prefixed with e) from an existing alias group, by their index in the group (see alias-get), or values by their function and name like alias-add takes them (alias-rm 0 main %5 %7)", 2, CmdAccess::ANY, CmdAliasRm, true},
     {"alias-epoch",   "[group num] [block num|function] [instr num|value]",       "Start a new epoch for an alias group before an instruction, given by its number in the block or by its value in the function (an argument: at the start of the function).", 3, CmdAccess::ANY, CmdAliasEpoch},
     {"alias-get",     "[group num...]",                                           "Get info on current alias annotations, of all groups or only of the given ones", 0, CmdAccess::ANY, CmdAliasGet, true},
     {"alias-check",   "[block num|function 1] [value 1] [block num|function 2] [value 2]", "Check whether the analysis takes two pointers as the same, e.g. a parameter of a contract and the address of a store, and why. Uses the current annotations, also those not reanalysed yet.", 4, CmdAccess::ANY, CmdAliasCheck},
