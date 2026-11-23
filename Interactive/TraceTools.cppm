@@ -671,7 +671,6 @@ ToolResult FindAccesses(Module const& module, Json::Value const& input) {
 
     // Lines as in get_function_ir: an instruction without a location belongs to the line of the instruction before it
     std::vector<Instruction const*> accesses;
-    int candidates = 0;
     int skipped = 0; // Accesses to stack slots
     int src_line = F->getSubprogram() ? F->getSubprogram()->getLine() : 0;
     for (Instruction const& I : instructions(*F)) {
@@ -682,7 +681,6 @@ ToolResult FindAccesses(Module const& module, Json::Value const& input) {
             skipped++;
             continue;
         }
-        candidates++;
         // As the release check compares the pointer argument of a call with an access to its pointee (read!(*N), write!(*N)). Why is for alias-check.
         if (!matching || ContractMatching::checkParamMatch(matching, &I, ContractTree::ParamAccess::DEREF)) accesses.push_back(&I);
     }
@@ -694,7 +692,7 @@ ToolResult FindAccesses(Module const& module, Json::Value const& input) {
                                                 : "";
     std::string match_text = matching ? std::format(" whose address the analysis matches with {}", ContractPassUtility::getValueName(matching)) : "";
     if (accesses.empty()) {
-        return {std::format("No {}{} in {}{}{}{}", kind == "store" ? "stores" : "loads", match_text, *name, range, matching ? std::format(", {} checked", candidates) : "",
+        return {std::format("No {}{} in {}{}{}", kind == "store" ? "stores" : "loads", match_text, *name, range,
                             skipped ? std::format(". {} accesses to the stack slots of local variables themselves are left out (see stack_slots)", skipped) : ""), false, summary};
     }
     int first = std::max(0, GetInt(input, "offset").value_or(0));
@@ -704,8 +702,8 @@ ToolResult FindAccesses(Module const& module, Json::Value const& input) {
     std::string function_file = F->getSubprogram() ? F->getSubprogram()->getFilename().str() : "";
     std::map<Value const*, std::set<std::string>> variables = VariableNames(*F);
     std::string demangled = demangle(F->getName().str());
-    std::string out = std::format("{} in {}{}{}{}: {}{}, showing {}-{}. Values are named as the annotation commands take them, annotate the address of an access.\n",
-                                  what, *name, demangled != *name ? " (" + demangled + ")" : "", range, match_text, accesses.size(), matching ? std::format(" of {}", candidates) : "", first, last - 1);
+    std::string out = std::format("{} in {}{}{}{}: {}, showing {}-{}. Values are named as the annotation commands take them, annotate the address of an access.\n",
+                                  what, *name, demangled != *name ? " (" + demangled + ")" : "", range, match_text, accesses.size(), first, last - 1);
     if (matching) {
         Function const* matching_function = ContractPassUtility::getParentFunction(matching); // Null for globals
         std::map<Value const*, std::set<std::string>> matching_variables = VariableNames(matching_function ? *matching_function : *F);
