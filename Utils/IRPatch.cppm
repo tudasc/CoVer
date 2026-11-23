@@ -183,12 +183,8 @@ export std::string applyPatch(std::string const& target_path, std::string const&
         if (pos < 0) return std::format("{}: Hunk {} at line {} does not match", patch_path, h_idx + 1, h.old_start);
         offset = pos - (h.old_start - 1);
 
+        // Inserted lines are numbered as the new file: Their IDs are translated with the context lines of the new side
         std::map<std::string, std::string> tokmap;
-        for (long k = 0; k < n; k++) {
-            NormLine const& from = old_norm[k];
-            NormLine const& to = tnorm[pos + k];
-            for (std::size_t t = 0; t < std::min(from.tokens.size(), to.tokens.size()); t++) tokmap.emplace(from.tokens[t], to.tokens[t]);
-        }
 
         // Merge: context lines are taken from the target, inserted lines from the patch
         std::vector<std::pair<std::string, bool>> merged; // (line, is from target)
@@ -198,6 +194,9 @@ export std::string applyPatch(std::string const& target_path, std::string const&
             if (j < h.new_lines.size() && h.new_lines[j].kind != ' ') { merged.push_back({h.new_lines[j++].text, false}); continue; }
             if (i >= h.old_lines.size() || j >= h.new_lines.size()) return std::format("{}: Hunk {} has mismatched context", patch_path, h_idx + 1);
             merged.push_back({target[pos + i], true});
+            NormLine from = normalize(h.new_lines[j].text);
+            NormLine const& to = tnorm[pos + i];
+            for (std::size_t t = 0; t < std::min(from.tokens.size(), to.tokens.size()); t++) tokmap.emplace(from.tokens[t], to.tokens[t]);
             i++; j++;
         }
         for (std::size_t k = 0; k < merged.size(); k++) {
