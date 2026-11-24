@@ -123,7 +123,7 @@ ToolResult OpenReport(State& s, Json::Value const& args) {
 }
 
 ToolResult Reanalyse(State& s, Json::Value const&) {
-    if (!s.target.trace) return {"Reanalysis is started from the trace debugger, open a report first", true, "reanalyse  ->  no trace open"};
+    if (!s.results) return {"The analysis is still running", true, "reanalyse  ->  analysis running"};
     s.pending = {Action::Kind::REANALYSE};
     s.server->SetAccepting(false, MCPServer::RESTARTING); // Calls until this process exits would get lost
     return {"Reanalysis started. CoVer restarts: wait a few seconds, then call list_reports, retrying while the server is unreachable or reports that CoVer is restarting.", false, "reanalyse"};
@@ -145,7 +145,7 @@ std::vector<TraceTools::Tool<State>> BuildTools() {
     tools.push_back({{"list_reports", "Reports of the current analysis with their number, contract, message, error report and locations, and the violated leaves of their formula that have a trace, with their index and whose trace is open.", TraceTools::Schema({}, {})},
                      [](State& s, Json::Value const&) -> ToolResult { return {ReportsText(s, true), false, "list_reports"}; }});
     tools.push_back({{"open_report", "Open the trace of a violated leaf of a report in the trace debugger, closing the currently open trace. Annotations added so far are kept.", open_schema}, OpenReport});
-    tools.push_back({{"reanalyse", "Rerun the analysis with all annotations added so far, possible while a trace is open. CoVer restarts, so the server is unreachable for a few seconds.", TraceTools::Schema({}, {})}, Reanalyse});
+    tools.push_back({{"reanalyse", "Rerun the analysis with all annotations added so far. CoVer restarts, so the server is unreachable for a few seconds.", TraceTools::Schema({}, {})}, Reanalyse});
     return tools;
 }
 
@@ -212,6 +212,16 @@ export bool OpenPendingReport() {
     ReportedFormula const& report = (*state.results)[action.report];
     std::shared_ptr<ContractTree::ContractExpression> leaf = DebuggableLeaves(report, *state.result_debug_handlers)[action.leaf];
     return (*state.result_debug_handlers)[leaf.get()](AnalysisReports::DebugContext(*report.contract, *report.formula, *leaf, *state.result_texts));
+}
+
+// Takes a reanalysis requested by a tool call while no trace is open, returns whether there was one. The frontends' results screens
+// return to reanalyse once one is pending. It is recorded in the history like a reanalysis from a trace (see NavigateTrace), which also
+// writes the module to reanalyse. While the results are shown, see ResultsScope.
+export bool TakeResultsReanalysis() {
+    if (state.pending.kind != Action::Kind::REANALYSE) return false;
+    state.pending = {};
+    InteractiveCmds::ExecuteModuleCommand(*state.target.module, "reanalyse", {});
+    return true;
 }
 
 // What a trace screen does after tool calls ran, see NavigateTrace

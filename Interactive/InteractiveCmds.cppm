@@ -492,7 +492,7 @@ CmdResult CmdMCP(std::vector<std::string> const&, TraceSession&, CmdFrontend con
     return frontend.openMCP();
 }
 
-CmdResult CmdReanalyse(std::vector<std::string> const&, TraceSession&, CmdFrontend const& frontend) {
+CmdResult CmdReanalyse(std::vector<std::string> const&, CmdTarget const&, CmdFrontend const& frontend) {
     return {CmdResultCode::SUCCESS_REANALYSE, "Re-running analysis..."};
 }
 

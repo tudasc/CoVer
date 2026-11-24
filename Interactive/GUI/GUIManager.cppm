@@ -782,7 +782,7 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
 
     std::function<void()> update_export; // Shows the export button of the chat log once there is one, set below
 
-    // MCP clients work through the reports: they open them, also from within the debugger of another report
+    // MCP clients work through the reports: they open them, also from within the debugger of another report, and reanalyse without an open trace
     bool navigating = false; // A debugger is open. Its teardown runs events, which must not open the next one before it is gone.
     std::function<void()> open_requested = [&] {
         if (navigating) return; // Picked up by the loop below once the debugger closed
@@ -793,6 +793,10 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
                 reanalyse = true;
                 run->Finish();
             }
+        }
+        if (run && !reanalyse && MCPControl::PendingAction().kind == MCPControl::Action::Kind::REANALYSE) { // See MCPControl::TakeResultsReanalysis
+            reanalyse = true;
+            run->Finish();
         }
         navigating = false;
         update_export(); // The chat may have been used in the debugger

@@ -47,12 +47,13 @@ export std::string resultCodeStr(CmdResultCode code) {
 constexpr std::string_view HISTORY_BEGIN = "|| DIFF HISTORY BEGIN ||";
 constexpr std::string_view HISTORY_END = "|| DIFF HISTORY END ||";
 
-// Lines after the history in the history cache: the key of the trace debugged when reanalysing, and whether MCP mode was active
+// Lines after the history in the history cache: the key of the trace debugged when reanalysing (if any), and whether MCP mode was active
 constexpr std::string_view RESUME_PREFIX = "|| RESUME || ";
 constexpr std::string_view MCP_MODE_LINE = "|| MCP MODE ||";
 
 // State carried over from the previous run, if this is a reanalysis
 struct HistoryCache {
+    bool reanalysis = false; // The cache is written for every reanalysis, see SaveForReanalysis
     History history;
     std::optional<std::string> resume_trace; // See InteractiveUtils::TraceKey
     bool mcp_mode = false;
@@ -61,6 +62,7 @@ struct HistoryCache {
 HistoryCache LoadHistoryCache() {
     HistoryCache cache;
     std::ifstream file(InteractiveUtils::HISTORY_CACHE_FILE);
+    cache.reanalysis = file.is_open();
     std::string line;
     std::getline(file, line); // HISTORY_BEGIN
     bool in_history = true;
@@ -90,8 +92,8 @@ History history = std::move(previous_run.history);
 export History const& CommandHistory() { return history; }
 export void AddToHistory(std::string const& cmd, CmdResult const& res) { history.push_back({cmd, res}); }
 
-// Whether this is a reanalysis started from a trace, which is opened again instead of showing the start menu
-export bool Resuming() { return previous_run.resume_trace.has_value(); }
+// Whether this is a reanalysis, which skips the start menu. If it was started from a trace, that trace is opened again (see TakeResumeTrace).
+export bool Resuming() { return previous_run.reanalysis; }
 
 // The key of the trace to open again, once. See InteractiveUtils::TraceKey.
 export std::optional<std::string> TakeResumeTrace() { return std::exchange(previous_run.resume_trace, std::nullopt); }
@@ -107,6 +109,15 @@ export void WriteHistory(std::ostream& out, bool with_codes) {
         out << command << "\n";
     }
     out << HISTORY_END << "\n---\n";
+}
+
+// Before reanalysing: carries the history over to the next run, which opens the trace of resume_trace again (see InteractiveUtils::TraceKey)
+// and continues MCP mode if active
+export void SaveForReanalysis(std::optional<std::string> const& resume_trace, bool mcp_mode) {
+    std::ofstream cache(InteractiveUtils::HISTORY_CACHE_FILE);
+    WriteHistory(cache, true);
+    if (resume_trace) cache << RESUME_PREFIX << *resume_trace << "\n";
+    if (mcp_mode) cache << MCP_MODE_LINE << "\n";
 }
 
 export struct TraceEntryView {
@@ -176,13 +187,6 @@ export class TraceSession {
 
         History const& GetHistory() const { return CommandHistory(); }
         void AddHistory(std::string const& cmd, CmdResult const& res) { AddToHistory(cmd, res); }
-        // Before reanalysing: carries the history over to the next run, which opens this trace again and continues MCP mode if active
-        void SaveForReanalysis(bool mcp_mode) const {
-            std::ofstream cache(InteractiveUtils::HISTORY_CACHE_FILE);
-            WriteHistory(cache, true);
-            cache << RESUME_PREFIX << InteractiveUtils::TraceKey(context) << "\n";
-            if (mcp_mode) cache << MCP_MODE_LINE << "\n";
-        }
 
     protected:
         AnalysisReports::DebugContext context;

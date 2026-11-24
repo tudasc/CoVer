@@ -449,7 +449,7 @@ bool ShowViolationDetails(std::shared_ptr<ContractFormula> const& form, Analysis
 }
 
 // The results of the analysis: shows the results menu, or the MCP view while MCP mode is active, and opens the reports
-// requested by tool calls. Returns whether to reanalyse.
+// requested by tool calls. Returns whether to reanalyse
 export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& formulas, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::string title = InteractiveUtils::resultsTitle(!formulas.empty(), runtime);
     while (true) {
@@ -458,6 +458,7 @@ export bool ResultsScreen(std::vector<InteractiveUtils::ReportedFormula> const& 
             if (MCPControl::OpenPendingReport()) return true;
             continue;
         }
+        if (MCPControl::PendingAction().kind == MCPControl::Action::Kind::REANALYSE) return true;
         if (MCPControl::Active()) {
             ShowMCP(std::format("Results of the analysis: {} reports, no trace open", formulas.size()));
             continue;

@@ -57,7 +57,7 @@ export bool SetMode(InteractMode mode) {
     return true;
 }
 
-// The start menu before the analysis, skipped when reanalysing from a trace. Its debug handlers are a copy, so they cannot change the analysis.
+// The start menu before the analysis, skipped when reanalysing. Its debug handlers are a copy, so they cannot change the analysis.
 // Also starts the MCP server
 export void StartMenu(std::vector<AnalysisReports::Contract> const& contracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers debugHandlers, double parse_time) {
     // Before any of the interactive files are written
@@ -80,22 +80,28 @@ bool ResumeTrace(std::vector<InteractiveUtils::ReportedFormula> const& formulas,
     return false;
 }
 
+// Carries the session over to the reanalysis, which opens the trace of resume_trace again if given (see InteractiveUtils::TraceKey)
+void SaveForReanalysis(std::optional<std::string> const& resume_trace) {
+    InteractiveSession::SaveForReanalysis(resume_trace, MCPControl::Active());
+    LLMChat::ExportConversation(InteractiveUtils::CHAT_CACHE_FILE); // The chat continues after the reanalysis
+}
+
 // The results of the analysis of M, returns whether to reanalyse. When reanalysing from a trace, it is opened again first.
 export bool ResultsScreen(Module& M, std::vector<AnalysisReports::Contract> const& ViolatedContracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers& debugHandlers, double runtime) {
     std::vector<InteractiveUtils::ReportedFormula> formulas = InteractiveUtils::getReportedFormulas(ViolatedContracts);
     MCPControl::ResultsScope mcp_scope(M, formulas, reports, debugHandlers); // Tool calls of MCP clients work on these reports and M
     if (ResumeTrace(formulas, reports, debugHandlers)) return true;
-    return frontend->resultsScreen(formulas, reports, debugHandlers, runtime);
+    bool reanalyse = frontend->resultsScreen(formulas, reports, debugHandlers, runtime);
+    // Reanalysing from a trace saved the session already, see ShowTrace
+    if (reanalyse && MCPControl::TakeResultsReanalysis()) SaveForReanalysis(std::nullopt);
+    return reanalyse;
 }
 
 // Shows the trace, returns whether to reanalyse
 bool ShowTrace(InteractiveSession::TraceSession& session) {
     MCPControl::TraceScope mcp_trace(session); // Tool calls of MCP clients work on this trace while it is open
     bool reanalyse = frontend->showTrace(session);
-    if (reanalyse) {
-        session.SaveForReanalysis(MCPControl::Active());
-        LLMChat::ExportConversation(InteractiveUtils::CHAT_CACHE_FILE); // The chat continues after the reanalysis
-    }
+    if (reanalyse) SaveForReanalysis(InteractiveUtils::TraceKey(session.Context()));
     return reanalyse;
 }
 
