@@ -122,13 +122,13 @@ ToolResult OpenReport(State& s, Json::Value const& args) {
     return {std::format("Opening the trace of leaf {} of report {} ({}), use get_trace to inspect it", leaf, idx, leaves[leaf]->ExprStr), false, std::format("open_report {} {}", idx, leaf)};
 }
 
-// Responds once the reanalysis is done, see AnswerReanalysis. Only if the connection can be kept open while CoVer restarts, otherwise right away.
+// Responds once the reanalysis is done, see AnswerReanalysis
 ToolResult Reanalyse(State& s, Json::Value const&) {
     if (!s.results) return {"The analysis is still running", true, "reanalyse  ->  analysis running"};
     s.pending = {Action::Kind::REANALYSE};
     s.server->SetAccepting(false, MCPServer::RESTARTING); // Calls until this process exits would get lost
-    if (s.server->DeferResponse()) return {"", false, "reanalyse"};
-    return {"Reanalysis started. CoVer restarts: wait a few seconds, then call list_reports, retrying while the server is unreachable or reports that CoVer is restarting.", false, "reanalyse"};
+    s.server->DeferResponse();
+    return {"", false, "reanalyse"}; // Not sent
 }
 
 // Answers the reanalyse call of the previous run of this process, if it was deferred (see Reanalyse). Once the results or a trace are shown,

@@ -46,7 +46,7 @@ export struct Activity {
 struct Job {
     std::string tool;
     Json::Value args;
-    std::optional<Json::Value> id; // JSON-RPC id, if the response can be deferred (see Server::DeferResponse): not for calls in a batch
+    Json::Value id; // JSON-RPC id
     int local_port; // Of the connection the call came in on
     int remote_port;
     std::promise<std::optional<ToolResult>> result; // Empty if deferred
@@ -206,15 +206,12 @@ export class Server {
         }
 
         // Called by a tool while it runs: its result is not sent, the connection is kept open across exec instead, for the next run of
-        // CoVer to send the response with SendDeferred (see Deferred). False if that is not possible, e.g. for a call in a batch:
-        // then the tool's result is sent as usual. UI thread only.
-        bool DeferResponse() {
-            if (!running || !running->id || deferred) return false;
+        // CoVer to send the response with SendDeferred (see Deferred). Within a batch, only this call is answered. UI thread only.
+        void DeferResponse() {
             int fd = FindConnection(running->local_port, running->remote_port);
-            if (fd < 0 || fcntl(fd, F_SETFD, 0) == -1) return false; // Clears FD_CLOEXEC, set by httplib
-            deferred = Deferred{fd, *running->id};
+            fcntl(fd, F_SETFD, 0); // Clears FD_CLOEXEC, set by httplib
+            deferred = Deferred{fd, running->id};
             deferred_job = running;
-            return true;
         }
 
         // The deferred response, see DeferResponse. UI thread only.
@@ -282,9 +279,9 @@ export class Server {
             Json::Value responses = Json::arrayValue;
             bool deferred_call = false;
             if (message.isArray()) {
-                for (Json::Value const& msg : message) HandleMessage(msg, responses, req, false, deferred_call);
+                for (Json::Value const& msg : message) HandleMessage(msg, responses, req, deferred_call);
             } else {
-                HandleMessage(message, responses, req, true, deferred_call);
+                HandleMessage(message, responses, req, deferred_call);
             }
             if (responses.empty()) { // Only notifications or responses
                 res.status = 202;
@@ -296,8 +293,8 @@ export class Server {
             SetJson(res, 200, message.isArray() ? responses : responses[0]);
         }
 
-        // deferrable: whether the response of a tool call may be deferred (see DeferResponse), deferred_call is set if it was
-        void HandleMessage(Json::Value const& msg, Json::Value& responses, httplib::Request const& req, bool deferrable, bool& deferred_call) {
+        // deferred_call is set if the response of a tool call was deferred, see DeferResponse
+        void HandleMessage(Json::Value const& msg, Json::Value& responses, httplib::Request const& req, bool& deferred_call) {
             if (!msg.isMember("method") || !msg.isMember("id")) return; // Notification, or a response to a request we never send
             Json::Value const& id = msg["id"];
             std::string method = msg["method"].asString();
@@ -328,7 +325,7 @@ export class Server {
                 bool known = std::ranges::any_of(specs, [&](ToolSpec const& spec) { return spec.name == name; });
                 if (!known) return (void)responses.append(RpcError(id, -32602, "Unknown tool " + name));
                 std::shared_ptr<Job> job = std::make_shared<Job>(name, params.isMember("arguments") ? params["arguments"] : Json::Value(Json::objectValue),
-                                                                 deferrable ? std::optional<Json::Value>(id) : std::nullopt, req.local_port, req.remote_port);
+                                                                 id, req.local_port, req.remote_port);
                 std::optional<ToolResult> result = RunOnUI(job);
                 deferred_call = deferred_call || !result;
                 return (void)responses.append(ToolCallResponse(id, result.value_or(ToolResult{RESTARTING, true, name})));
