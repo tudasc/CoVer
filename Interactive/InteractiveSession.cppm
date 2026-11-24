@@ -47,9 +47,11 @@ export std::string resultCodeStr(CmdResultCode code) {
 constexpr std::string_view HISTORY_BEGIN = "|| DIFF HISTORY BEGIN ||";
 constexpr std::string_view HISTORY_END = "|| DIFF HISTORY END ||";
 
-// Lines after the history in the history cache: the key of the trace debugged when reanalysing (if any), and whether MCP mode was active
+// Lines after the history in the history cache: the key of the trace debugged when reanalysing (if any), whether MCP mode was active,
+// and the response to the reanalyse tool call that started the reanalysis (if any)
 constexpr std::string_view RESUME_PREFIX = "|| RESUME || ";
 constexpr std::string_view MCP_MODE_LINE = "|| MCP MODE ||";
+constexpr std::string_view MCP_RESPONSE_PREFIX = "|| MCP RESPONSE || ";
 
 // State carried over from the previous run, if this is a reanalysis
 struct HistoryCache {
@@ -57,6 +59,7 @@ struct HistoryCache {
     History history;
     std::optional<std::string> resume_trace; // See InteractiveUtils::TraceKey
     bool mcp_mode = false;
+    std::optional<std::string> mcp_response; // See MCPServer::Serialize
 };
 
 HistoryCache LoadHistoryCache() {
@@ -78,6 +81,8 @@ HistoryCache LoadHistoryCache() {
             cache.resume_trace = line.substr(RESUME_PREFIX.size());
         } else if (line == MCP_MODE_LINE) {
             cache.mcp_mode = true;
+        } else if (line.starts_with(MCP_RESPONSE_PREFIX)) {
+            cache.mcp_response = line.substr(MCP_RESPONSE_PREFIX.size());
         }
     }
     return cache;
@@ -101,6 +106,9 @@ export std::optional<std::string> TakeResumeTrace() { return std::exchange(previ
 // Whether MCP mode was active when reanalysing, it continues then
 export bool ResumeMCPMode() { return previous_run.mcp_mode; }
 
+// The response to the reanalyse tool call that started this reanalysis, to be sent once it is done, once. See MCPServer::Serialize.
+export std::optional<std::string> TakeMCPResponse() { return std::exchange(previous_run.mcp_response, std::nullopt); }
+
 // History framed as in the patch files of the diff command, with result codes for the history cache
 export void WriteHistory(std::ostream& out, bool with_codes) {
     out << HISTORY_BEGIN << "\n";
@@ -111,13 +119,14 @@ export void WriteHistory(std::ostream& out, bool with_codes) {
     out << HISTORY_END << "\n---\n";
 }
 
-// Before reanalysing: carries the history over to the next run, which opens the trace of resume_trace again (see InteractiveUtils::TraceKey)
-// and continues MCP mode if active
-export void SaveForReanalysis(std::optional<std::string> const& resume_trace, bool mcp_mode) {
+// Before reanalysing: carries the history over to the next run, which opens the trace of resume_trace again (see InteractiveUtils::TraceKey),
+// continues MCP mode if active, and sends mcp_response (see TakeMCPResponse)
+export void SaveForReanalysis(std::optional<std::string> const& resume_trace, bool mcp_mode, std::optional<std::string> const& mcp_response) {
     std::ofstream cache(InteractiveUtils::HISTORY_CACHE_FILE);
     WriteHistory(cache, true);
     if (resume_trace) cache << RESUME_PREFIX << *resume_trace << "\n";
     if (mcp_mode) cache << MCP_MODE_LINE << "\n";
+    if (mcp_response) cache << MCP_RESPONSE_PREFIX << *mcp_response << "\n";
 }
 
 export struct TraceEntryView {

@@ -1,6 +1,7 @@
 module;
 
 #include <dlfcn.h>
+#include <unistd.h>
 
 #include "ContractTree.hpp"
 
@@ -82,7 +83,7 @@ bool ResumeTrace(std::vector<InteractiveUtils::ReportedFormula> const& formulas,
 
 // Carries the session over to the reanalysis, which opens the trace of resume_trace again if given (see InteractiveUtils::TraceKey)
 void SaveForReanalysis(std::optional<std::string> const& resume_trace) {
-    InteractiveSession::SaveForReanalysis(resume_trace, MCPControl::Active());
+    InteractiveSession::SaveForReanalysis(resume_trace, MCPControl::Active(), MCPControl::DeferredReanalysis());
     LLMChat::ExportConversation(InteractiveUtils::CHAT_CACHE_FILE); // The chat continues after the reanalysis
 }
 
@@ -103,6 +104,23 @@ bool ShowTrace(InteractiveSession::TraceSession& session) {
     bool reanalyse = frontend->showTrace(session);
     if (reanalyse) SaveForReanalysis(InteractiveUtils::TraceKey(session.Context()));
     return reanalyse;
+}
+
+// Ends this run to reanalyse, after ResultsScreen returned true. Re-executes this process with the module to reanalyse as input instead
+// of the analysed one, so that the connection of an MCP client waiting for the reanalysis stays open (see MCPControl::DeferredReanalysis).
+// The compile wrapper passes the input as an argument of its own.
+export [[noreturn]] void Restart(Module const& M) {
+    std::ifstream cmdline("/proc/self/cmdline", std::ios::binary);
+    std::vector<std::string> args;
+    for (std::string arg; std::getline(cmdline, arg, '\0');) args.push_back(arg);
+    std::ranges::replace(args | std::views::drop(1), M.getModuleIdentifier(), std::string(InteractiveUtils::REANALYSE_FILE));
+    std::vector<char*> argv;
+    for (std::string& arg : args) argv.push_back(arg.data());
+    argv.push_back(nullptr);
+    std::cout.flush(); // Buffered output would be lost
+    std::fflush(nullptr);
+    execv("/proc/self/exe", argv.data());
+    std::exit(EXIT_FAILURE);
 }
 
 export template<typename T>

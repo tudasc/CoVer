@@ -161,7 +161,7 @@ PreservedAnalyses ContractPostProcessingPass::run(Module &M,
     if (isInteractive) {
         bool reanalyse = InteractiveUI::ResultsScreen(M, ViolatedContracts, DB->reports, DB->debugHandlers, runtime);
         if (!reanalyse) InteractiveUtils::removeInteractiveFiles();
-        else exit(0);
+        else InteractiveUI::Restart(M);
         ContractPassUtility::eraseRemovedAnnots(M);
     }
 

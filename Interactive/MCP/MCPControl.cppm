@@ -46,7 +46,7 @@ You are connected to CoVer's interactive mode through MCP and can work through a
   open_report opens the trace of a leaf in the trace debugger, the other tools work on the open trace. Look at all traces of a report: each leaf may be violated for a different reason.
 - Annotations are kept when you open another report, so you can annotate several reports before reanalysing.
 - A report only shows the conflicts of the first call that violates the contract, the other calls are checked once it is fixed. Annotate the matching values of all calls (e.g. the stores of all fill loops) before reanalysing.
-- reanalyse reruns the analysis with all annotations added so far. CoVer restarts for this: wait a few seconds before the next call, and wait and retry while the server is unreachable or reports that CoVer is restarting. If the leaf whose trace was open is still reported afterwards, its trace is opened again automatically.
+- reanalyse reruns the analysis with all annotations added so far and returns the new reports. If the leaf whose trace was open is still reported afterwards, its trace is opened again automatically.
 - After reanalysing, check with list_reports that the reports you annotated are gone. Annotations can also uncover further reports.
 - Reports without a debuggable trace (marked in list_reports) cannot be annotated with these tools, leave them to the user.
 - Annotate false positives only. Leave real bugs reported, and tell the user about them with a suggested fix.
@@ -122,11 +122,23 @@ ToolResult OpenReport(State& s, Json::Value const& args) {
     return {std::format("Opening the trace of leaf {} of report {} ({}), use get_trace to inspect it", leaf, idx, leaves[leaf]->ExprStr), false, std::format("open_report {} {}", idx, leaf)};
 }
 
+// Responds once the reanalysis is done, see AnswerReanalysis. Only if the connection can be kept open while CoVer restarts, otherwise right away.
 ToolResult Reanalyse(State& s, Json::Value const&) {
     if (!s.results) return {"The analysis is still running", true, "reanalyse  ->  analysis running"};
     s.pending = {Action::Kind::REANALYSE};
     s.server->SetAccepting(false, MCPServer::RESTARTING); // Calls until this process exits would get lost
+    if (s.server->DeferResponse()) return {"", false, "reanalyse"};
     return {"Reanalysis started. CoVer restarts: wait a few seconds, then call list_reports, retrying while the server is unreachable or reports that CoVer is restarting.", false, "reanalyse"};
+}
+
+// Answers the reanalyse call of the previous run of this process, if it was deferred (see Reanalyse). Once the results or a trace are shown,
+// as that is when the tool calls of this run are executed.
+void AnswerReanalysis(State const& s) {
+    std::optional<std::string> saved = InteractiveSession::TakeMCPResponse();
+    if (!saved || !s.results) return;
+    std::optional<MCPServer::Deferred> deferred = MCPServer::ParseDeferred(*saved);
+    if (!deferred) return;
+    MCPServer::SendDeferred(*deferred, {"Reanalysis done, with all annotations added so far.\n" + ReportsText(s, true), false, "reanalyse"});
 }
 
 // The trace tools, available depending on what is shown (see TraceTools::ToolNeeds), followed by the navigation tools
@@ -145,7 +157,7 @@ std::vector<TraceTools::Tool<State>> BuildTools() {
     tools.push_back({{"list_reports", "Reports of the current analysis with their number, contract, message, error report and locations, and the violated leaves of their formula that have a trace, with their index and whose trace is open.", TraceTools::Schema({}, {})},
                      [](State& s, Json::Value const&) -> ToolResult { return {ReportsText(s, true), false, "list_reports"}; }});
     tools.push_back({{"open_report", "Open the trace of a violated leaf of a report in the trace debugger, closing the currently open trace. Annotations added so far are kept.", open_schema}, OpenReport});
-    tools.push_back({{"reanalyse", "Rerun the analysis with all annotations added so far. CoVer restarts, so the server is unreachable for a few seconds.", TraceTools::Schema({}, {})}, Reanalyse});
+    tools.push_back({{"reanalyse", "Rerun the analysis with all annotations added so far, returns the new reports once it is done.", TraceTools::Schema({}, {})}, Reanalyse});
     return tools;
 }
 
@@ -204,6 +216,13 @@ export void Leave(std::string const& refusal) {
 }
 
 export Action PendingAction() { return state.pending; }
+
+// The response to the reanalyse call, which the next run of this process sends once the reanalysis is done (see AnswerReanalysis).
+// For the history cache, see InteractiveSession::SaveForReanalysis.
+export std::optional<std::string> DeferredReanalysis() {
+    if (!state.server || !state.server->DeferredResponse()) return std::nullopt;
+    return MCPServer::Serialize(*state.server->DeferredResponse());
+}
 
 // Opens the trace requested by a tool call (OPEN_REPORT), returns whether to reanalyse. While the results are shown, see ResultsScope.
 export bool OpenPendingReport() {
@@ -280,6 +299,7 @@ export class ScreenScope {
     public:
         explicit ScreenScope(std::function<void(std::vector<Activity> const&)> after) {
             state.screens.push_back({std::move(after)});
+            AnswerReanalysis(state);
         }
         ~ScreenScope() { state.screens.pop_back(); }
         ScreenScope(ScreenScope const&) = delete;

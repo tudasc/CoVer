@@ -381,11 +381,7 @@ int main(int argc, const char** argv) {
         // ...and link against analyser. Need to hackily link against stdlib as well for C code
         rem_args.first += " -Wl,--whole-archive @COVER_DYNAMIC_ANALYSER_PATH@ -Wl,-no-whole-archive -lstdc++";
     }
-    std::string target_file = tmpfile;
-    do {
-        execSafe(DebuggerCoVerPlugin + " opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + target_file + " -o " + tmpfile + ".opt");
-        target_file = "CoVerTmp/Reanalyse.ll";
-    } while (InteractiveStatic != InteractMode::NONE && std::filesystem::exists(target_file));
+    execSafe(DebuggerCoVerPlugin + " opt --load-pass-plugin=\"@DSA_PLUGIN_PATH@\" --load-pass-plugin \"@CONTR_PLUGIN_PATH@\" -passes='" + passlist + "' " + opt_flags + " " + tmpfile + " -o " + tmpfile + ".opt");
     close(fd);
 
     // Finalize executable

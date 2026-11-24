@@ -1,7 +1,11 @@
 module;
 
 #include <cerrno>
+#include <fcntl.h>
+#include <netinet/in.h>
 #include <sys/random.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <json/json.h>
 
@@ -42,8 +46,77 @@ export struct Activity {
 struct Job {
     std::string tool;
     Json::Value args;
-    std::promise<ToolResult> result;
+    std::optional<Json::Value> id; // JSON-RPC id, if the response can be deferred (see Server::DeferResponse): not for calls in a batch
+    int local_port; // Of the connection the call came in on
+    int remote_port;
+    std::promise<std::optional<ToolResult>> result; // Empty if deferred
 };
+
+// The response to a tool call that is sent later, by the next run of CoVer after it re-executed itself: the connection stays open
+// across exec, see Server::DeferResponse
+export struct Deferred {
+    int fd;
+    Json::Value id;
+};
+
+// The connected socket of this process from remote_port to local_port, -1 if there is none
+int FindConnection(int local_port, int remote_port) {
+    std::error_code ec;
+    for (std::filesystem::directory_entry const& entry : std::filesystem::directory_iterator("/proc/self/fd", ec)) {
+        std::string name = entry.path().filename().string();
+        int fd = -1;
+        if (std::from_chars(name.data(), name.data() + name.size(), fd).ec != std::errc()) continue;
+        sockaddr_in local{}, remote{};
+        socklen_t local_len = sizeof(local), remote_len = sizeof(remote);
+        if (getsockname(fd, reinterpret_cast<sockaddr*>(&local), &local_len) != 0 || local.sin_family != AF_INET) continue;
+        if (getpeername(fd, reinterpret_cast<sockaddr*>(&remote), &remote_len) != 0) continue;
+        if (ntohs(local.sin_port) == local_port && ntohs(remote.sin_port) == remote_port) return fd;
+    }
+    return -1;
+}
+
+Json::Value ToolCallResponse(Json::Value const& id, ToolResult const& result) {
+    Json::Value response;
+    response["jsonrpc"] = "2.0";
+    response["id"] = id;
+    Json::Value content;
+    content["type"] = "text";
+    content["text"] = result.text;
+    response["result"]["content"].append(content);
+    response["result"]["isError"] = result.error;
+    return response;
+}
+
+// For the next run of CoVer, which takes it with ParseDeferred
+export std::string Serialize(Deferred const& deferred) {
+    return std::format("{} {} {}", getpid(), deferred.fd, JsonString(deferred.id));
+}
+
+// The deferred response of a previous run of this process, i.e. before it re-executed itself. Empty if text was written by another
+// process, e.g. if it is left over from a run that was killed: its file descriptors are gone.
+export std::optional<Deferred> ParseDeferred(std::string const& text) {
+    std::istringstream in(text);
+    int pid = 0;
+    Deferred deferred;
+    if (!(in >> pid >> deferred.fd) || pid != getpid()) return std::nullopt;
+    std::string errs;
+    if (!Json::parseFromStream(Json::CharReaderBuilder(), in, &deferred.id, &errs)) return std::nullopt;
+    fcntl(deferred.fd, F_SETFD, FD_CLOEXEC); // Not passed on again
+    return deferred;
+}
+
+// Sends the response of a deferred tool call and closes its connection
+export void SendDeferred(Deferred const& deferred, ToolResult const& result) {
+    std::string body = JsonString(ToolCallResponse(deferred.id, result));
+    std::string message = std::format("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", body.size(), body);
+    for (std::size_t sent = 0; sent < message.size();) {
+        ssize_t n = send(deferred.fd, message.data() + sent, message.size() - sent, MSG_NOSIGNAL); // The client may be gone
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        sent += n;
+    }
+    close(deferred.fd);
+}
 
 // Comparison taking the same time for all inputs of the same length
 bool SecretEquals(std::string const& a, std::string const& b) {
@@ -123,11 +196,29 @@ export class Server {
                 jobs.swap(queue);
             }
             for (std::shared_ptr<Job> const& job : jobs) {
+                running = job.get();
                 ToolResult result = run(job->tool, job->args);
-                job->result.set_value(result);
+                running = nullptr;
+                bool defer = deferred && deferred_job == job.get();
+                job->result.set_value(defer ? std::nullopt : std::optional<ToolResult>(result));
                 if (on_done) on_done({result.summary, result.error});
             }
         }
+
+        // Called by a tool while it runs: its result is not sent, the connection is kept open across exec instead, for the next run of
+        // CoVer to send the response with SendDeferred (see Deferred). False if that is not possible, e.g. for a call in a batch:
+        // then the tool's result is sent as usual. UI thread only.
+        bool DeferResponse() {
+            if (!running || !running->id || deferred) return false;
+            int fd = FindConnection(running->local_port, running->remote_port);
+            if (fd < 0 || fcntl(fd, F_SETFD, 0) == -1) return false; // Clears FD_CLOEXEC, set by httplib
+            deferred = Deferred{fd, *running->id};
+            deferred_job = running;
+            return true;
+        }
+
+        // The deferred response, see DeferResponse. UI thread only.
+        std::optional<Deferred> const& DeferredResponse() const { return deferred; }
 
     private:
         int port;
@@ -142,6 +233,10 @@ export class Server {
         bool accepting = false;
         std::string refusal = "CoVer is not accepting tool calls";
         std::vector<std::shared_ptr<Job>> queue;
+        // UI thread only
+        Job const* running = nullptr; // The job of the tool being run by ProcessPending
+        std::optional<Deferred> deferred;
+        Job const* deferred_job = nullptr;
 
         void FailPending(std::string const& message) {
             std::vector<std::shared_ptr<Job>> jobs;
@@ -149,7 +244,7 @@ export class Server {
                 std::lock_guard<std::mutex> lock(mutex);
                 jobs.swap(queue);
             }
-            for (std::shared_ptr<Job> const& job : jobs) job->result.set_value({message, true, job->tool});
+            for (std::shared_ptr<Job> const& job : jobs) job->result.set_value(ToolResult{message, true, job->tool});
         }
 
         // Runs before routing, answers requests that must not reach the endpoint
@@ -185,19 +280,24 @@ export class Server {
                 return SetJson(res, 400, RpcError(Json::Value(), -32700, "Parse error: " + errs));
 
             Json::Value responses = Json::arrayValue;
+            bool deferred_call = false;
             if (message.isArray()) {
-                for (Json::Value const& msg : message) HandleMessage(msg, responses);
+                for (Json::Value const& msg : message) HandleMessage(msg, responses, req, false, deferred_call);
             } else {
-                HandleMessage(message, responses);
+                HandleMessage(message, responses, req, true, deferred_call);
             }
             if (responses.empty()) { // Only notifications or responses
                 res.status = 202;
                 return;
             }
+            // The next run of CoVer responds, this process re-executes itself without returning. Unless that fails and it exits, then
+            // this server is stopped, and the call fails like those still waiting.
+            while (deferred_call && !stopping) std::this_thread::sleep_for(std::chrono::milliseconds(200));
             SetJson(res, 200, message.isArray() ? responses : responses[0]);
         }
 
-        void HandleMessage(Json::Value const& msg, Json::Value& responses) {
+        // deferrable: whether the response of a tool call may be deferred (see DeferResponse), deferred_call is set if it was
+        void HandleMessage(Json::Value const& msg, Json::Value& responses, httplib::Request const& req, bool deferrable, bool& deferred_call) {
             if (!msg.isMember("method") || !msg.isMember("id")) return; // Notification, or a response to a request we never send
             Json::Value const& id = msg["id"];
             std::string method = msg["method"].asString();
@@ -227,29 +327,28 @@ export class Server {
                 std::string name = params["name"].asString();
                 bool known = std::ranges::any_of(specs, [&](ToolSpec const& spec) { return spec.name == name; });
                 if (!known) return (void)responses.append(RpcError(id, -32602, "Unknown tool " + name));
-                ToolResult result = RunOnUI(name, params.isMember("arguments") ? params["arguments"] : Json::Value(Json::objectValue));
-                Json::Value content;
-                content["type"] = "text";
-                content["text"] = result.text;
-                response["result"]["content"].append(content);
-                response["result"]["isError"] = result.error;
+                std::shared_ptr<Job> job = std::make_shared<Job>(name, params.isMember("arguments") ? params["arguments"] : Json::Value(Json::objectValue),
+                                                                 deferrable ? std::optional<Json::Value>(id) : std::nullopt, req.local_port, req.remote_port);
+                std::optional<ToolResult> result = RunOnUI(job);
+                deferred_call = deferred_call || !result;
+                return (void)responses.append(ToolCallResponse(id, result.value_or(ToolResult{RESTARTING, true, name})));
             } else {
                 return (void)responses.append(RpcError(id, -32601, "Method not found: " + method));
             }
             responses.append(response);
         }
 
-        ToolResult RunOnUI(std::string const& tool, Json::Value const& args) {
-            std::shared_ptr<Job> job = std::make_shared<Job>(tool, args);
-            std::future<ToolResult> result = job->result.get_future();
+        // Empty if the response is deferred, see DeferResponse
+        std::optional<ToolResult> RunOnUI(std::shared_ptr<Job> const& job) {
+            std::future<std::optional<ToolResult>> result = job->result.get_future();
             {
                 std::lock_guard<std::mutex> lock(mutex);
-                if (!accepting) return {refusal, true, tool};
+                if (!accepting) return ToolResult{refusal, true, job->tool};
                 queue.push_back(job);
             }
             wake();
             while (result.wait_for(std::chrono::milliseconds(200)) != std::future_status::ready) {
-                if (stopping) return {RESTARTING, true, tool};
+                if (stopping) return ToolResult{RESTARTING, true, job->tool};
             }
             return result.get();
         }
