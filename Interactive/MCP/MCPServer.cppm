@@ -189,13 +189,18 @@ export class Server {
         }
 
         // Runs the waiting tool calls with the given dispatcher. UI thread only.
-        void ProcessPending(std::function<ToolResult(std::string const&, Json::Value const&)> const& run, std::function<void(Activity const&)> const& on_done) {
+        // Once hold returns true (e.g. a tool call requested navigation), the remaining calls keep waiting for the next call of
+        // ProcessPending, unless tool calls are no longer accepted: then they fail with the refusal message.
+        void ProcessPending(std::function<ToolResult(std::string const&, Json::Value const&)> const& run, std::function<void(Activity const&)> const& on_done,
+                            std::function<bool()> const& hold) {
             std::vector<std::shared_ptr<Job>> jobs;
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 jobs.swap(queue);
             }
-            for (std::shared_ptr<Job> const& job : jobs) {
+            std::size_t next = 0;
+            for (; next < jobs.size() && !hold(); next++) {
+                std::shared_ptr<Job> const& job = jobs[next];
                 running = job.get();
                 ToolResult result = run(job->tool, job->args);
                 running = nullptr;
@@ -203,6 +208,15 @@ export class Server {
                 job->result.set_value(defer ? std::nullopt : std::optional<ToolResult>(result));
                 if (on_done) on_done({result.summary, result.error});
             }
+            if (next == jobs.size()) return;
+            std::string refusal_message;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                queue.insert(queue.begin(), jobs.begin() + next, jobs.end()); // Before those that arrived meanwhile
+                if (accepting) return;
+                refusal_message = refusal;
+            }
+            FailPending(refusal_message);
         }
 
         // Called by a tool while it runs: its result is not sent, the connection is kept open across exec instead, for the next run of

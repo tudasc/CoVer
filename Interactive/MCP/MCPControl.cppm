@@ -48,7 +48,6 @@ You are connected to CoVer's interactive mode through MCP and can work through a
 - A report only shows the conflicts of the first call that violates the contract, the other calls are checked once it is fixed. Annotate the matching values of all calls (e.g. the stores of all fill loops) before reanalysing.
 - reanalyse reruns the analysis with all annotations added so far and returns the new reports. If the leaf whose trace was open is still reported afterwards, its trace is opened again automatically.
 - After reanalysing, check with list_reports that the reports you annotated are gone. Annotations can also uncover further reports.
-- Reports without a debuggable trace (marked in list_reports) cannot be annotated with these tools, leave them to the user.
 - Annotate false positives only. Leave real bugs reported, and tell the user about them with a suggested fix.
 - When done, tell the user which annotations you added for which reports, and which reports are real bugs. The user can save the annotations as a patch file with the diff command of CoVer's debugger, or from the report list.)";
 
@@ -166,9 +165,8 @@ std::vector<TraceTools::Tool<State>> const& Tools() {
     return tools;
 }
 
+// Tool calls arriving while navigation is pending wait until it is done, see RunWaiting
 ToolResult Run(std::string const& name, Json::Value const& args) {
-    if (state.pending.kind != Action::Kind::NONE)
-        return {std::format("CoVer is {}, wait a moment and then continue", state.pending.kind == Action::Kind::REANALYSE ? "reanalysing" : "opening a report"), true, name + "  ->  busy"};
     TraceTools::Tool<State> const* tool = TraceTools::FindTool(Tools(), name);
     if (!tool) return {"Unknown tool " + name, true, "Unknown tool " + name};
     return tool->run(state, args);
@@ -176,6 +174,8 @@ ToolResult Run(std::string const& name, Json::Value const& args) {
 
 // Runs the waiting tool calls for the innermost screen unless a command runs, then lets the screen show their effect. UI thread only.
 // Posted by the server whenever tool calls wait, and called by the screens when they are shown and after commands.
+// Once a tool call requests navigation, the calls after it wait until it is done: those following open_report run on the opened trace,
+// those following reanalyse fail, as this process restarts for the reanalysis (see Reanalyse).
 export void RunWaiting() {
     if (!state.server || state.screens.empty() || InteractiveCmds::CommandRunning()) return;
     Screen screen = state.screens.back(); // Copy, after may show further screens (e.g. open a report)
@@ -183,7 +183,7 @@ export void RunWaiting() {
     state.server->ProcessPending(Run, [&](Activity const& entry) {
         state.log.push_back(entry);
         done.push_back(entry);
-    });
+    }, [] { return state.pending.kind != Action::Kind::NONE; });
     screen.after(done);
 }
 

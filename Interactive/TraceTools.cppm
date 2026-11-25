@@ -317,9 +317,28 @@ std::string TraceOverview(TraceSession const& trace) {
     return out;
 }
 
-// The report being debugged, available commands and the current trace
+// The translation units of the module with the compiler and command line their debug info records. CoVer's compiler wrappers have
+// the command line recorded (-grecord-command-line): clang puts it into the flags, flang appends it to the producer.
+std::string CompilationSection(Module const& module) {
+    std::string out;
+    for (DICompileUnit const* CU : module.debug_compile_units()) {
+        std::filesystem::path file = CU->getFilename().str();
+        if (file.is_relative() && !CU->getDirectory().empty()) file = std::filesystem::path(CU->getDirectory().str()) / file;
+        std::string producer = CU->getProducer().str();
+        std::string flags = CU->getFlags().str();
+        out += std::format("- {}\n", file.string());
+        if (!producer.empty()) out += "    Compiler: " + producer + "\n";
+        if (!flags.empty()) out += "    Command line: " + flags + "\n";
+    }
+    if (out.empty()) return "";
+    return "\n# Compilation\nThe translation units of the program, with the compiler and the command line they were compiled with where the debug info records them, "
+           "e.g. for the values of macros defined with -D (such as sizes for allocation annotations) or the include paths.\n" + out;
+}
+
+// The report being debugged, available commands, how the program was compiled and the current trace
 export std::string Context(ToolTarget const& target) {
     std::string out = CommandsSection();
+    if (target.module) out += CompilationSection(*target.module);
     if (!target.trace) return out + "\n# The current trace\n" + Unavailable(target) + "\n";
     AnalysisReports::DebugContext const& ctx = target.trace->Context();
     out += "\n# The report being debugged\n";
