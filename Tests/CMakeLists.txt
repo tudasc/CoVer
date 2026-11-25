@@ -1,16 +1,18 @@
 set(COVER_INSTALLED_BINARIES_DIR "${CMAKE_INSTALL_PREFIX}/bin")
 configure_file(lit.cfg.in ${CMAKE_CURRENT_LIST_DIR}/lit.cfg @ONLY)
 
+set(COVER_LIT_COMMAND lit --verbose --skip-test-time-recording)
+
 function(add_cover_test_c TEST_NAME)
-  add_test(NAME "C::${TEST_NAME}" COMMAND lit --verbose ${CMAKE_CURRENT_LIST_DIR}/c/${TEST_NAME}.c)
+  add_test(NAME "C::${TEST_NAME}" COMMAND ${COVER_LIT_COMMAND} ${CMAKE_CURRENT_LIST_DIR}/c/${TEST_NAME}.c)
 endfunction()
 
 function(add_cover_test_fort TEST_NAME)
-  add_test(NAME "Fortran::${TEST_NAME}" COMMAND lit --verbose ${CMAKE_CURRENT_LIST_DIR}/fort/${TEST_NAME}.F90)
+  add_test(NAME "Fortran::${TEST_NAME}" COMMAND ${COVER_LIT_COMMAND} ${CMAKE_CURRENT_LIST_DIR}/fort/${TEST_NAME}.F90)
 endfunction()
 
 function(add_cover_test_cxx TEST_NAME)
-  add_test(NAME "C++::${TEST_NAME}" COMMAND lit --verbose ${CMAKE_CURRENT_LIST_DIR}/cpp/${TEST_NAME}.cpp)
+  add_test(NAME "C++::${TEST_NAME}" COMMAND ${COVER_LIT_COMMAND} ${CMAKE_CURRENT_LIST_DIR}/cpp/${TEST_NAME}.cpp)
 endfunction()
 
 add_cover_test_c(Correct-Minimal)
