@@ -84,34 +84,33 @@ To find it, follow the pointer back to its allocation (`malloc`, `new`, an array
   and globals assigned once from constants before the pointer is used, e.g. in an initialisation function.
 - For a pointer into an allocation, count only the bytes from the pointer to the end of the allocation, as for the aligned buffer above (1024 of 1088 bytes).
 
-In the following program, the buffer size looks dynamic in the IR, as `nz` is a global that is loaded at runtime.
-But `nz` is only ever assigned `NZ`, before the buffer is allocated, so the size is fixed for the build:
+In the following program, the buffer size looks dynamic in the IR, as `nparticles` is a global that is loaded at runtime.
+But `nparticles` is only ever assigned `NPART`, before the buffer is allocated, so the size is fixed for the build:
 
 ```c
-#define HS 2
-#define NUM_VARS 4
-int nz;
-double* recvbuf;
+#define NDIM 3
+int nparticles;
+float* positions;
 
-void init() {
-    nz = NZ; // Compiled with -DNZ=50
-    recvbuf = (double*)malloc(HS * nz * NUM_VARS * sizeof(double));
+void setup() {
+    nparticles = NPART; // Compiled with -DNPART=128
+    positions = (float*)malloc(nparticles * NDIM * sizeof(float));
 }
 
-void exchange(int peer, MPI_Request* req) {
-    MPI_Irecv(recvbuf, HS * nz * NUM_VARS, MPI_DOUBLE, peer, 0, MPI_COMM_WORLD, req);
+void send_positions(int dest, MPI_Request* req) {
+    MPI_Isend(positions, nparticles * NDIM, MPI_FLOAT, dest, 0, MPI_COMM_WORLD, req);
 }
 ```
 
-The annotation of the buffer loaded in `exchange` therefore has the size 2 * 50 * 4 * 8 = 3200 bytes:
+The annotation of the buffer loaded in `send_positions` therefore has the size 128 * 3 * 4 = 1536 bytes:
 
 ```llvm
-define void @exchange(i32 %0, ptr %1) {
+define void @send_positions(i32 %0, ptr %1) {
   ...
-  %5 = load ptr, ptr @recvbuf
-+ call void @CoVer_AnnotAlloc(ptr %5, i64 3200)
+  %4 = load ptr, ptr @positions
++ call void @CoVer_AnnotAlloc(ptr %4, i64 1536)
   ...
-  %10 = call i32 @MPI_Irecv(ptr %5, i32 %8, ptr @ompi_mpi_double, i32 %0, i32 0, ptr @ompi_mpi_comm_world, ptr %1)
+  %8 = call i32 @MPI_Isend(ptr %4, i32 %7, ptr @ompi_mpi_float, i32 %0, i32 0, ptr @ompi_mpi_comm_world, ptr %1)
   ...
 }
 ```
