@@ -517,6 +517,16 @@ export void setFPTarget(CallBase* indirect, std::set<Function*> targets) {
     registerAnnotatedIndirectCall(indirect);
 }
 
+// The allocation annotation of the pointer produced by I, null if it has none.
+// Searched among the users: Other annotations of I, e.g. alias annotations, may be placed between I and its allocation annotation
+export CallBase* getAllocAnnot(Instruction* I) {
+    for (User* U : I->users()) {
+        CallBase* CB = dyn_cast<CallBase>(U);
+        if (CB && CB->getCalledOperand()->getName() == "CoVer_AnnotAlloc" && CB->getArgOperand(0) == I) return CB;
+    }
+    return nullptr;
+}
+
 // Annotate the pointer produced by I as allocated with at least size bytes (0: size unknown). Returns error message, empty on success
 export std::string setAllocAnnot(Instruction* I, std::uint64_t size) {
     if (!I->getType()->isPointerTy()) return "Instruction does not produce a pointer value!";
@@ -536,14 +546,22 @@ export std::string setAllocAnnot(Instruction* I, std::uint64_t size) {
     invalidateFunctionAnalyses(I->getFunction());
     ConstantInt* sizeConst = ConstantInt::get(Type::getInt64Ty(curM->getContext()), size);
     // Already annotated: Only update size
-    for (CallBase* CB = dyn_cast<CallBase>(insertPt); CB && CB->getCalledOperand()->getName() == "CoVer_AnnotAlloc"; CB = dyn_cast_or_null<CallBase>(CB->getNextNode())) {
-        if (CB->getArgOperand(0) != I) continue;
-        CB->setArgOperand(1, sizeConst);
+    if (CallBase* annot = getAllocAnnot(I)) {
+        annot->setArgOperand(1, sizeConst);
         return "";
     }
     CallInst* CI = CallInst::Create(curM->getFunction("CoVer_AnnotAlloc"), {I, sizeConst});
     CI->insertBefore(insertPt->getIterator());
     CI->setDebugLoc(I->getDebugLoc());
+    return "";
+}
+
+// Remove the allocation annotation of the pointer produced by I. Returns error message, empty on success
+export std::string removeAllocAnnot(Instruction* I) {
+    CallBase* annot = getAllocAnnot(I);
+    if (!annot) return "Instruction is not annotated as allocated!";
+    invalidateFunctionAnalyses(I->getFunction());
+    removeAnnot(annot);
     return "";
 }
 

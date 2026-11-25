@@ -993,6 +993,8 @@ class TraceDebugger {
             if (in.indirect_call)
                 QObject::connect(menu->addAction("Annotate function pointer targets..."), &QAction::triggered, [=, this] { Execute(std::format("fp-target {} {}", block, in.index)); });
             QObject::connect(menu->addAction("Annotate as allocated..."), &QAction::triggered, [=, this] { AllocDialog(block, in.index); });
+            if (Instruction* I = session.BlockInstruction(block, in.index); I && ContractPassUtility::getAllocAnnot(I))
+                QObject::connect(menu->addAction("Remove allocation annotation"), &QAction::triggered, [=, this] { Execute(std::format("alloc-rm {} {}", block, in.index)); });
             QObject::connect(menu->addAction("Start alias epoch before this instruction..."), &QAction::triggered, [=, this] { AliasEpochDialog(block, in.index); });
             std::vector<std::string> values = in.operands;
             if (!in.value.empty()) values.insert(values.begin(), in.value);

@@ -421,18 +421,42 @@ CmdResult CmdAliasCheck(std::vector<std::string> const& args, CmdTarget const& t
                                                          result.match ? "match" : "do not match", result.Explain())};
 }
 
-CmdResult CmdAllocCreate(std::vector<std::string> const& args, TraceSession& session, CmdFrontend const& frontend) {
-    std::expected<int, std::string> block = ParseBlock(args[0], session);
-    if (!block) return {CmdResultCode::INVALID_INPUT, block.error()};
-    std::expected<Instruction*, std::string> selected = ParseTraceInstr(args[1], *block, session);
+// The instruction an allocation annotation is about: its number in a trace block, or its value in a function.
+// Also returns how to name it in messages, determined before an edit discards the value numbering
+std::expected<std::pair<Instruction*, std::string>, std::string> ParseAllocInstr(std::string_view where, std::string const& what, CmdTarget const& target) {
+    if (ContractPassUtility::parseInt(what)) {
+        std::expected<int, std::string> block = ParseBlock(where, target);
+        if (!block) return std::unexpected(block.error());
+        std::expected<Instruction*, std::string> I = ParseTraceInstr(what, *block, *target.trace);
+        if (!I) return std::unexpected(I.error());
+        return std::pair{*I, std::format("{} at {}.{}", ContractPassUtility::getValueName(*I), *block, what)};
+    }
+    std::expected<Function*, std::string> F = ParseValueFunction(where, target);
+    if (!F) return std::unexpected(F.error());
+    Value* V = ContractPassUtility::getValueByName(what, *F);
+    if (!V) return std::unexpected(std::format("Could not identify value {} in function {}", what, (*F)->getName().str()));
+    Instruction* I = dyn_cast<Instruction>(V);
+    if (!I) return std::unexpected(std::format("Value {} in function {} is not produced by an instruction, only instructions can be annotated as allocated", what, (*F)->getName().str()));
+    return std::pair{I, std::format("{} in {}", ContractPassUtility::getValueName(I), (*F)->getName().str())};
+}
+
+CmdResult CmdAllocCreate(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
+    std::expected<std::pair<Instruction*, std::string>, std::string> selected = ParseAllocInstr(args[0], args[1], target);
     if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
     if (args[2].starts_with("-")) return {CmdResultCode::INVALID_INPUT, "Size argument must not be negative!"};
     std::expected<std::uint64_t, std::string> size = ParseIntArg(args[2], "Size");
     if (!size) return {CmdResultCode::INVALID_INPUT, size.error()};
-    std::string name = ContractPassUtility::getValueName(*selected); // Before the edit, which discards the value numbering
-    std::string err = ContractPassUtility::setAllocAnnot(*selected, *size);
+    std::string err = ContractPassUtility::setAllocAnnot(selected->first, *size);
     if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};
-    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} at {}.{} is now annotated as allocated{}", name, *block, args[1], *size ? std::format(" with at least {} bytes", *size) : "")};
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("{} is now annotated as allocated{}", selected->second, *size ? std::format(" with at least {} bytes", *size) : "")};
+}
+
+CmdResult CmdAllocRm(std::vector<std::string> const& args, CmdTarget const& target, CmdFrontend const& frontend) {
+    std::expected<std::pair<Instruction*, std::string>, std::string> selected = ParseAllocInstr(args[0], args[1], target);
+    if (!selected) return {CmdResultCode::INVALID_INPUT, selected.error()};
+    std::string err = ContractPassUtility::removeAllocAnnot(selected->first);
+    if (!err.empty()) return {CmdResultCode::INVALID_INPUT, err};
+    return {CmdResultCode::SUCCESS_CONTINUE, std::format("Removed the allocation annotation of {}", selected->second)};
 }
 
 // Default file of the patch files written by the frontends
@@ -533,7 +557,8 @@ std::vector<CmdInfo> const TraceCommands = {
     {"alias-epoch",   "[group num] [block num|function] [instr num|value]",       "Start a new epoch for an alias group before an instruction, given by its number in the block or by its value in the function (an argument: at the start of the function).", 3, CmdAccess::ANY, CmdAliasEpoch},
     {"alias-get",     "[group num...]",                                           "Get info on current alias annotations, of all groups or only of the given ones", 0, CmdAccess::ANY, CmdAliasGet, true},
     {"alias-check",   "[block num|function 1] [value 1] [block num|function 2] [value 2]", "Check whether the analysis takes two pointers as the same, e.g. a parameter of a contract and the address of a store, and why. Uses the current annotations, also those not reanalysed yet.", 4, CmdAccess::ANY, CmdAliasCheck},
-    {"alloc-create",  "[block num] [instr num] [size]",                           "Annotate the pointer produced by an instruction as allocated with at least size bytes (0: unknown size).", 3, CmdAccess::ANY, CmdAllocCreate},
+    {"alloc-create",  "[block num|function] [instr num|value] [size]",            "Annotate the pointer produced by an instruction, given by its number in the block or by its value in the function, as allocated with at least size bytes. Annotating an annotated instruction again replaces its size.", 3, CmdAccess::ANY, CmdAllocCreate},
+    {"alloc-rm",      "[block num|function] [instr num|value]",                   "Remove the allocation annotation of an instruction", 2, CmdAccess::ANY, CmdAllocRm},
     {"reanalyse",     "",                                                         "Re-run all analyses (e.g. after adding annotations)", 0, CmdAccess::USER, CmdReanalyse},
     {"diff",          "[filepath]",                                               "Write out the annotations as a patch file. This includes changes from a previously read patch, if applicable.", 1, CmdAccess::USER, CmdDiff},
     {"patch",         "[filepath]",                                               "Read annotations from a patch file", 1, CmdAccess::USER, CmdPatch},
