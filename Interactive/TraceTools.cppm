@@ -180,6 +180,7 @@ The get_annotation_docs tool returns CoVer's documentation of each annotation ki
 
 # How to work
 - Investigate before answering: look at the trace, the relevant blocks and the source code. Do not guess value names or instruction numbers, look them up.
+- get_contract shows what a contract requires, and for a call_tag! formula which functions of the program carry the tag and which of their arguments is matched, e.g. which calls complete a request.
 - Explain the root cause of the report in terms of the source code, citing locations as file:line.
 - Decide whether the report is a real bug or a false positive. If it is a real bug, say so, suggest a fix to the source code, and do not add annotations to hide it.
 - If an annotation is justified, add it, then tell the user exactly which annotations you added and why they are correct. If the user only asked a question, ask before annotating.
@@ -752,6 +753,137 @@ ToolResult FindAccesses(Module const& module, Json::Value const& input) {
     return {out, false, summary};
 }
 
+// The tags the call_tag! operations of an operation refer to, also within no!(...) until!(...)
+void CollectTags(Operation const& op, std::set<std::string>& tags) {
+    if (op.type() == FormulaType::CALLTAG) {
+        tags.insert(static_cast<CallTagOperation const&>(op).Function);
+    } else if (op.type() == FormulaType::RELEASE) {
+        ReleaseOperation const& release = static_cast<ReleaseOperation const&>(op);
+        if (release.Forbidden) CollectTags(*release.Forbidden, tags);
+        if (release.Until) CollectTags(*release.Until, tags);
+    }
+}
+
+void CollectTags(ContractFormula const& form, std::set<std::string>& tags) {
+    if (form.Children.empty()) { // A leaf, see ContractManagerAnalysis::linearizeContractFormula
+        ContractExpression const& expr = static_cast<ContractExpression const&>(form);
+        if (expr.OP) CollectTags(*expr.OP, tags);
+    }
+    for (std::shared_ptr<ContractFormula> const& child : form.Children) CollectTags(*child, tags);
+}
+
+// A top level formula with its message. The expression of a single operation leaves the message out, that of a combined one ends with it without spaces.
+std::string FormulaText(ContractFormula const& form) {
+    std::string expr = form.ExprStr;
+    if (!form.Message) return expr;
+    std::string suffix = std::format("MSG\"{}\"", *form.Message);
+    if (expr.ends_with(suffix)) expr.resize(expr.size() - suffix.size());
+    return std::format("{} MSG \"{}\"", expr, *form.Message);
+}
+
+std::string FunctionText(Function const* F) {
+    std::string name = F->getName().str();
+    std::string demangled = demangle(name);
+    return demangled != name ? std::format("{} ({})", name, demangled) : name;
+}
+
+// A function carrying a tag, with the argument call_tag!(tag,$:N) compares
+std::string TaggedText(Function const* F, TagUnit const& tag) {
+    return std::format("{} {}", FunctionText(F), tag.param ? std::format("(tagged argument {})", *tag.param) : "(no tagged argument)");
+}
+
+// The functions carrying a tag, from the TAGS sections of all contracts
+std::vector<std::string> FunctionsWithTag(std::vector<AnalysisReports::Contract> const& contracts, std::string const& tag) {
+    std::vector<std::string> functions;
+    for (AnalysisReports::Contract const& C : contracts) {
+        for (TagUnit const& unit : C.Data.Tags) {
+            std::string text = TaggedText(C.F, unit);
+            if (unit.tag == tag && std::ranges::find(functions, text) == functions.end()) functions.push_back(text);
+        }
+    }
+    return functions;
+}
+
+constexpr char const* CONTRACT_NOTATION = R"(Notation: The function a contract belongs to is its supplier, N an argument of its call, numbered from 0. Values match as the analysis matches them, which alias-check explains.
+- PRE: checked at each call of the supplier, about what happened before it and its arguments. POST: about what happens after it.
+- call!(f) / call!(f,M:N): a call of f, whose argument M matches argument N. M:*N and M:&N match the pointee or the address of argument N instead.
+- call_tag!(t) / call_tag!(t,$:N): a call of any function with tag t, whose tagged argument ($) matches argument N. The tags section above lists these functions.
+- no!(a) until!(b): a must not happen after the call of the supplier until b happens. read!(*N) / write!(*N): a load or store of the memory argument N points to.
+- alloc!(N): argument N points to allocated memory. free!(N): argument N is freed. param!(N:...): conditions on the value of argument N.
+- (a|b): at least one of them holds. (a^b): exactly one holds. MSG: the message reported when the formula is violated.)";
+
+// The contract of a function, with the functions carrying the tags it refers to, or the functions carrying a tag. Models need the TAGS sections of other functions
+// to understand a call_tag! formula, e.g. that MPI_Waitall completes requests without a tagged argument (req_complete_noidx), unlike MPI_Wait.
+ToolResult GetContract(Json::Value const& input) {
+    std::optional<std::string> name = GetString(input, "function");
+    std::optional<std::string> tag = GetString(input, "tag");
+    if (!name && !tag) return {"Give a function or a tag", true, "get_contract"};
+    std::vector<AnalysisReports::Contract> const& contracts = InteractiveSession::Contracts();
+    if (contracts.empty()) return {"The program calls no function with a contract", true, "get_contract"};
+
+    if (tag) {
+        std::string summary = "get_contract tag " + *tag;
+        std::vector<std::string> functions = FunctionsWithTag(contracts, *tag);
+        std::vector<std::string> users;
+        for (AnalysisReports::Contract const& C : contracts) {
+            std::set<std::string> used;
+            for (std::shared_ptr<ContractFormula> const& scope : {C.Data.Pre, C.Data.Post}) {
+                if (scope) CollectTags(*scope, used);
+            }
+            if (used.contains(*tag) && std::ranges::find(users, C.F->getName().str()) == users.end()) users.push_back(C.F->getName().str());
+        }
+        if (functions.empty() && users.empty()) {
+            std::set<std::string> known;
+            for (AnalysisReports::Contract const& C : contracts) {
+                for (TagUnit const& unit : C.Data.Tags) known.insert(unit.tag);
+            }
+            return {std::format("No function of the program has or uses the tag {}. Tags of its functions: {}", *tag, Join(known, ", ")), true, summary};
+        }
+        std::string out = std::format("Functions with tag {}: {}\n", *tag, functions.empty() ? "none in the program" : Join(functions, ", "));
+        out += std::format("Contracts using it in call_tag!: {}\n", users.empty() ? "none" : Join(users, ", "));
+        return {out, false, summary};
+    }
+
+    std::string summary = "get_contract " + *name;
+    std::vector<AnalysisReports::Contract const*> own;
+    for (AnalysisReports::Contract const& C : contracts) {
+        if (C.F->getName() == *name) own.push_back(&C);
+    }
+    if (own.empty()) {
+        std::vector<std::string> with_contract;
+        for (AnalysisReports::Contract const& C : contracts) {
+            if (std::ranges::find(with_contract, C.F->getName().str()) == with_contract.end()) with_contract.push_back(C.F->getName().str());
+        }
+        return {std::format("{} has no contract. The functions of the program with a contract: {}", *name, Join(with_contract, ", ")), true, summary};
+    }
+
+    std::string out;
+    std::set<std::string> used;
+    for (AnalysisReports::Contract const* C : own) {
+        out += std::format("Contract of {}, with the status of each formula in the latest analysis:\n", FunctionText(C->F));
+        for (auto const& [scope_name, scope] : {std::pair{"PRE", C->Data.Pre}, std::pair{"POST", C->Data.Post}}) {
+            if (!scope || scope->Children.empty()) continue;
+            out += std::format("{}\n", scope_name);
+            for (std::shared_ptr<ContractFormula> const& form : scope->Children) out += std::format("- {} ({})\n", FormulaText(*form), FulfillmentStr(*form->Status));
+            CollectTags(*scope, used);
+        }
+        if (!C->Data.Tags.empty()) {
+            std::vector<std::string> tags = C->Data.Tags | std::views::transform([](TagUnit const& unit) {
+                return unit.param ? std::format("{} (tagged argument {})", unit.tag, *unit.param) : unit.tag;
+            }) | std::ranges::to<std::vector>();
+            out += std::format("TAGS of {}: {}\n", C->F->getName().str(), Join(tags, ", "));
+        }
+    }
+    if (!used.empty()) {
+        out += "\nThe functions of the program with the tags the formulas use:\n";
+        for (std::string const& used_tag : used) {
+            std::vector<std::string> functions = FunctionsWithTag(contracts, used_tag);
+            out += std::format("- {}: {}\n", used_tag, functions.empty() ? "none in the program" : Join(functions, ", "));
+        }
+    }
+    return {out + "\n" + CONTRACT_NOTATION + "\n", false, summary};
+}
+
 std::vector<ToolInfo> BuildTools() {
     Json::Value fp_schema = Schema({{"block", "integer", "Block number"}, {"instruction", "integer", "Instruction number of the indirect call within the block"}, {"functions", "array", "Names of all possible target functions as in the IR"}},
                                    {"block", "instruction", "functions"});
@@ -812,6 +944,11 @@ std::vector<ToolInfo> BuildTools() {
                            "the stores reported for a data race and those it would report next. alias-check tells why the analysis matches two values. Use it to collect the addresses to annotate, instead of searching them in get_function_ir.",
           accesses_schema},
          ToolNeeds::MODULE, [](ToolTarget const& t, Json::Value const& input) { return FindAccesses(*t.module, input); }},
+        {{"get_contract", "The contract of a function (e.g. the one of a report): its formulas with their status in the latest analysis and its tags, the functions of the program "
+                          "with the tags its call_tag! formulas use (e.g. which calls complete a request, and whether they have a tagged argument to match), and the notation. "
+                          "Given a tag instead, the functions with that tag and the contracts using it.",
+          Schema({{"function", "string", std::format("Function, {}", FUNCTION_NAME)}, {"tag", "string", "A tag, e.g. req_complete, instead of a function"}}, {})},
+         ToolNeeds::MODULE, [](ToolTarget const&, Json::Value const& input) { return GetContract(input); }}, // The status is only final with the results
         {DocsSpec(),
          ToolNeeds::NOTHING, [](ToolTarget const&, Json::Value const& input) { return AnnotationDocs(input); }},
     };

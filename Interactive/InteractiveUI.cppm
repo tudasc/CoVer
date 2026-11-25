@@ -63,6 +63,7 @@ export bool SetMode(InteractMode mode) {
 export void StartMenu(std::vector<AnalysisReports::Contract> const& contracts, AnalysisReports::FormulaReports const& reports, AnalysisReports::FormulaDebugHandlers debugHandlers, double parse_time) {
     // Before any of the interactive files are written
     std::filesystem::create_directory(InteractiveUtils::TMP_DIR);
+    InteractiveSession::SetContracts(contracts); // Before MCP clients can call get_contract
     if (std::string err = frontend->startMCP(InteractiveSession::ResumeMCPMode()); !err.empty()) errs() << "CoVer: " << err << "\n";
     if (InteractiveSession::Resuming()) return;
     frontend->startMenu(contracts, reports, debugHandlers, parse_time);

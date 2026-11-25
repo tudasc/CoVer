@@ -97,6 +97,18 @@ History history = std::move(previous_run.history);
 export History const& CommandHistory() { return history; }
 export void AddToHistory(std::string const& cmd, CmdResult const& res) { history.push_back({cmd, res}); }
 
+// All contracts of the analysed module, also those of functions without reports, for the get_contract tool (TraceTools).
+// Their formulas share the status with those of the analysis, so it is that of the latest analysis.
+std::vector<AnalysisReports::Contract> contracts;
+
+// Before the start menu and the tools are available
+export void SetContracts(std::vector<AnalysisReports::Contract> const& all) {
+    contracts.clear();
+    for (AnalysisReports::Contract const& C : all) contracts.push_back(C); // Not assignable, the members are const
+}
+
+export std::vector<AnalysisReports::Contract> const& Contracts() { return contracts; }
+
 // Whether this is a reanalysis, which skips the start menu. If it was started from a trace, that trace is opened again (see TakeResumeTrace).
 export bool Resuming() { return previous_run.reanalysis; }
 
