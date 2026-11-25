@@ -110,25 +110,34 @@ struct AnnotFPSite_t {
     char const* const* target_names;
     std::int32_t num_targets;
 };
+struct AnnotAllocSite_t {
+    char const* ref; // Source location of the annotation, as "file:line". The annotation call is its only visitor
+};
 struct AnnotTable_t {
     AnnotAliasSite_t const* alias_sites;
     AnnotFPSite_t const* fp_sites;
+    AnnotAllocSite_t const* alloc_sites;
     std::int32_t num_alias_sites;
     std::int32_t num_fp_sites;
+    std::int32_t num_alloc_sites;
 };
-// Only present if the program has alias or function pointer annotations. Hidden, so it is only taken from the binary this runtime is linked into
+// Only present if the program has annotations. Hidden, so it is only taken from the binary this runtime is linked into
 extern "C" AnnotTable_t const CoVer_AnnotTable __attribute__((weak, visibility("hidden")));
 
 namespace {
+    // The kind of annotation a visit is of, as written in the coverage files. Kept apart, as annotations of different kinds can share a source line
+    enum class VisitKind : char { ALIAS = 'A', FP = 'F', ALLOC = 'L' };
+
     // A visit of an annotation: The return address of its runtime call, and for function pointer annotations the called target
     struct Visit {
         void const* loc;
-        void const* target; // Null for alias annotations
+        void const* target; // Null for alias and allocation annotations
+        VisitKind kind;
         bool operator==(Visit const&) const = default;
     };
     struct VisitHash {
         std::size_t operator()(Visit const& visit) const {
-            return std::hash<void const*>()(visit.loc) ^ (std::hash<void const*>()(visit.target) << 1);
+            return std::hash<void const*>()(visit.loc) ^ (std::hash<void const*>()(visit.target) << 1) ^ (std::hash<char>()(static_cast<char>(visit.kind)) << 2);
         }
     };
 
@@ -141,13 +150,13 @@ namespace {
     };
     AnnotCoverage* coverage = nullptr;
 
-    void recordVisit(void const* loc, void const* target) {
+    void recordVisit(void const* loc, void const* target, VisitKind kind) {
         if (!coverage) return;
         // Each thread only takes the lock on its first visit of a location
         thread_local std::unordered_set<Visit, VisitHash> seen;
-        if (!seen.insert({loc, target}).second) return;
+        if (!seen.insert({loc, target, kind}).second) return;
         std::lock_guard lock(coverage->mutex);
-        coverage->visits.insert({loc, target});
+        coverage->visits.insert({loc, target, kind});
     }
 
     // Waits until all processes wrote their coverage files, then merges and deletes them, and reports the annotations that were not covered
@@ -166,12 +175,13 @@ namespace {
             return it->second;
         };
 
-        // Source locations of the visited alias annotation calls, and of the visited function pointer annotation calls with their called targets ("file|offset")
+        // Source locations of the visited alias and allocation annotation calls, and of the visited function pointer annotation calls with their called targets ("file|offset")
         std::unordered_set<std::string> aliasVisited;
+        std::unordered_set<std::string> allocVisited;
         std::map<std::string, std::set<std::string>> fpVisited;
         std::vector<std::filesystem::path> pending = paths;
         while (!pending.empty()) {
-            std::erase_if(pending, [&resolve, &aliasVisited, &fpVisited](std::filesystem::path const& path) {
+            std::erase_if(pending, [&resolve, &aliasVisited, &allocVisited, &fpVisited](std::filesystem::path const& path) {
                 std::ifstream in(path);
                 if (!in) return true; // Removed in the meantime
                 // Files are written in place and end with "END": Without it, the file is still being written and its last line may be cut off
@@ -187,10 +197,12 @@ namespace {
                 }
                 if (!complete) return false;
                 for (std::string const& visit : visits) {
-                    // "A|file|offset" or "F|file|offset|target file|target offset"
+                    // "A|file|offset" (alias), "L|file|offset" (allocation) or "F|file|offset|target file|target offset" (function pointer)
                     std::vector<std::string> fields = visit | std::views::split('|') | std::ranges::to<std::vector<std::string>>();
                     if (fields.size() == 3 && fields[0] == "A") {
                         aliasVisited.insert(resolve(fields[1], fields[2]));
+                    } else if (fields.size() == 3 && fields[0] == "L") {
+                        allocVisited.insert(resolve(fields[1], fields[2]));
                     } else if (fields.size() == 5 && fields[0] == "F") {
                         fpVisited[resolve(fields[1], fields[2])].insert(fields[3] + "|" + fields[4]);
                     }
@@ -227,6 +239,10 @@ namespace {
                 AnnotWarn() << "Function pointer annotation at " << site.ref << " never called its target " << site.target_names[i] << "!\n";
             }
         }
+        for (AnnotAllocSite_t const& site : std::span(CoVer_AnnotTable.alloc_sites, CoVer_AnnotTable.num_alloc_sites)) {
+            if (allocVisited.contains(site.ref)) continue;
+            AnnotWarn() << "Allocation annotation at " << site.ref << " was never visited!\n";
+        }
 #endif
     }
 
@@ -239,8 +255,8 @@ namespace {
             for (Visit const& visit : coverage->visits) {
                 std::optional<std::pair<std::string, std::uintptr_t>> loc = getDLInfo((char const*)visit.loc - 1);
                 if (!loc) continue;
-                if (!visit.target) {
-                    file << std::format("A|{}|{:x}\n", loc->first, loc->second);
+                if (visit.kind != VisitKind::FP) {
+                    file << std::format("{}|{}|{:x}\n", static_cast<char>(visit.kind), loc->first, loc->second);
                     continue;
                 }
                 std::optional<std::pair<std::string, std::uintptr_t>> target = getDLInfo(visit.target);
@@ -294,7 +310,7 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotFP(void const*
         void* target = va_arg(list, void*);
         if (target == ptr) {
             va_end(list);
-            recordVisit(__builtin_return_address(0), ptr);
+            recordVisit(__builtin_return_address(0), ptr, VisitKind::FP);
             return;
         }
     }
@@ -318,7 +334,7 @@ std::unordered_map<int,AliasEntry> aliasInfo;
 std::unordered_map<int,std::unordered_map<void*,void*>> noAliasInfo;
 extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* ptr, bool shouldAlias, int group) {
     void* loc = __builtin_return_address(0);
-    recordVisit(loc, nullptr);
+    recordVisit(loc, nullptr, VisitKind::ALIAS);
     if (shouldAlias) {
         auto [it, inserted] = aliasInfo.try_emplace(group, AliasEntry{ptr, loc});
         if (!inserted && it->second.ptr != ptr) createAliasError(group, it->second.loc, loc, true);
@@ -331,7 +347,7 @@ extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlias(void* pt
 // Called directly before each such access. The value is checked against the values of the group that are in use, but not recorded itself
 extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAliasAccess(void* ptr, int group) {
     void* loc = __builtin_return_address(0);
-    recordVisit(loc, nullptr);
+    recordVisit(loc, nullptr, VisitKind::ALIAS);
     if (!noAliasInfo.contains(group)) return;
     std::unordered_map<void*,void*> const& seen = noAliasInfo.at(group);
     if (seen.contains(ptr)) createAliasError(group, seen.at(ptr), loc, false);
@@ -391,6 +407,7 @@ namespace {
 }
 
 extern "C" void __attribute__((visibility("default"))) CoVer_AnnotAlloc(void* ptr, std::size_t size) {
+    recordVisit(__builtin_return_address(0), nullptr, VisitKind::ALLOC);
     std::size_t accessible = probeAccessible(ptr, size);
     if (accessible == 0) {
         AnnotErr() << "Annotation verification failed!\n";

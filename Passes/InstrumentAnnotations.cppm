@@ -23,6 +23,11 @@ struct FPSite {
     std::vector<Function*> targets; // Aliases are resolved, they have the same address at runtime
 };
 
+// An allocation annotation, as checked by the runtime annotation verifier
+struct AllocSite {
+    std::optional<std::string> ref;
+};
+
 // The source location of a runtime call as "file:line", which the runtime matches against the location of the call's return address.
 // Calls without a location (e.g. annotations of arguments, placed at the function entry) get the location of their function
 std::optional<std::string> ensureRef(Instruction* I) {
@@ -71,7 +76,7 @@ Constant* createString(Module& M, std::string const& str) {
 
 }
 
-// Prepares the alias and function pointer annotations for the runtime annotation verifier.
+// Prepares the alias, function pointer and allocation annotations for the runtime annotation verifier.
 // No-alias annotations of values that are only accessed are converted to checks at each access.
 // All annotations are listed in a table, so the runtime can report annotations that were never visited
 export class InstrumentAnnotationsPass : public PassInfoMixin<InstrumentAnnotationsPass> {
@@ -96,10 +101,17 @@ export class InstrumentAnnotationsPass : public PassInfoMixin<InstrumentAnnotati
                 }
                 fpSites.push_back(std::move(site));
             }
-            if (aliasSites.empty() && fpSites.empty()) return PreservedAnalyses::all();
+            std::vector<AllocSite> allocSites;
+            if (Function* annotAlloc = M.getFunction("CoVer_AnnotAlloc")) {
+                for (User* U : annotAlloc->users()) {
+                    CallBase* CB = dyn_cast<CallBase>(U);
+                    if (CB && CB->getCalledOperand() == annotAlloc) allocSites.push_back({ensureRef(CB)});
+                }
+            }
+            if (aliasSites.empty() && fpSites.empty() && allocSites.empty()) return PreservedAnalyses::all();
 
             convertAccessAnnotations(M, aliasSites);
-            emitTable(M, aliasSites, fpSites);
+            emitTable(M, aliasSites, fpSites, allocSites);
             return PreservedAnalyses::none();
         }
 
@@ -157,7 +169,7 @@ export class InstrumentAnnotationsPass : public PassInfoMixin<InstrumentAnnotati
 
         // Embeds the table of all annotations as CoVer_AnnotTable, which the runtime annotation verifier reads at startup.
         // The layout must match the structs in AnnotVerifier/AnnotVerifier.cpp
-        void emitTable(Module& M, std::vector<AliasSite> const& aliasSites, std::vector<FPSite> const& fpSites) {
+        void emitTable(Module& M, std::vector<AliasSite> const& aliasSites, std::vector<FPSite> const& fpSites, std::vector<AllocSite> const& allocSites) {
             LLVMContext& C = M.getContext();
 
             StructType* AliasSiteTy = StructType::create(C, {Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Int_Type, Basic_Types.Int_Type}, "AnnotAliasSite_t");
@@ -195,16 +207,24 @@ export class InstrumentAnnotationsPass : public PassInfoMixin<InstrumentAnnotati
                     Basic_Types.getInt(static_cast<int>(targets.size()))
                 }));
             }
-            if (aliasConsts.empty() && fpConsts.empty()) return;
+            StructType* AllocSiteTy = StructType::create(C, {Basic_Types.Ptr_Type}, "AnnotAllocSite_t");
+            std::vector<Constant*> allocConsts;
+            for (AllocSite const& site : allocSites) {
+                if (!site.ref) continue; // The annotation call is its own visitor: Without its location, the runtime cannot tell whether it was visited
+                allocConsts.push_back(ConstantStruct::get(AllocSiteTy, {createString(M, *site.ref)}));
+            }
+            if (aliasConsts.empty() && fpConsts.empty() && allocConsts.empty()) return;
 
-            StructType* TableTy = StructType::create(C, {Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Int_Type}, "AnnotTable_t");
+            StructType* TableTy = StructType::create(C, {Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Ptr_Type, Basic_Types.Int_Type, Basic_Types.Int_Type, Basic_Types.Int_Type}, "AnnotTable_t");
             GlobalVariable* table = dyn_cast<GlobalVariable>(M.getOrInsertGlobal("CoVer_AnnotTable", TableTy));
             table->setConstant(true);
             table->setInitializer(ConstantStruct::get(TableTy, {
                 createArray(M, AliasSiteTy, aliasConsts, "CoVer_AnnotAliasSites"),
                 createArray(M, FPSiteTy, fpConsts, "CoVer_AnnotFPSites"),
+                createArray(M, AllocSiteTy, allocConsts, "CoVer_AnnotAllocSites"),
                 Basic_Types.getInt(static_cast<int>(aliasConsts.size())),
-                Basic_Types.getInt(static_cast<int>(fpConsts.size()))
+                Basic_Types.getInt(static_cast<int>(fpConsts.size())),
+                Basic_Types.getInt(static_cast<int>(allocConsts.size()))
             }));
         }
 };
