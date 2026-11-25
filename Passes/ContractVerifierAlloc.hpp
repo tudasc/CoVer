@@ -5,6 +5,8 @@
 
 import std;
 import LLVMModule;
+import Worklist;
+import InteractiveUI;
 
 using namespace ContractTree;
 
@@ -139,6 +141,18 @@ class ContractVerifierAllocPass : public PassInfoMixin<ContractVerifierAllocPass
 
         AllocStatusVal checkAllocReq(const AllocOperation* AllocOp, ContractManagerAnalysis::LinearizedContract const& C, ContractExpression const& Expr, Module const& M, const Function* F, std::string& err);
 
+        static std::string allocStatusToStr(AllocStatus S) {
+            switch (S.CurVal) {
+                case AllocStatusVal::ALLOC: return "ALLOC";
+                case AllocStatusVal::UNDEF: return "UNDEF";
+                case AllocStatusVal::ERROR: return "ERROR";
+            }
+        }
+
+        static bool handleDebug(Worklist::WorklistResult<AllocStatus> WLRes, CallBase* FirstError, ContractManagerAnalysis::DebugContext const& context) {
+            // Start trace right after the first call with an unallocated argument
+            return InteractiveUI::ShowTrace<AllocStatus>(WLRes.JumpTraces, Worklist::getTraceAfter(WLRes.JumpTraces, FirstError), allocStatusToStr, context);
+        }
 };
 
 } // namespace llvm

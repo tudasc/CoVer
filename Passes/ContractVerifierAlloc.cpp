@@ -62,6 +62,7 @@ struct IterTypeAlloc {
     int param;
     const Function* F;
     std::set<const CallBase*> reported;
+    const CallBase* firstError = nullptr; // Where the trace starts
 };
 
 ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocStat(AllocStatus cur, const Instruction* I, void* data) {
@@ -164,6 +165,7 @@ ContractVerifierAllocPass::AllocStatus ContractVerifierAllocPass::transferAllocS
             // Any required parameter not used by any candidate
             cur.CurVal = AllocStatusVal::ERROR;
             if (!Data->reported.insert(CB).second) return cur;
+            if (!Data->firstError) Data->firstError = CB;
             Data->err.push_back({
                 .error_id = "Alloc",
                 .text = std::format("Value in argument index {} of {} in {} is not allocated!", Data->param, Data->F->getName().str(), ContractPassUtility::getInstrLocStr(CB)),
@@ -215,6 +217,9 @@ ContractVerifierAllocPass::AllocStatusVal ContractVerifierAllocPass::checkAllocR
 
     C.DebugInfo->insert(C.DebugInfo->end(), data.dbg.begin(), data.dbg.end());
     DB->reports[&Expr].insert(DB->reports[&Expr].end(), data.err.begin(), data.err.end());
+    if (data.firstError) {
+        DB->debugHandlers[&Expr] = std::bind(&ContractVerifierAllocPass::handleDebug, WLRes, const_cast<CallBase*>(data.firstError), std::placeholders::_1);
+    }
 
     // Take max over all analysis info
     // Correct usage will not contain error
