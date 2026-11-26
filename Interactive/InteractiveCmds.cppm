@@ -209,6 +209,7 @@ CmdResult CmdAliasCreate(std::vector<std::string> const& args, CmdTarget const& 
     if (!V1) return {CmdResultCode::INVALID_INPUT, V1.error()};
     std::expected<Value*, std::string> V2 = ParseValue(args[4], *F2);
     if (!V2) return {CmdResultCode::INVALID_INPUT, V2.error()};
+    if (*V1 == *V2) return {CmdResultCode::INVALID_INPUT, std::format("Value {} given twice, an alias group needs two different values", ContractPassUtility::getValueName(*V1))};
     // Named before the edit, which discards the value numbering
     std::string values = std::format("values {} and {} {} alias", ContractPassUtility::getValueName(*V1), ContractPassUtility::getValueName(*V2), isAlias ? "should" : "should not");
     int group = ContractPassUtility::createAliasGroup(isAlias, *V1, *V2);

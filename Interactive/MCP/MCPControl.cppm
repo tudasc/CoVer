@@ -45,7 +45,7 @@ You are connected to CoVer's interactive mode through MCP and can work through a
 - list_reports lists the reports of the current analysis. A report can have several traces, one per violated leaf of its formula, listed with their leaf index.
   open_report opens the trace of a leaf in the trace debugger, the other tools work on the open trace. Look at all traces of a report: each leaf may be violated for a different reason.
 - Annotations are kept when you open another report, so you can annotate several reports before reanalysing.
-- A report only shows the conflicts of the first call that violates the contract, the other calls are checked once it is fixed. Annotate the matching values of all calls (e.g. the stores of all fill loops) before reanalysing.
+- A report only shows the conflicts of the first call that violates the contract, and on each path only the first conflict after that call. The other calls and conflicts are checked once these are fixed. Annotate the matching values of all calls (e.g. the stores of all fill loops) before reanalysing.
 - reanalyse reruns the analysis with all annotations added so far and returns the new reports. If the leaf whose trace was open is still reported afterwards, its trace is opened again automatically.
 - After reanalysing, check with list_reports that the reports you annotated are gone. Annotations can also uncover further reports.
 - Annotate false positives only. Leave real bugs reported, and tell the user about them with a suggested fix.

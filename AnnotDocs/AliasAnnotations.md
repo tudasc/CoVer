@@ -90,10 +90,29 @@ MPI_Isend(&b, 1, MPI_INT, 1, 1, MPI_COMM_WORLD, &reqs[idx]); // Matches the seco
 
 In a no-alias group, two values are only separated if they match different annotations, e.g. two annotated loads of `buf` with `buf += N` in between.
 
+## Alias or No-Alias
+
+- Use an **alias** group (`true`) when the analysis does not match values that are the same at runtime,
+  e.g. the request passed to `MPI_Wait` is not recognised as the one passed to `MPI_Isend`.
+- Use a **no-alias** group (`false`) when the analysis matches values that differ at runtime,
+  e.g. the requests `&reqs[0]` and `&reqs[1]` of two `MPI_Isend` calls, or a store into another part of an array taken as a write to the buffer of an `MPI_Isend`.
+
+## Static Analysis
+
+Each value the analysis compares is looked up in the groups: it matches a member if it is that annotated value or computed the same way, as described above.
+- If two values match members of the same alias group, the analysis takes them as the same.
+- If two values match *different* members of the same no-alias group, the analysis takes them as different.
+  Two values matching the same member are not separated.
+
+The order in which the annotations are added does not matter,
+only the order in which they are executed.
+
 A group must cover both values the analysis compares, so annotate them where they are used, not where the variable is assigned.
 For a data race on a buffer, these are the buffer passed to the call and the address of each store into the buffer.
-A value that is only used to load or store, such as a store address, is only asserted not to alias the values of the group annotated before it,
-so the stores filling a buffer can be in the same group as that buffer:
+In a no-alias group, a value that is only used as the address of loads and stores, such as a store address,
+asserts that each address it accesses must differ from the values the group's other annotations produced before that access (execution order), but annotations running later may produce it again.
+So the stores filling a buffer can be in the same group as that buffer, as the buffer's annotation runs after them,
+while a store into a buffer that is still in flight violates the group:
 
 ```c
 CoVer_AnnotAlias(buf, false, 0);
@@ -105,6 +124,65 @@ for (int i = 0; i < N; i++) {
 }
 CoVer_AnnotAlias(buf, false, 0);
 MPI_Isend(buf, N, MPI_DOUBLE, peer, 1, MPI_COMM_WORLD, &r1);
+```
+
+The same in IR, with annotations prefixed by `+`:
+
+```llvm
+define void @fill_and_send(ptr %0, i32 %1, i32 %2) {
+  %4 = alloca ptr
+  %5 = alloca i32
+  %6 = alloca i32
+  %7 = alloca ptr
+  %8 = alloca ptr
+  %9 = alloca i32
+  store ptr %0, ptr %4
+  store i32 %1, ptr %5
+  store i32 %2, ptr %6
+  %10 = load ptr, ptr %4
++ call void @CoVer_AnnotAlias(ptr %10, i1 false, i32 0)
+  %11 = load i32, ptr %5
+  %12 = load i32, ptr %6
+  %13 = call i32 @MPI_Isend(ptr %10, i32 %11, ptr @ompi_mpi_double, i32 %12, i32 0, ptr @ompi_mpi_comm_world, ptr %7)
+  %14 = load i32, ptr %5
+  %15 = load ptr, ptr %4
+  %16 = sext i32 %14 to i64
+  %17 = getelementptr double, ptr %15, i64 %16
+  store ptr %17, ptr %4
+  store i32 0, ptr %9
+  br label %18
+
+18: ; preds = %29, %3
+  %19 = load i32, ptr %9
+  %20 = load i32, ptr %5
+  %21 = icmp slt i32 %19, %20
+  br i1 %21, label %22, label %32
+
+22: ; preds = %18
+  %23 = load i32, ptr %9
+  %24 = sitofp i32 %23 to double
+  %25 = load ptr, ptr %4
+  %26 = load i32, ptr %9
+  %27 = sext i32 %26 to i64
+  %28 = getelementptr double, ptr %25, i64 %27
++ call void @CoVer_AnnotAlias(ptr %28, i1 false, i32 0) ; Not the buffer in flight
+  store double %24, ptr %28
+  br label %29
+
+29: ; preds = %22
+  %30 = load i32, ptr %9
+  %31 = add i32 %30, 1
+  store i32 %31, ptr %9
+  br label %18
+
+32: ; preds = %18
+  %33 = load ptr, ptr %4
++ call void @CoVer_AnnotAlias(ptr %33, i1 false, i32 0)
+  %34 = load i32, ptr %5
+  %35 = load i32, ptr %6
+  %36 = call i32 @MPI_Isend(ptr %33, i32 %34, ptr @ompi_mpi_double, i32 %35, i32 1, ptr @ompi_mpi_comm_world, ptr %8)
+  ret void
+}
 ```
 
 ## `CoVer_AnnotAlias` Arguments
