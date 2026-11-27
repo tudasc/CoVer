@@ -103,6 +103,10 @@ Each value the analysis compares is looked up in the groups: it matches a member
 - If two values match members of the same alias group, the analysis takes them as the same.
 - If two values match *different* members of the same no-alias group, the analysis takes them as different.
   Two values matching the same member are not separated.
+- A group only applies if both values match one of its members.
+  If one of them matches no member, the group does not affect the comparison and the analysis matches the two values as without it.
+  E.g. if the requests of several `MPI_Isend` calls are members of a no-alias group, but the request passed to `MPI_Wait` is not,
+  the `MPI_Wait` request is still matched with the `MPI_Isend` requests the same way as before.
 
 The order in which the annotations are added does not matter,
 only the order in which they are executed.
